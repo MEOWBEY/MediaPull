@@ -20,41 +20,40 @@
 	import {
 		videoUrl,
 		processing,
+		extracting,
 		result,
 		addLog,
-		resetProgress,
 		processedVideos,
-		addProcessedVideo
+		addProcessedVideo,
+		extractedVideoData,
+		setExtractedVideoData,
+		clearExtractedVideoData,
+		clearProcessedVideos,
+		previewStates,
+		togglePreview,
+		copySuccess,
+		setCopySuccess,
+		extractionError,
+		processingVideos,
+		addProcessingVideo,
+		removeProcessingVideo,
+		resetAllState
 	} from '$lib/stores/videoStore';
 
 	// Component State
-	let inputElement: HTMLInputElement | undefined | any;
-	let abortController: AbortController | null = $state(null);
-	let copySuccess = $state('');
-	let extractedVideos = $state<
-		{
-			quality: string;
-			format: string;
-			filesize: string;
-			resolution: string;
-			duration: string;
-			downloadUrl: string;
-			previewUrl?: string;
-			filename: string;
-		}[]
-	>([]);
-	let extracting = $state(false);
-	let showExtracted = $state(false);
-	let extractionError = $state<string | null>(null);
-	let processingVideos = $state<Set<string>>(new Set());
-	let previewStates = $state<Map<number, boolean>>(new Map());
+	let inputElement = $state<HTMLInputElement>();
+	let abortController = $state<AbortController | null>(null);
 	let timer = $state(0);
 	let timerInterval: NodeJS.Timeout | null = null;
 
-	// Derived State for
-	let isOperationRunning = $derived($processing || extracting);
-	let hasError = $derived($result?.error);
-	let anyError = $derived(hasError || extractionError);
+	// Local state for processed video previews (default open)
+	let processedVideoPreviewStates = $state(new Map<string, boolean>());
+
+	// Derived State
+	const isOperationRunning = $derived($processing || $extracting);
+	const hasError = $derived($result?.error);
+	const anyError = $derived(hasError || $extractionError);
+	const extractedVideos = $derived($extractedVideoData?.formats || []);
 
 	const operationStatusColor = $derived(() => {
 		if (isOperationRunning) return 'animate-pulse bg-blue-500';
@@ -70,9 +69,7 @@
 	// Timer Functions
 	function startTimer() {
 		timer = 0;
-		timerInterval = setInterval(() => {
-			timer++;
-		}, 1000);
+		timerInterval = setInterval(() => timer++, 1000);
 	}
 
 	function stopTimer() {
@@ -88,55 +85,83 @@
 		return `${mins}:${secs.toString().padStart(2, '0')}`;
 	}
 
-	// Core Logic
-	function resetOperationState() {
-		result.set(null);
-		extractionError = null;
-		resetProgress();
-		copySuccess = '';
+	function formatFileSize(bytes?: number): string {
+		if (!bytes) return 'Unknown';
+		const sizes = ['B', 'KB', 'MB', 'GB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(1024));
+		return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
 	}
 
-	async function processVideo(url?: string) {
+	function formatDuration(seconds: number): string {
+		const hours = Math.floor(seconds / 3600);
+		const mins = Math.floor((seconds % 3600) / 60);
+		const secs = seconds % 60;
+
+		if (hours > 0) {
+			return `${hours}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+		}
+		return `${mins}:${secs.toString().padStart(2, '0')}`;
+	}
+
+	function safeGet(obj: any, path: string, fallback: string = 'Unknown'): string {
+		return obj?.[path] || fallback;
+	}
+
+	// Toggle processed video preview
+	function toggleProcessedVideoPreview(videoId: string) {
+		const currentState = processedVideoPreviewStates.get(videoId) ?? true; // Default open
+		processedVideoPreviewStates.set(videoId, !currentState);
+		processedVideoPreviewStates = new Map(processedVideoPreviewStates);
+	}
+
+	// Check if processed video preview is open (default true)
+	function isProcessedVideoPreviewOpen(videoId: string): boolean {
+		return processedVideoPreviewStates.get(videoId) ?? true;
+	}
+
+	// Core Logic
+	async function processVideo(url?: string, quality?: string, format?: string) {
 		const targetUrl = url || $videoUrl.trim();
 		if (!targetUrl || isOperationRunning) return;
 
-		const processId = `process_${Date.now()}`;
+		const processKey = `${targetUrl}-${quality || 'default'}`;
 		if (url) {
-			processingVideos.add(url);
-			processingVideos = new Set(processingVideos);
+			addProcessingVideo(processKey);
 		}
 
 		abortController = new AbortController();
 		processing.set(true);
-		if (!url) resetOperationState();
+		if (!url) resetAllState();
 		startTimer();
 
 		try {
 			const response = await fetch('/api/process-video', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ userVideoUrl: targetUrl }),
+				body: JSON.stringify({
+					userVideoUrl: targetUrl,
+					quality,
+					format
+				}),
 				signal: abortController.signal
 			});
 
 			if (abortController.signal.aborted) return;
 
 			const data = await response.json();
-			if (data.success) {
+			if (data.success && data.video) {
+				// Create processed video object with consistent structure
 				const processedVideo = {
-					id: processId,
-					originalUrl: targetUrl,
-					filename: data.filename || 'video.mp4',
-					downloadUrl: data.downloadUrl,
-					videoSrc: data.downloadUrl,
-					processedAt: new Date().toISOString(),
-					quality: extractedVideos.find((v) => v.downloadUrl === targetUrl)?.quality || 'Unknown',
-					format: extractedVideos.find((v) => v.downloadUrl === targetUrl)?.format || 'Unknown',
-					filesize: extractedVideos.find((v) => v.downloadUrl === targetUrl)?.filesize || 'Unknown'
+					...data.video,
+					filesize: data.video.fileSize ? formatFileSize(data.video.fileSize) : 'Unknown'
 				};
 
 				addProcessedVideo(processedVideo);
-				addLog('Video processed successfully!', 'success');
+				// Set default preview state to open for new processed videos
+				processedVideoPreviewStates.set(processedVideo.id, true);
+				processedVideoPreviewStates = new Map(processedVideoPreviewStates);
+
+				addLog(`Video processed successfully in ${data.video.processingTime || 0}ms!`, 'success');
 			} else {
 				throw new Error(data.error || 'Processing failed');
 			}
@@ -152,8 +177,7 @@
 			abortController = null;
 			stopTimer();
 			if (url) {
-				processingVideos.delete(url);
-				processingVideos = new Set(processingVideos);
+				removeProcessingVideo(processKey);
 			}
 		}
 	}
@@ -163,8 +187,8 @@
 		if (!url || isOperationRunning) return;
 
 		abortController = new AbortController();
-		extracting = true;
-		resetOperationState();
+		extracting.set(true);
+		resetAllState();
 		startTimer();
 
 		try {
@@ -178,11 +202,12 @@
 			if (abortController.signal.aborted) return;
 
 			const data = await response.json();
-			if (data.success) {
-				extractedVideos = data.videos;
-				showExtracted = true;
-				previewStates = new Map(data.videos.map((_, index) => [index, true]));
-				addLog(`Found ${data.videos.length} video formats!`, 'success');
+			if (data.success && data.video) {
+				setExtractedVideoData({
+					...data.video,
+					sourceUrl: url
+				});
+				addLog(`Found ${data.video.totalFormats} video formats!`, 'success');
 			} else {
 				throw new Error(data.error || 'Extraction failed');
 			}
@@ -190,11 +215,11 @@
 			if (error.name === 'AbortError') {
 				addLog('Operation cancelled', 'info');
 			} else {
-				extractionError = error.message;
+				extractionError.set(error.message);
 				addLog(`Error: ${error.message}`, 'error');
 			}
 		} finally {
-			extracting = false;
+			extracting.set(false);
 			abortController = null;
 			stopTimer();
 		}
@@ -207,22 +232,12 @@
 		}
 	}
 
-	function togglePreview(index: number) {
-		const currentState = previewStates.get(index) ?? true;
-		previewStates.set(index, !currentState);
-		previewStates = new Map(previewStates);
-	}
-
 	// UI Handlers
 	async function copyToClipboard(text: string, id = '') {
 		try {
 			await navigator.clipboard.writeText(text);
-			copySuccess = id;
+			setCopySuccess(id);
 			addLog('Link copied!', 'info');
-
-			setTimeout(() => {
-				if (copySuccess === id) copySuccess = '';
-			}, 2000);
 		} catch (error) {
 			addLog('Copy failed', 'error');
 		}
@@ -237,31 +252,52 @@
 		if (isOperationRunning) return;
 		videoUrl.set('');
 		timer = 0;
-		resetOperationState();
+		resetAllState();
 		inputElement?.focus();
 	}
 
-	function removeProcessedVideo(id: string) {
-		processedVideos.update((videos) => videos.filter((v) => v.id !== id));
+	function processExtractedVideo(video: any) {
+		const processKey = `${video.originalUrl}-${video.quality}`;
+		if ($processingVideos.has(processKey)) return;
+
+		processVideo(video.originalUrl, video.quality, video.extension);
+	}
+
+	function isVideoProcessing(video: any): boolean {
+		const processKey = `${video.originalUrl}-${video.quality}`;
+		return $processingVideos.has(processKey);
+	}
+
+	// Clear functions
+	function clearProcessedVideosList() {
+		clearProcessedVideos();
+		processedVideoPreviewStates.clear();
+		processedVideoPreviewStates = new Map(processedVideoPreviewStates);
+		addLog('Processed videos cleared', 'info');
+	}
+
+	function clearExtractedVideosList() {
+		clearExtractedVideoData();
+		addLog('Extracted videos cleared', 'info');
 	}
 </script>
 
-<!-- Header Snippet -->
+<!-- Header Section -->
 {#snippet headerSection()}
 	<header class="mb-8 text-center">
 		<div
-			class="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg sm:h-16 sm:w-16"
+			class="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg"
 		>
-			<Link2 class="h-6 w-6 text-white sm:h-8 sm:w-8" />
+			<Link2 class="h-8 w-8 text-white" />
 		</div>
-		<h1 class="text-2xl font-bold text-zinc-900 sm:text-4xl dark:text-zinc-100">DirectLinker</h1>
-		<p class="mt-2 text-sm text-zinc-600 sm:text-base dark:text-zinc-400">
+		<h1 class="text-4xl font-bold text-zinc-900 dark:text-zinc-100">DirectLinker</h1>
+		<p class="mt-2 text-base text-zinc-600 dark:text-zinc-400">
 			Convert video URLs to direct download links
 		</p>
 	</header>
 {/snippet}
 
-<!-- Status Header Snippet -->
+<!-- Status Header -->
 {#snippet statusHeader()}
 	<div class="mb-4 flex items-center justify-between">
 		<div class="flex items-center gap-2">
@@ -269,7 +305,6 @@
 			<span class="text-sm font-medium text-zinc-900 dark:text-zinc-100">Video Processor</span>
 		</div>
 		<div class="flex items-center gap-3">
-			<!-- Timer -->
 			{#if isOperationRunning}
 				<div class="flex items-center gap-1 rounded-md bg-blue-100 px-2 py-1 dark:bg-blue-900/50">
 					<Clock class="h-3 w-3 text-blue-600 dark:text-blue-400" />
@@ -278,13 +313,12 @@
 					</span>
 				</div>
 			{/if}
-			<!-- Operation Status Dot -->
 			<div class="h-2 w-2 rounded-full {operationStatusColor()}"></div>
 		</div>
 	</div>
 {/snippet}
 
-<!-- Input Form Snippet -->
+<!-- Input Form -->
 {#snippet inputForm()}
 	<div class="space-y-4">
 		<div class="flex gap-2">
@@ -295,7 +329,7 @@
 					bind:this={inputElement}
 					bind:value={$videoUrl}
 					placeholder="Paste video URL here..."
-					class="focus: pl-10"
+					class="pl-10"
 					disabled={isOperationRunning}
 					onkeypress={handleKeyPress}
 				/>
@@ -306,14 +340,12 @@
 				onclick={clearInput}
 				disabled={!$videoUrl || isOperationRunning}
 				class="shrink-0"
-				aria-label="Clear input"
 			>
 				<Trash2 class="h-4 w-4" />
 			</Button>
 		</div>
 
-		<!-- Action Buttons -->
-		<div class="mb-4 flex flex-col gap-2 md:flex-row">
+		<div class="flex flex-col gap-2 md:flex-row">
 			<Button
 				onclick={() => processVideo()}
 				disabled={!$videoUrl.trim() || isOperationRunning}
@@ -334,23 +366,23 @@
 				variant="outline"
 				class="flex-1"
 			>
-				{#if extracting}
+				{#if $extracting}
 					<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 					Extracting...
 				{:else}
 					<List class="mr-2 h-4 w-4" />
-					Extract Formats
+					Extract Videos
 				{/if}
 			</Button>
 		</div>
 	</div>
 {/snippet}
 
-<!-- Error Display Snippet -->
+<!-- Error Display -->
 {#snippet errorDisplay()}
 	{#if anyError}
 		<div
-			class="mb-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20"
+			class="my-3 rounded-lg border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20"
 		>
 			<div class="flex items-start gap-3">
 				<AlertCircle class="h-5 w-5 shrink-0 text-red-500" />
@@ -360,10 +392,10 @@
 					</h3>
 					<p class="mt-1 text-xs text-red-700 dark:text-red-300">{anyError}</p>
 					<Button
-						onclick={resetOperationState}
+						onclick={resetAllState}
 						variant="outline"
 						size="sm"
-						class="mt-3 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-200 dark:hover:bg-red-900/30"
+						class="mt-3 border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-200"
 					>
 						Dismiss
 					</Button>
@@ -373,197 +405,190 @@
 	{/if}
 {/snippet}
 
-<!-- Processed Video Item Snippet -->
-{#snippet processedVideoItem(video)}
+<!-- Action Buttons Component -->
+{#snippet actionButtons(video, type, index = '')}
 	<div
-		class="rounded-lg border border-green-300 bg-white p-3 shadow-sm dark:border-green-600 dark:bg-zinc-800"
+		class="flex shrink-0 items-center rounded-md border bg-zinc-50 p-0.5 dark:border-zinc-600 dark:bg-zinc-700"
 	>
-		<!-- Main card content: Info + Actions -->
-		<div class="flex items-start justify-between gap-3 sm:items-center">
-			<!-- Video Info -->
-			<div class="min-w-0 flex-1"></div>
+		<!-- Preview Toggle Button -->
+		<Button
+			size="icon"
+			variant="ghost"
+			class="h-7 w-7 {type === 'extracted'
+				? $previewStates.get(video.id)
+					? 'bg-blue-100 text-blue-500 hover:bg-blue-200 dark:bg-blue-900/50 hover:dark:bg-blue-900'
+					: ''
+				: isProcessedVideoPreviewOpen(video.id)
+					? 'bg-green-100 text-green-500 hover:bg-green-200 dark:bg-green-900/50 hover:dark:bg-green-900'
+					: ''}"
+			onclick={() => {
+				if (type === 'extracted') {
+					togglePreview(video.id);
+				} else {
+					toggleProcessedVideoPreview(video.id);
+				}
+			}}
+			title="Toggle preview"
+		>
+			<Eye class="h-4 w-4" />
+		</Button>
 
-			<!-- Compact Action Buttons -->
-			<div
-				class="flex shrink-0 items-center rounded-md border bg-zinc-50 p-0.5 dark:border-zinc-600 dark:bg-zinc-700"
+		{#if type === 'extracted' && !video.isHLS}
+			<Button
+				size="icon"
+				variant="ghost"
+				class="h-7 w-7 {isVideoProcessing(video) ? 'animate-pulse' : ''}"
+				onclick={() => processExtractedVideo(video)}
+				disabled={isVideoProcessing(video) || isOperationRunning}
+				title="Process this format"
 			>
-				<Button
-					size="icon"
-					variant="ghost"
-					class="h-7 w-7 {copySuccess === `processed-${video.id}` ? 'text-green-500' : ''}"
-					aria-label="Copy link"
-					title="Copy link"
-					disabled={copySuccess === `processed-${video.id}`}
-					onclick={() => copyToClipboard(video.downloadUrl, `processed-${video.id}`)}
-				>
-					{#if copySuccess === `processed-${video.id}`}
-						<Check class="h-4 w-4" />
-					{:else}
-						<Copy class="h-4 w-4" />
-					{/if}
-				</Button>
-				<a href={video.downloadUrl} download={video.filename} title="Download video">
-					<Button size="icon" variant="ghost" class="h-7 w-7">
-						<Download class="h-4 w-4" />
-					</Button>
-				</a>
-				<Button
-					size="icon"
-					variant="ghost"
-					class="h-7 w-7 text-red-500 hover:text-red-700"
-					aria-label="Remove"
-					title="Remove from list"
-					onclick={() => removeProcessedVideo(video.id)}
-				>
-					<X class="h-4 w-4" />
-				</Button>
-			</div>
-		</div>
+				{#if isVideoProcessing(video)}
+					<Loader2 class="h-4 w-4 animate-spin" />
+				{:else}
+					<Play class="h-4 w-4" />
+				{/if}
+			</Button>
+		{/if}
 
-		<!-- Default Open Preview Player -->
-		{#if video.downloadUrl}
-			<div class="mt-3 w-full rounded-lg border bg-black dark:border-zinc-700">
-				<VideoPlayer src={video.downloadUrl} poster={video.thumbnail} />
+		<Button
+			size="icon"
+			variant="ghost"
+			class="h-7 w-7 {$copySuccess === `${type}-${video.id || index}` ? 'text-green-500' : ''}"
+			disabled={$copySuccess === `${type}-${video.id || index}`}
+			onclick={() => copyToClipboard(video.downloadUrl, `${type}-${video.id || index}`)}
+			title="Copy link"
+		>
+			{#if $copySuccess === `${type}-${video.id || index}`}
+				<Check class="h-4 w-4" />
+			{:else}
+				<Copy class="h-4 w-4" />
+			{/if}
+		</Button>
+
+		{#if type === 'processed' || !video.isHLS}
+			<a href={video.downloadUrl} download={video.filename} title="Download video">
+				<Button size="icon" variant="ghost" class="h-7 w-7">
+					<Download class="h-4 w-4" />
+				</Button>
+			</a>
+		{/if}
+	</div>
+{/snippet}
+
+<!-- Video Info Display -->
+{#snippet videoInfo(video, type)}
+	<div class="min-w-0 flex-1">
+		{#if type === 'extracted'}
+			<!-- Detailed info for extracted videos -->
+			<div class="flex items-center gap-2 text-sm">
+				<span class="font-medium text-blue-900 dark:text-blue-100">
+					{safeGet(video, 'id')}
+				</span>
+				{#if video?.isHLS}
+					<span
+						class="rounded bg-orange-100 px-1 py-0.5 text-[12px] text-orange-800 dark:bg-orange-900/50 dark:text-orange-200"
+					>
+						HLS
+					</span>
+				{:else}
+					<span
+						class="rounded bg-orange-100 px-1 py-0.5 text-[12px] text-orange-800 dark:bg-orange-900/50 dark:text-orange-200"
+					>
+						{safeGet(video, 'extension').toUpperCase()}
+					</span>
+				{/if}
+			</div>
+		{:else}
+			<!-- Simple info for processed videos - only title/name -->
+			<div class="flex items-center gap-2 text-sm">
+				<span class="font-medium text-green-900 dark:text-green-100">
+					{safeGet(video, 'filename')}
+				</span>
 			</div>
 		{/if}
 	</div>
 {/snippet}
 
-<!-- Processed Videos Section Snippet -->
-{#snippet processedVideosSection()}
-	{#if $processedVideos.length > 0}
-		<div
-			class="rounded-lg border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20"
-		>
-			<h3 class="mb-3 text-sm font-medium text-green-800 dark:text-green-200">
-				Processed Videos ({$processedVideos.length})
-			</h3>
-
-			<div class="max-h-96 space-y-3 overflow-y-auto pr-1">
-				{#each $processedVideos as video (`processed-${video.id}`)}
-					{@render processedVideoItem(video)}
-				{/each}
-			</div>
+<!-- Video Item Card -->
+{#snippet videoCard(video, type, index = '')}
+	<div class="h-full w-full rounded-lg border bg-white p-2 shadow-sm md:p-3 dark:bg-zinc-800">
+		<div class="flex items-center justify-between gap-3 sm:items-center">
+			{@render videoInfo(video, type)}
+			{@render actionButtons(video, type, index)}
 		</div>
-	{/if}
-{/snippet}
 
-<!-- Extracted Video Item Snippet -->
-{#snippet extractedVideoItem(video, index)}
-	<div
-		class="rounded-lg border border-blue-300 bg-white p-3 shadow-sm transition-all duration-200 dark:border-blue-600 dark:bg-zinc-800"
-	>
-		<!-- Main card content: Info + Actions -->
-		<div class="flex items-start justify-between gap-3 sm:items-center">
-			<!-- Video Info -->
-			<div class="min-w-0 flex-1">
-				<div class="flex items-center gap-2 text-sm">
-					<span class="font-medium text-blue-900 dark:text-blue-100">
-						{video.quality || 'N/A'}
-					</span>
-					<span class="text-xs text-zinc-600 dark:text-zinc-400">
-						{video.format} • {video.filesize}
-					</span>
-				</div>
-				<p class="truncate text-xs text-zinc-700 dark:text-zinc-300">
-					{video.resolution} • {video.duration}
-				</p>
-			</div>
-
-			<!-- Compact Action Buttons - Only Preview and Copy -->
-			<div
-				class="flex shrink-0 items-center rounded-md border bg-zinc-50 p-0.5 dark:border-zinc-600 dark:bg-zinc-700"
-			>
-				<Button
-					size="icon"
-					variant="ghost"
-					class="h-7 w-7 {previewStates.get(index)
-						? 'bg-blue-100 text-blue-500 dark:bg-blue-900/50'
-						: ''}"
-					aria-label="Preview this video"
-					title="Preview this video"
-					onclick={() => togglePreview(index)}
-				>
-					<Eye class="h-4 w-4" />
-				</Button>
-				<Button
-					size="icon"
-					variant="ghost"
-					class="h-7 w-7 {copySuccess === `video-${index}` ? 'text-green-500' : ''}"
-					aria-label="Copy link"
-					title="Copy link"
-					disabled={copySuccess === `video-${index}`}
-					onclick={() => copyToClipboard(video.downloadUrl, `video-${index}`)}
-				>
-					{#if copySuccess === `video-${index}`}
-						<Check class="h-4 w-4" />
-					{:else}
-						<Copy class="h-4 w-4" />
-					{/if}
-				</Button>
-			</div>
-		</div>
-		<!-- Item-specific preview with proper spacing -->
-		{#if previewStates.get(index)}
-			<div class="mt-3 w-full rounded-lg border bg-black dark:border-zinc-700">
-				<VideoPlayer src={video.downloadUrl} poster={video.thumbnail} />
+		{#if (type === 'extracted' && $previewStates.get(video.id)) || (type === 'processed' && isProcessedVideoPreviewOpen(video.id))}
+			<div class="mt-3 ">
+				<VideoPlayer src={video.downloadUrl} poster={video?.thumbnail} />
 			</div>
 		{/if}
 	</div>
 {/snippet}
 
-<!-- Extracted Videos Section Snippet -->
-{#snippet extractedVideosSection()}
-	{#if showExtracted && extractedVideos.length > 0}
-		<div
-			class="rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-zinc-800 dark:bg-zinc-900/20"
-		>
+<!-- Video Section -->
+{#snippet videoSection(videos, title, type, colorClass)}
+	{#if videos.length > 0}
+		<div class="my-3 rounded-lg {colorClass}">
 			<div class="mb-3 flex items-center justify-between">
-				<h3 class="text-sm font-medium text-blue-800 dark:text-blue-200">
-					Available Formats ({extractedVideos.length})
+				<h3 class="text-sm font-medium">
+					{title} ({videos.length})
 				</h3>
+
+				<!-- Clear Button -->
+				<Button
+					size="sm"
+					variant="outline"
+					onclick={type === 'processed' ? clearProcessedVideosList : clearExtractedVideosList}
+					class="mr-1 text-xs "
+					title="Clear all {type} videos"
+				>
+					<Trash2 class="h-3 w-3" />
+				</Button>
 			</div>
 
-			<div class="max-h-96 space-y-3 overflow-y-auto pr-1">
-				{#each extractedVideos as video, index (`video-${index}`)}
-					{@render extractedVideoItem(video, index)}
+			<div class="space-y-3 overflow-y-auto pr-1">
+				{#each videos as video, index}
+					{@render videoCard(video, type, index)}
 				{/each}
 			</div>
 		</div>
 	{/if}
 {/snippet}
 
-<!-- Instructions Snippet -->
+<!-- Instructions -->
 {#snippet instructionsSection()}
 	<div
 		class="mt-6 rounded-lg border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20"
 	>
 		<h2 class="mb-2 text-sm font-medium text-blue-900 dark:text-blue-100">How to use:</h2>
 		<ol class="space-y-1 text-xs text-blue-800 dark:text-blue-200">
-			<li><strong>1.</strong> Paste a video page URL and click "Extract Formats".</li>
+			<li><strong>1.</strong> Paste a video page URL and click "Extract Videos".</li>
 			<li>
-				<strong>2.</strong> From the list, click the <Eye class="inline h-3 w-3" /> button to preview
-				a specific format, or use the <Copy class="inline h-3 w-3" /> button to copy the direct link.
+				<strong>2.</strong> Preview Videos with <Eye class="inline h-3 w-3" /> or process specific Videos
+				with <Play class="inline h-3 w-3" />.
 			</li>
-			<li><strong>3.</strong> Use "Process Video" to convert and download videos.</li>
 			<li>
-				<strong>4.</strong> Your processed videos are saved and will persist across sessions.
+				<strong>3.</strong> Copy links with <Copy class="inline h-3 w-3" /> or download with <Download
+					class="inline h-3 w-3"
+				/>.
+			</li>
+			<li>
+				<strong>4.</strong> Processed videos persist across sessions and show preview by default.
 			</li>
 		</ol>
 	</div>
 {/snippet}
 
-<!-- Floating Actions Snippet -->
+<!-- Floating Actions -->
 {#snippet floatingActions()}
-	{#if $processedVideos.length > 0 || isOperationRunning || showExtracted}
-		<div class="fixed right-4 bottom-4 z-40 flex flex-col gap-2 sm:right-6 sm:bottom-6">
+	{#if $processedVideos.length > 0 || isOperationRunning}
+		<div class="fixed right-6 bottom-6 z-40 flex flex-col gap-2">
 			{#if isOperationRunning}
 				<Button
 					size="icon"
 					variant="destructive"
 					onclick={cancelOperation}
-					class="h-12 w-12 rounded-full shadow-lg sm:h-10 sm:w-10"
-					aria-label="Cancel Operation"
+					class="h-10 w-10 rounded-full shadow-lg"
 					title="Cancel Operation"
 				>
 					<X class="h-4 w-4" />
@@ -574,14 +599,13 @@
 				<Button
 					size="icon"
 					onclick={() => copyToClipboard($processedVideos[0]?.downloadUrl || '', 'float')}
-					class="h-12 w-12 rounded-full shadow-lg sm:h-10 sm:w-10 {copySuccess === 'float'
+					class="h-10 w-10 rounded-full shadow-lg {$copySuccess === 'float'
 						? 'bg-green-700'
 						: 'bg-green-600'} hover:bg-green-700"
-					disabled={copySuccess === 'float'}
-					aria-label="Copy latest video link"
+					disabled={$copySuccess === 'float'}
 					title="Copy latest video link"
 				>
-					{#if copySuccess === 'float'}
+					{#if $copySuccess === 'float'}
 						<Check class="h-4 w-4" />
 					{:else}
 						<Copy class="h-4 w-4" />
@@ -597,35 +621,24 @@
 	<meta name="description" content="Convert video URLs to direct download links" />
 </svelte:head>
 
-<main class="container mx-auto max-w-4xl px-4 py-6">
-	<!-- Render Header -->
+<main class="container mx-auto max-w-4xl px-2 py-6 md:px-4">
 	{@render headerSection()}
 
-	<!-- Main Form -->
-	<section class="mx-auto max-w-2xl">
+	<section class="mx-auto">
 		<div
-			class="rounded-lg border bg-white p-4 shadow-sm sm:p-6 dark:border-zinc-700 dark:bg-zinc-800"
+			class="rounded-lg border bg-white p-3 shadow-sm md:p-6 dark:border-zinc-700 dark:bg-zinc-800"
 		>
-			<!-- Render Status Header -->
 			{@render statusHeader()}
-
-			<!-- Render Input Form -->
 			{@render inputForm()}
-
-			<!-- Render Error Display -->
 			{@render errorDisplay()}
 
-			<!-- Render Processed Videos -->
-			{@render processedVideosSection()}
+			{@render videoSection($processedVideos, 'Processed Videos', 'processed', '')}
 
-			<!-- Render Extracted Videos -->
-			{@render extractedVideosSection()}
+			{@render videoSection(extractedVideos, 'extracted Videos', 'extracted', '')}
 		</div>
 
-		<!-- Render Instructions -->
 		{@render instructionsSection()}
 	</section>
 
-	<!-- Render Floating Actions -->
 	{@render floatingActions()}
 </main>

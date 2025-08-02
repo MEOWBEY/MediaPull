@@ -19,7 +19,43 @@ export interface ProcessedVideo {
 	processedAt: string;
 	quality: string;
 	format: string;
-	filesize: string;
+	fileSize?: number;
+	duration?: number;
+	resolution?: string;
+	fps?: number;
+	bitrate?: number;
+	videoCodec?: string;
+	audioCodec?: string;
+	thumbnail?: string;
+	processingTime?: number;
+	method?: string;
+}
+
+export interface ExtractedVideo {
+	id: string;
+	quality: string;
+	resolution: string;
+	width: number;
+	height: number;
+	fps?: number;
+	fileSize?: number;
+	extension: string;
+	protocol: string;
+	videoCodec?: string;
+	audioCodec?: string;
+	bitrate?: number;
+	originalUrl: string;
+	downloadUrl: string;
+	isHLS: boolean;
+	hasDRM: boolean;
+}
+
+export interface VideoData {
+	duration: number;
+	formats: ExtractedVideo[];
+	totalFormats: number;
+	extractedAt: string;
+	sourceUrl: string;
 }
 
 export interface LogEntry {
@@ -27,15 +63,6 @@ export interface LogEntry {
 	message: string;
 	type: 'info' | 'success' | 'error' | 'warn' | 'debug';
 	id: string;
-}
-
-export interface ExtractedLink {
-	format: string;
-	quality: string;
-	size: string;
-	url: string;
-	type: 'extract' | 'direct';
-	buttonText: string;
 }
 
 export interface ProgressInfo {
@@ -48,6 +75,9 @@ export interface ProgressInfo {
 // Core state
 export const videoUrl = writable('');
 export const processing = writable(false);
+export const extracting = writable(false);
+
+// Results and data
 export const result = writable<ProcessingResult | null>(
 	typeof localStorage !== 'undefined' && localStorage.getItem('dl-last-result')
 		? JSON.parse(localStorage.getItem('dl-last-result')!)
@@ -60,6 +90,19 @@ export const processedVideos = writable<ProcessedVideo[]>(
 		? JSON.parse(localStorage.getItem('dl-processed-videos')!)
 		: []
 );
+
+// Extracted video data with persistence
+export const extractedVideoData = writable<VideoData | null>(
+	typeof localStorage !== 'undefined' && localStorage.getItem('dl-extracted-video-data')
+		? JSON.parse(localStorage.getItem('dl-extracted-video-data')!)
+		: null
+);
+
+// UI state - these should not be persisted
+export const copySuccess = writable('');
+export const previewStates = writable(new Map<string, boolean>());
+export const processingVideos = writable(new Set<string>());
+export const extractionError = writable<string | null>(null);
 
 // Auto-sync result to localStorage
 result.subscribe(($res) => {
@@ -79,6 +122,17 @@ processedVideos.subscribe(($videos) => {
 			localStorage.setItem('dl-processed-videos', JSON.stringify($videos));
 		} else {
 			localStorage.removeItem('dl-processed-videos');
+		}
+	}
+});
+
+// Auto-sync extracted video data to localStorage
+extractedVideoData.subscribe(($data) => {
+	if (typeof localStorage !== 'undefined') {
+		if ($data) {
+			localStorage.setItem('dl-extracted-video-data', JSON.stringify($data));
+		} else {
+			localStorage.removeItem('dl-extracted-video-data');
 		}
 	}
 });
@@ -113,11 +167,14 @@ export function addLog(message: string, type: LogEntry['type'] = 'info') {
 // Processed videos management
 export function addProcessedVideo(video: ProcessedVideo) {
 	processedVideos.update((videos) => {
-		// Check if video already exists (by originalUrl)
-		const existingIndex = videos.findIndex((v) => v.originalUrl === video.originalUrl);
+		// Check if video already exists (by originalUrl and quality)
+		const existingIndex = videos.findIndex((v) => 
+			v.originalUrl === video.originalUrl && v.quality === video.quality
+		);
+		
 		if (existingIndex >= 0) {
 			// Update existing video
-			videos[existingIndex] = video;
+			videos[existingIndex] = { ...videos[existingIndex], ...video };
 			return [...videos];
 		} else {
 			// Add new video to the beginning of the list
@@ -130,6 +187,79 @@ export function removeProcessedVideo(id: string) {
 	processedVideos.update((videos) => videos.filter((v) => v.id !== id));
 }
 
+export function clearProcessedVideos() {
+	processedVideos.set([]);
+}
+
+// Extracted video data management
+export function setExtractedVideoData(data: VideoData) {
+	extractedVideoData.set({
+		...data,
+		extractedAt: new Date().toISOString()
+	});
+	
+	// Initialize preview states for all formats - DEFAULT TRUE for extracted videos
+	previewStates.set(new Map(data.formats.map((format) => [format.id, true])));
+}
+
+export function clearExtractedVideoData() {
+	extractedVideoData.set(null);
+	previewStates.set(new Map());
+}
+
+// Preview state management - Fixed toggle functionality
+export function togglePreview(videoId: string) {
+	previewStates.update((states) => {
+		const newStates = new Map(states);
+		const currentState = newStates.get(videoId) ?? true; // Default to true for extracted videos
+		newStates.set(videoId, !currentState);
+		return newStates;
+	});
+}
+
+export function setPreviewState(videoId: string, state: boolean) {
+	previewStates.update((states) => {
+		const newStates = new Map(states);
+		newStates.set(videoId, state);
+		return newStates;
+	});
+}
+
+// Processing state management
+export function addProcessingVideo(url: string) {
+	processingVideos.update((videos) => {
+		const newSet = new Set(videos);
+		newSet.add(url);
+		return newSet;
+	});
+}
+
+export function removeProcessingVideo(url: string) {
+	processingVideos.update((videos) => {
+		const newSet = new Set(videos);
+		newSet.delete(url);
+		return newSet;
+	});
+}
+
+// Copy success management
+export function setCopySuccess(id: string, duration = 2000) {
+	copySuccess.set(id);
+	setTimeout(() => {
+		copySuccess.update((current) => current === id ? '' : current);
+	}, duration);
+}
+
+// Progress management
+export function setProgress(operation: string, percent: number, details: Record<string, any> = {}) {
+	progress.set({
+		operation,
+		percent,
+		details,
+		isActive: percent < 100
+	});
+}
+
 export function resetProgress() {
 	progress.set({
 		operation: '',
@@ -137,4 +267,13 @@ export function resetProgress() {
 		details: {},
 		isActive: false
 	});
+}
+
+// Reset all state
+export function resetAllState() {
+	result.set(null);
+	extractionError.set(null);
+	clearExtractedVideoData();
+	resetProgress();
+	copySuccess.set('');
 }

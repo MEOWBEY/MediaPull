@@ -43,10 +43,9 @@
 	},
 	"dependencies": {
 		"@sparticuz/chromium": "^138.0.1",
-		"@types/video.js": "^7.3.58",
 		"lucide-svelte": "^0.525.0",
 		"mode-watcher": "^1.1.0",
 		"puppeteer-core": "^24.14.0",
-		"video.js": "^8.23.3"
+		"vidstack": "^1.12.13"
 	}
 }

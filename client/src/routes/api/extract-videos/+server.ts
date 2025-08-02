@@ -42,7 +42,7 @@ export async function POST({ request }) {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({ url }),
-			signal: AbortSignal.timeout(500000) // 60 seconds timeout
+			signal: AbortSignal.timeout(500000) // 500 seconds timeout
 		});
 
 		if (!response.ok) {
@@ -52,71 +52,56 @@ export async function POST({ request }) {
 		}
 
 		const data = await response.json();
-		console.log(`Extracted ${data.videos?.length || 0} videos`);
-		let proxyUrl = '';
-		// Process videos and create proxy URLs with streaming support
-		const videosWithProxy =
-			data.videos?.map((video, index) => {
-				console.log(`Processing video ${index + 1}:`, {
-					title: video.title,
-					quality: video.quality,
-					videoType: video.videoType,
-					isDirectStream: video.isDirectStream,
-					hasStreamUrl: !!video.streamUrl
-				});
 
-				// Create multiple download options
-				const downloadOptions = [];
+		if (!data.success || !data.video || !data.video.formats) {
+			throw new Error('Invalid response format from Python server');
+		}
 
-				// Option 1: Direct streaming from Python server (preferred for HLS/fragmented videos)
-				if (video.streamUrl) {
-					downloadOptions.push({
-						type: 'python_stream',
-						url: `${pythonServerUrl}${video.streamUrl}`,
-						label: 'Stream (Python Server)',
-						recommended: video.videoType === 'hls' || video.videoType === 'hls_fragment'
-					});
-				}
+		console.log(`Found ${data.video.formats.length} video formats`);
 
-				// Option 2: Proxy through Node.js (for direct MP4 URLs)
-				if (video.downloadUrl) {
-					const encodedUrl = encodeURIComponent(video.downloadUrl);
-					const encodedReferer = encodeURIComponent(video.referer || '');
-					const encodedUserAgent = encodeURIComponent(video.userAgent || '');
+		// Process video formats and create proxy URLs
+		const processedFormats = data.video.formats.map((format, index) => {
+			console.log(`Processing format ${index + 1}:`, {
+				format_id: format.format_id,
+				resolution: format.resolution,
+				quality: format.format,
+				protocol: format.protocol
+			});
 
-					let cookiesParam = '';
-					if (video.cookies && video.cookies.length > 0) {
-						try {
-							const cookiesStr = JSON.stringify(video.cookies);
-							cookiesParam = `&cookies=${encodeURIComponent(cookiesStr)}`;
-						} catch (e) {
-							console.warn('Failed to serialize cookies for video:', video.title);
-						}
-					}
+			// Create proxy URL for the video
+			const videoUrl = format.url || format.manifest_url;
+			const encodedUrl = encodeURIComponent(videoUrl);
 
-					proxyUrl = `${env.PUBLIC_BASE_URL}/api/download-video?url=${encodedUrl}&referer=${encodedReferer}&userAgent=${encodedUserAgent}${cookiesParam}`;
+			// Extract useful headers
+			const userAgent = format.http_headers?.['User-Agent'] || '';
+			const encodedUserAgent = encodeURIComponent(userAgent);
 
-					downloadOptions.push({
-						type: 'node_proxy',
-						url: proxyUrl,
-						label: 'Download (Node Proxy)',
-						recommended: video.videoType === 'direct'
-					});
-				}
-				return {
-					...video,
-					originalUrl: video.downloadUrl,
-					downloadUrl: proxyUrl,
-					downloadOptions,
-				};
-			}) || [];
+			// Create proxy download URL
+			const proxyUrl = `${env.PUBLIC_BASE_URL}/api/download-video?url=${encodedUrl}&userAgent=${encodedUserAgent}`;
 
-
-
+			return {
+				id: format.format_id,
+				quality: format.format,
+				thumbnail: format.thumbnail || '',
+				resolution: format.resolution,
+				width: format.width,
+				height: format.height,
+				fileSize: format.filesize || null,
+				extension: format.ext,
+				protocol: format.protocol,
+				originalUrl: videoUrl,
+				downloadUrl: proxyUrl,
+				isHLS: format.protocol === 'm3u8_native'
+			};
+		});
 
 		return json({
-			...data,
-			videos: videosWithProxy,
+			success: true,
+			video: {
+				duration: data.video.duration,
+				formats: processedFormats,
+				totalFormats: processedFormats.length
+			}
 		});
 	} catch (error) {
 		console.error('Error communicating with Python server:', error);
