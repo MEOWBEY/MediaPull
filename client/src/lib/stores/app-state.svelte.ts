@@ -7,7 +7,7 @@ import { browser } from '$app/environment';
 export interface VideoFormat {
 	id: string;
 	title?: string;
-	originalUrl?: string;
+	originalUrl: string;
 	downloadUrl: string;
 	filename?: string;
 	extension?: string;
@@ -75,7 +75,7 @@ export interface VideoGroup {
 	duration?: number;
 }
 
-export interface CacheEntry<T = any> {
+export interface CacheEntry<T = unknown> {
 	data: T;
 	timestamp: number;
 	expiresAt: number;
@@ -327,28 +327,16 @@ class VideoDataStore {
 		viewMode: 'grid' as 'grid' | 'list',
 		sortBy: 'date' as 'name' | 'date' | 'size' | 'quality',
 		sortOrder: 'desc' as 'asc' | 'desc',
-		autoPreview: true,
 		showThumbnails: true,
-		groupBySource: true,
 		animationsEnabled: true,
 		compactMode: false,
-		autoPlay: false,
 		muteByDefault: true,
-		loopVideos: false,
 		preloadMetadata: true,
-		showControls: true,
-		mobileOptimized: true,
-		touchFriendly: true,
-		saveBandwidth: false,
-		offlineMode: false,
+		useProxy: true,
+		showHlsDownloadButton: false,
 		cacheEnabled: true,
 		autoClearCache: false,
 		highContrast: false,
-		videoVolume: 0.8,
-		playbackRate: 1.0,
-		skipIntro: false,
-		autoNext: false,
-		pictureInPicture: true,
 		keyboardShortcuts: true
 	});
 
@@ -477,16 +465,18 @@ class VideoDataStore {
 				case 'date':
 					comparison = (a.processedAt || 0) - (b.processedAt || 0);
 					break;
-				case 'size':
+				case 'size': {
 					const aSize = parseInt(a.fileSize || '0');
 					const bSize = parseInt(b.fileSize || '0');
 					comparison = aSize - bSize;
 					break;
-				case 'quality':
+				}
+				case 'quality': {
 					const aQuality = parseInt(a.quality?.replace(/\D/g, '') || '0');
 					const bQuality = parseInt(b.quality?.replace(/\D/g, '') || '0');
 					comparison = aQuality - bQuality;
 					break;
+				}
 			}
 
 			return this.preferences.sortOrder === 'desc' ? -comparison : comparison;
@@ -558,14 +548,6 @@ class UIStateManager {
 			this.loadingStates.delete(key);
 		}
 	}
-
-	isLoading(key: string): boolean {
-		return this.loadingStates.get(key) ?? false;
-	}
-
-	get isAnyLoading(): boolean {
-		return this.loadingStates.size > 0;
-	}
 }
 
 // ============================================================================
@@ -579,34 +561,6 @@ export const uiState = new UIStateManager();
 // ============================================================================
 // UTILITY FUNCTIONS
 // ============================================================================
-
-export function formatFileSize(bytes: number | string): string {
-	if (typeof bytes === 'string') {
-		const parsed = parseInt(bytes, 10);
-		if (isNaN(parsed)) return bytes;
-		bytes = parsed;
-	}
-
-	if (bytes === 0) return '0 Bytes';
-
-	const k = 1024;
-	const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
-	const i = Math.floor(Math.log(bytes) / Math.log(k));
-
-	return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
-
-export function debounce<T extends (...args: any[]) => any>(
-	func: T,
-	wait: number
-): (...args: Parameters<T>) => void {
-	let timeout: NodeJS.Timeout;
-
-	return (...args: Parameters<T>) => {
-		clearTimeout(timeout);
-		timeout = setTimeout(() => func.apply(null, args), wait);
-	};
-}
 
 export function organizeVideosBySourceAndType(formats: VideoFormat[]): Record<string, VideoGroup> {
 	if (!formats || formats.length === 0) return {};
@@ -631,7 +585,7 @@ export function organizeVideosBySourceAndType(formats: VideoFormat[]): Record<st
 
 		if (!sourceGroups[groupKey].types[videoType]) {
 			sourceGroups[groupKey].types[videoType] = {
-				type: videoType as any,
+				type: videoType as unknown as 'video' | 'audio' | 'hls' | 'dash' | 'subtitle',
 				formats: {},
 				bestQuality: undefined
 			};

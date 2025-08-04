@@ -1,7 +1,6 @@
 <script lang="ts">
 	import '../app.css';
 	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
 	import Github from 'lucide-svelte/icons/github';
 	import { ModeWatcher } from 'mode-watcher';
 	import { ToggleMode } from '$lib/components/dark-mode/index';
@@ -14,11 +13,9 @@
 
 <div class="bg-background flex min-h-screen flex-col">
 	<!-- Main Navigation -->
-	<header
-		class="bg-background/80 border-b backdrop-blur-sm"
-	>
-		<div class="container mx-auto px-4 sm:px-6">
-			<nav class="flex h-12 items-center justify-between" aria-label="Main navigation">
+	<header class="bg-background/80 border-b backdrop-blur-sm">
+		<div class="container mx-auto px-4">
+			<nav class="flex h-14 items-center justify-between" aria-label="Main navigation">
 				<!-- Brand -->
 				<div class="flex items-center space-x-3">
 					<div class="flex items-center gap-2">
@@ -28,13 +25,6 @@
 						>
 							DirectLinker
 						</h1>
-						<Badge
-							variant="secondary"
-							class="hidden text-xs sm:inline-flex"
-							aria-label="Beta version"
-						>
-							Beta
-						</Badge>
 					</div>
 				</div>
 
@@ -47,12 +37,11 @@
 						href="https://github.com/meowbey"
 						target="_blank"
 						rel="noopener noreferrer"
-						class="flex hover:bg-zinc-100 dark:hover:bg-zinc-800"
+						class="flex hover:bg-zinc-100  dark:hover:bg-zinc-800"
 						aria-label="Visit MEOWBEY GitHub profile (opens in new tab)"
 					>
 						<Github class="h-4 w-4" aria-hidden="true" />
-
-						MEOWBEY
+						<span class="text-xs md:text-sm"> MEOWBEY</span>
 					</Button>
 				</div>
 			</nav>
@@ -62,10 +51,30 @@
 	<!-- Main Content Area -->
 	<main
 		id="main-content"
-		class="flex min-h-screen w-full items-center justify-center bg-gray-100 dark:bg-zinc-900"
+		class="flex min-h-screen w-full items-center justify-center bg-gray-100 dark:bg-zinc-800"
 		tabindex="-1"
 	>
 		{@render children?.()}
 	</main>
-
+	<footer class="bg-background/80 border-t backdrop-blur-sm">
+		<div
+			class="text-muted-foreground container mx-auto flex h-14 items-center justify-between px-4 text-[0.75rem] sm:text-sm"
+		>
+			<div class="flex items-center gap-1 flex-wrap">
+				<span>Made by</span>
+				<a
+					href="https://github.com/meowbey"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="hover:text-foreground font-medium underline underline-offset-4"
+				>
+					MEOWBEY
+				</a>
+				<span>for educational purposes only.</span>
+			</div>
+			<div class="hidden text-right md:block">
+				<span class="font-medium">&copy; {new Date().getFullYear()} DirectLinker</span>
+			</div>
+		</div>
+	</footer>
 </div>

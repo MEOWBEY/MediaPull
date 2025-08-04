@@ -1,7 +1,6 @@
 <script lang="ts">
 	import 'vidstack/player/styles/default/theme.css';
 	import 'vidstack/player/styles/default/layouts/video.css';
-
 	import 'vidstack/player';
 	import 'vidstack/player/layouts/default';
 	import 'vidstack/player/ui';
@@ -9,131 +8,91 @@
 	import Check from 'lucide-svelte/icons/check';
 	import ChevronDown from 'lucide-svelte/icons/chevron-down';
 	import Monitor from 'lucide-svelte/icons/monitor';
-	import PictureInPicture2 from 'lucide-svelte/icons/picture-in-picture-2';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu/index.js';
 	import { Button } from '$lib/components/ui/button/index.js';
 
-	let {
-		src,
-		poster = '',
-		autoplay = false,
-		muted = false,
-		preload = 'metadata',
-		load = 'visible',
-		showControls = true,
-		volume = 0.8,
-		playbackRate = 1.0,
-		loopVideo = false,
-		enablePiP = true,
-		qualities = []
-	} = $props();
+	let { src, poster = '', muted = false, preload = 'metadata', qualities = [] } = $props();
 
 	let player: any = $state();
 	let currentSrc = $state(src);
 	let selectedQuality = $state('');
 	let isExternalQualityMenuOpen = $state(false);
-	let currentVolume = $state(volume);
-	let currentPlaybackRate = $state(playbackRate);
+	// let showErrorMessage = $state(false);
 
-	function switchQuality(qualityOption: any) {
-		if (!player || !qualityOption) return;
-
-		currentSrc = qualityOption.src;
-		selectedQuality = qualityOption.label;
-	}
-
-	function togglePictureInPicture() {
-		if (!player || !enablePiP) return;
-
-		try {
-			if (document.pictureInPictureElement) {
-				document.exitPictureInPicture();
-			} else {
-				player.requestPictureInPicture();
-			}
-		} catch (error) {
-			console.warn('Picture-in-Picture not supported:', error);
-		}
-	}
-
-	// Initialize with first available quality
+	// Initialize with first quality if available
 	$effect(() => {
-		if (qualities.length > 1) {
+		if (qualities.length > 0) {
 			const firstQuality = qualities[0];
 			currentSrc = firstQuality.src;
 			selectedQuality = firstQuality.label;
 		}
 	});
 
-	// Update player properties when props change
-	$effect(() => {
+	function switchQuality(qualityOption: any) {
+		if (!player || !qualityOption) return;
+
+		currentSrc = qualityOption.src;
+		selectedQuality = qualityOption.label;
+		// showErrorMessage = false;
+		player.changeQuality(qualities.findIndex((q: any) => q.src === qualityOption.src));
+	}
+
+	function handleVideoError() {
 		if (player) {
-			player.volume = currentVolume;
-			player.playbackRate = currentPlaybackRate;
-			player.loop = loopVideo;
+			player.pause();
 		}
-	});
-
-	// Sync volume changes
-	$effect(() => {
-		currentVolume = volume;
-	});
-
-	// Sync playback rate changes
-	$effect(() => {
-		currentPlaybackRate = playbackRate;
-	});
+		// showErrorMessage = true;
+	}
 </script>
 
-<div class="bg-background flex w-full flex-col gap-3">
-	<!-- Video Player with Custom Controls -->
-	<div class="video-container relative w-full">
+<div class="flex w-full flex-col">
+	<!-- Video Container -->
+	<div class="video-container">
 		<media-player
 			bind:this={player}
-			keep-alive
-			playsInline
 			class="player"
+			keep-alive
+			playsinline
 			src={currentSrc}
 			{preload}
-			{load}
-			viewType="video"
-			{autoplay}
-			{muted}
-			loop={loopVideo}
-			volume={currentVolume}
-			playbackRate={currentPlaybackRate}
+			view-type="video"
 			crossorigin="anonymous"
+			fullscreen-orientation="none"
 		>
 			<media-provider>
 				<media-poster src={poster}></media-poster>
 			</media-provider>
-			{#if showControls}
-				<media-video-layout></media-video-layout>
-			{:else}
-				<media-video-layout hideControls></media-video-layout>
-			{/if}
+			<media-video-layout></media-video-layout>
 		</media-player>
+
+		<!-- Error Message Overlay -->
+		<!-- {#if showErrorMessage}
+			<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+				<div class="w-full max-w-xs text-center text-white">
+					<p class="text-sm">Failed to load</p>
+				</div>
+			</div>
+		{/if} -->
 	</div>
 
-	<!-- External Controls -->
-	<div class="external-controls flex items-center justify-between gap-2">
-		<!-- Quality Selector -->
-		{#if qualities.length > 1}
+	<!-- Quality Selector -->
+	{#if qualities.length > 1}
+		<div class="flex items-center justify-start pt-3">
 			<DropdownMenu.Root bind:open={isExternalQualityMenuOpen}>
 				<DropdownMenu.Trigger>
 					<Button
 						variant="outline"
 						size="sm"
-						class="min-w-28 justify-between gap-2"
+						class="min-w-32 justify-between gap-2"
 						aria-label="Select video quality"
 					>
 						<span class="flex items-center gap-2">
 							<Monitor class="h-3 w-3" />
-							<span class="text-xs font-semibold">{selectedQuality}</span>
+							<span class="text-xs font-medium">{selectedQuality}</span>
 						</span>
 						<ChevronDown
 							size={12}
-							class="flex-shrink-0 opacity-70 transition-transform duration-300 {isExternalQualityMenuOpen
+							class="flex-shrink-0 opacity-70 transition-transform duration-200 {isExternalQualityMenuOpen
 								? 'rotate-180'
 								: ''}"
 						/>
@@ -145,7 +104,6 @@
 						Video Quality
 					</DropdownMenu.Label>
 					<DropdownMenu.Separator />
-
 					{#each qualities as quality}
 						<DropdownMenu.Item
 							class="flex cursor-pointer items-center justify-between"
@@ -164,39 +122,29 @@
 					{/each}
 				</DropdownMenu.Content>
 			</DropdownMenu.Root>
-		{/if}
-
-		<!-- Picture-in-Picture Button -->
-		{#if enablePiP}
-			<Button
-				variant="outline"
-				size="sm"
-				onclick={togglePictureInPicture}
-				class="cursor-pointer"
-				aria-label="Toggle Picture-in-Picture"
-			>
-				<PictureInPicture2 class="h-3 w-3" />
-			</Button>
-		{/if}
-	</div>
+		</div>
+	{/if}
 </div>
 
 <style>
-	.player {
+	.video-container {
+		position: relative;
 		width: 100%;
 		aspect-ratio: 16 / 9;
-		contain: layout;
-		max-width: 100%;
-		height: auto;
 		border-radius: 8px;
 		overflow: hidden;
+		transform: translateZ(0);
+		backface-visibility: hidden;
 	}
 
-	:global(.compact-mode) .player {
-		border-radius: 4px;
-	}
-
-	:global(.high-contrast) .player {
-		border: 2px solid var(--border);
+	.player {
+		width: 100%;
+		height: 100%;
+		contain: layout style paint;
+		max-width: 100%;
+		position: relative;
+		will-change: auto;
+		transform: translateZ(0);
+		-webkit-transform: translateZ(0);
 	}
 </style>

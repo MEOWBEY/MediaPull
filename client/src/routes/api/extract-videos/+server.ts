@@ -1,139 +1,277 @@
 import { json } from '@sveltejs/kit';
-import { PYTHON_VIDEO_SERVER_URL } from '$env/static/private';
-import { env } from '$env/dynamic/public';
+import { SERVER_BASE_URL } from '$env/static/private';
+import { env } from '$env/dynamic/private';
+import { logger } from '$lib/server/logger.js';
+import type { RequestHandler } from './$types.js';
 
-/** @type {import('./$types').RequestHandler} */
-export async function POST({ request }) {
+interface ExtractVideosRequest {
+	url: string;
+}
+
+interface VideoFormat {
+	format_id: string;
+	format: string;
+	url?: string;
+	manifest_url?: string;
+	thumbnail?: string;
+	resolution?: string;
+	width?: number;
+	height?: number;
+	filesize?: number;
+	ext: string;
+	protocol: string;
+	http_headers?: Record<string, string>;
+}
+
+interface ServerResponse {
+	success: boolean;
+	video?: {
+		duration: number;
+		formats: VideoFormat[];
+	};
+	error?: string;
+}
+
+interface ProcessedFormat {
+	id: string;
+	quality: string;
+	thumbnail: string;
+	resolution?: string;
+	width?: number;
+	height?: number;
+	fileSize: number | null;
+	extension: string;
+	protocol: string;
+	originalUrl: string;
+	downloadUrl: string;
+	isHLS: boolean;
+}
+
+interface ExtractVideosResponse {
+	success: boolean;
+	video?: {
+		duration: number;
+		formats: ProcessedFormat[];
+		totalFormats: number;
+	};
+	error?: string;
+	details?: string;
+}
+
+// Configuration constants
+const DEFAULT_SERVER_URL = 'http://localhost:5000';
+const REQUEST_TIMEOUT = 500000; // 500 seconds
+
+// Validation functions
+function validateUrl(url: string): void {
+	if (!url || typeof url !== 'string' || !url.trim()) {
+		throw new Error('URL is required');
+	}
+
 	try {
-		const { url } = await request.json();
+		new URL(url);
+	} catch {
+		throw new Error('Invalid URL format');
+	}
+}
 
-		if (!url) {
-			return json(
-				{
-					success: false,
-					error: 'URL is required'
-				},
-				{ status: 400 }
-			);
+async function parseRequestBody(request: Request): Promise<ExtractVideosRequest> {
+	try {
+		const body = await request.json();
+
+		if (!body || typeof body !== 'object') {
+			throw new Error('Invalid request body');
 		}
 
-		// Validate URL format
-		try {
-			new URL(url);
-		} catch {
-			return json(
-				{
-					success: false,
-					error: 'Invalid URL format'
-				},
-				{ status: 400 }
-			);
-		}
+		return {
+			url: body.url
+		};
+	} catch (error) {
+		const errorMessage = error instanceof Error ? error.message : 'Failed to parse request body';
+		throw new Error(`Invalid request format: ${errorMessage}`);
+	}
+}
 
-		// Forward request to Python server
-		const pythonServerUrl = PYTHON_VIDEO_SERVER_URL || 'http://localhost:5000';
+// Server communication
+function getServerUrl(): string {
+	return SERVER_BASE_URL || DEFAULT_SERVER_URL;
+}
 
-		console.log(`Forwarding request to Python server: ${pythonServerUrl}`);
-		console.log(`Extracting videos from: ${url}`);
+async function fetchFromServer(url: string): Promise<ServerResponse> {
+	const serverUrl = getServerUrl();
 
-		const response = await fetch(`${pythonServerUrl}/extract-videos`, {
+	logger.info(`Forwarding request to processing server: ${serverUrl}`);
+	logger.info(`Extracting videos from: ${url}`);
+
+	try {
+		const response = await fetch(`${serverUrl}/extract-videos`, {
 			method: 'POST',
 			headers: {
 				'Content-Type': 'application/json'
 			},
 			body: JSON.stringify({ url }),
-			signal: AbortSignal.timeout(500000) // 500 seconds timeout
+			signal: AbortSignal.timeout(REQUEST_TIMEOUT)
 		});
 
 		if (!response.ok) {
-			const errorData = await response.json().catch(() => ({}));
-			console.error('Python server error:', errorData);
-			throw new Error(errorData.error || `Python server error: ${response.status}`);
+			const errorData = (await response.json().catch(() => ({}))) as { error?: string };
+			logger.error('Processing server error:', errorData);
+			throw new Error(errorData.error || `Processing server error: ${response.status}`);
 		}
 
-		const data = await response.json();
+		const data = (await response.json()) as ServerResponse;
 
 		if (!data.success || !data.video || !data.video.formats) {
-			throw new Error('Invalid response format from Python server');
+			throw new Error('Invalid response format from processing server');
 		}
 
-		console.log(`Found ${data.video.formats.length} video formats`);
-
-		// Process video formats and create proxy URLs
-		const processedFormats = data.video.formats.map((format, index) => {
-			console.log(`Processing format ${index + 1}:`, {
-				format_id: format.format_id,
-				resolution: format.resolution,
-				quality: format.format,
-				protocol: format.protocol
-			});
-
-			// Create proxy URL for the video
-			const videoUrl = format.url || format.manifest_url;
-			const encodedUrl = encodeURIComponent(videoUrl);
-
-			// Extract useful headers
-			const userAgent = format.http_headers?.['User-Agent'] || '';
-			const encodedUserAgent = encodeURIComponent(userAgent);
-
-			// Create proxy download URL
-			const proxyUrl = `${env.PUBLIC_BASE_URL}/api/download-video?url=${encodedUrl}&userAgent=${encodedUserAgent}`;
-
-			return {
-				id: format.format_id,
-				quality: format.format,
-				thumbnail: format.thumbnail || '',
-				resolution: format.resolution,
-				width: format.width,
-				height: format.height,
-				fileSize: format.filesize || null,
-				extension: format.ext,
-				protocol: format.protocol,
-				originalUrl: videoUrl,
-				downloadUrl: proxyUrl,
-				isHLS: format.protocol === 'm3u8_native'
-			};
-		});
-
-		return json({
-			success: true,
-			video: {
-				duration: data.video.duration,
-				formats: processedFormats,
-				totalFormats: processedFormats.length
-			}
-		});
+		return data;
 	} catch (error) {
-		console.error('Error communicating with Python server:', error);
-
-		if (error.name === 'AbortError') {
-			return json(
-				{
-					success: false,
-					error: 'Request timeout - video extraction took too long'
-				},
-				{ status: 408 }
-			);
+		if (error instanceof Error) {
+			throw error;
 		}
-
-		if (error.message.includes('fetch') || error.code === 'ECONNREFUSED') {
-			return json(
-				{
-					success: false,
-					error:
-						'Cannot connect to video processing server. Make sure Python server is running on port 5000.',
-					details: 'Start the Python server with: python app.py'
-				},
-				{ status: 503 }
-			);
-		}
-
-		return json(
-			{
-				success: false,
-				error: error.message || 'Internal server error'
-			},
-			{ status: 500 }
-		);
+		throw new Error('Unknown error occurred while fetching from processing server');
 	}
 }
+
+// Format processing
+function createProxyUrl(videoUrl: string, userAgent: string): string {
+	const encodedUrl = encodeURIComponent(videoUrl);
+	const encodedUserAgent = encodeURIComponent(userAgent);
+	const clientUrl = env.CLIENT_BASE_URL || '';
+
+	return `${clientUrl}/api/proxy-video?url=${encodedUrl}&userAgent=${encodedUserAgent}`;
+}
+
+function processVideoFormat(format: VideoFormat, index: number): ProcessedFormat {
+	logger.debug(`Processing format ${index + 1}:`, {
+		format_id: format.format_id,
+		resolution: format.resolution,
+		quality: format.format,
+		protocol: format.protocol
+	});
+
+	const videoUrl = format.url || format.manifest_url || '';
+	const userAgent = format.http_headers?.['User-Agent'] || '';
+	const proxyUrl = createProxyUrl(videoUrl, userAgent);
+
+	return {
+		id: format.format_id,
+		quality: format.format,
+		thumbnail: format.thumbnail || '',
+		resolution: format.resolution,
+		width: format.width,
+		height: format.height,
+		fileSize: format.filesize || null,
+		extension: format.ext,
+		protocol: format.protocol,
+		originalUrl: videoUrl,
+		downloadUrl: proxyUrl,
+		isHLS: format.protocol === 'm3u8_native'
+	};
+}
+
+function processVideoFormats(formats: VideoFormat[]): ProcessedFormat[] {
+	return formats.map((format, index) => processVideoFormat(format, index));
+}
+
+// Response builders
+function createSuccessResponse(duration: number, processedFormats: ProcessedFormat[]): Response {
+	logger.success(`Found ${processedFormats.length} video formats`);
+
+	const response: ExtractVideosResponse = {
+		success: true,
+		video: {
+			duration,
+			formats: processedFormats,
+			totalFormats: processedFormats.length
+		}
+	};
+
+	return json(response);
+}
+
+function createErrorResponse(error: Error): Response {
+	logger.error('Error in video extraction:', error.message);
+
+	if (error.name === 'AbortError') {
+		const response: ExtractVideosResponse = {
+			success: false,
+			error: 'Request timeout - video extraction took too long'
+		};
+		return json(response, { status: 408 });
+	}
+
+	if (isConnectionError(error)) {
+		const response: ExtractVideosResponse = {
+			success: false,
+			error:
+				'Cannot connect to video processing server. Make sure the processing server is running on port 5000.',
+			details: 'Start the processing server with: python app.py'
+		};
+		return json(response, { status: 503 });
+	}
+
+	if (isValidationError(error)) {
+		const response: ExtractVideosResponse = {
+			success: false,
+			error: error.message
+		};
+		return json(response, { status: 400 });
+	}
+
+	const response: ExtractVideosResponse = {
+		success: false,
+		error: error.message || 'Internal server error'
+	};
+	return json(response, { status: 500 });
+}
+
+// Error type checking
+function isConnectionError(error: Error): boolean {
+	return (
+		error.message.includes('fetch') ||
+		error.message.includes('ECONNREFUSED') ||
+		error.message.includes('connect')
+	);
+}
+
+function isValidationError(error: Error): boolean {
+	return (
+		error.message.includes('URL is required') ||
+		error.message.includes('Invalid URL format') ||
+		error.message.includes('Invalid request')
+	);
+}
+
+// Main processing function
+async function extractVideos(
+	url: string
+): Promise<{ duration: number; processedFormats: ProcessedFormat[] }> {
+	const data = await fetchFromServer(url);
+	const processedFormats = processVideoFormats(data.video!.formats);
+
+	return {
+		duration: data.video!.duration,
+		processedFormats
+	};
+}
+
+// Main request handler
+export const POST: RequestHandler = async ({ request }) => {
+	try {
+		// Parse and validate request
+		const requestData = await parseRequestBody(request);
+		validateUrl(requestData.url);
+
+		// Extract videos
+		const { duration, processedFormats } = await extractVideos(requestData.url);
+
+		// Return success response
+		return createSuccessResponse(duration, processedFormats);
+	} catch (error) {
+		// Handle all errors consistently
+		const err = error instanceof Error ? error : new Error('Unknown error occurred');
+		return createErrorResponse(err);
+	}
+};

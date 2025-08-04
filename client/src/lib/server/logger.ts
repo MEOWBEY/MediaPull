@@ -1,100 +1,66 @@
 import { env } from '$env/dynamic/private';
-interface LogData {
-	level: 'info' | 'error' | 'warn' | 'debug' | 'success';
-	message: string;
-	args?: any[];
-	timestamp: string;
-}
 
-interface ProgressData {
-	operation: string;
-	percent: number;
-	details: Record<string, any>;
-	timestamp: string;
+type LogLevel = 'info' | 'error' | 'warn' | 'debug' | 'success';
+
+interface ProgressDetails {
+	[key: string]: unknown;
 }
 
 class Logger {
-	private log(level: LogData['level'], message: string, ...args: any[]) {
+	private log(level: LogLevel, message: string, ...args: unknown[]): void {
 		const timestamp = new Date().toLocaleTimeString();
 
-		// Use appropriate console methods based on log level
 		switch (level) {
 			case 'error':
-				console.error(`[${timestamp}] ❌ ${message}`, ...args);
+				console.error(`[${timestamp}] ERROR ${message}`, ...args);
 				break;
 			case 'warn':
-				console.warn(`[${timestamp}] ⚠️  ${message}`, ...args);
+				console.warn(`[${timestamp}] WARN ${message}`, ...args);
 				break;
 			case 'debug':
 				if (env.DEBUG === 'true') {
-					console.debug(`[${timestamp}] 🔍 ${message}`, ...args);
+					console.debug(`[${timestamp}] DEBUG ${message}`, ...args);
 				}
 				break;
 			case 'success':
-				console.log(`[${timestamp}] ✅ ${message}`, ...args);
+				console.log(`[${timestamp}] SUCCESS ${message}`, ...args);
 				break;
 			case 'info':
 			default:
-				console.info(`[${timestamp}] ℹ️  ${message}`, ...args);
+				console.info(`[${timestamp}] INFO ${message}`, ...args);
 				break;
 		}
 	}
 
-	info(message: string, ...args: any[]) {
+	info(message: string, ...args: unknown[]): void {
 		this.log('info', message, ...args);
 	}
 
-	success(message: string, ...args: any[]) {
+	success(message: string, ...args: unknown[]): void {
 		this.log('success', message, ...args);
 	}
 
-	error(message: string, ...args: any[]) {
+	error(message: string, ...args: unknown[]): void {
 		this.log('error', message, ...args);
 	}
 
-	warn(message: string, ...args: any[]) {
+	warn(message: string, ...args: unknown[]): void {
 		this.log('warn', message, ...args);
 	}
 
-	debug(message: string, ...args: any[]) {
+	debug(message: string, ...args: unknown[]): void {
 		this.log('debug', message, ...args);
 	}
 
-	progress(operation: string, percent: number, details: Record<string, any> = {}) {
+	progress(operation: string, percent: number, details: ProgressDetails = {}): void {
 		const timestamp = new Date().toLocaleTimeString();
-		console.log(`[${timestamp}] 🔄 Progress: ${operation} - ${percent.toFixed(1)}%`, details);
-		// No socket emission - just console logging
+		const formattedPercent = Math.max(0, Math.min(100, percent)).toFixed(1);
+		console.log(`[${timestamp}] PROGRESS: ${operation} - ${formattedPercent}%`, details);
 	}
 
-	// Additional utility methods
-	table(data: any) {
-		console.table(data);
-	}
-
-	group(label: string) {
-		console.group(`🔗 ${label}`);
-	}
-
-	groupEnd() {
-		console.groupEnd();
-	}
-
-	time(label: string) {
-		console.time(`⏱️  ${label}`);
-	}
-
-	timeEnd(label: string) {
-		console.timeEnd(`⏱️  ${label}`);
-	}
-
-	clear() {
-		console.clear();
-	}
-
-	// Trace for debugging
-	trace(message: string, ...args: any[]) {
+	trace(message: string, ...args: unknown[]): void {
 		if (env.DEBUG === 'true') {
-			console.trace(`🔍 TRACE: ${message}`, ...args);
+			console.trace(`TRACE: ${message}`, ...args);
 		}
 	}
 }
