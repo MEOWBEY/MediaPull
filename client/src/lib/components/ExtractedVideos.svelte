@@ -133,7 +133,7 @@
 </script>
 
 {#if hasExtractedData}
-	<Card class="mb-6 gap-3 border shadow-sm {preferences.highContrast ? 'border-2' : ''}">
+	<Card class="mb-6 gap-3">
 		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
 			<div class="flex items-center justify-between">
 				<CardTitle

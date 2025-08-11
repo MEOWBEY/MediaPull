@@ -324,7 +324,7 @@ class VideoDataStore {
 	// UI preferences
 	preferences = $state({
 		theme: 'system' as 'light' | 'dark' | 'system',
-		viewMode: 'grid' as 'grid' | 'list',
+		viewMode: 'list' as 'grid' | 'list',
 		sortBy: 'date' as 'name' | 'date' | 'size' | 'quality',
 		sortOrder: 'desc' as 'asc' | 'desc',
 		showThumbnails: true,

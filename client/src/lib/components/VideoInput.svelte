@@ -58,7 +58,7 @@
 	}
 </script>
 
-<Card class="mb-6 border shadow-sm {preferences.highContrast ? 'border-2' : ''}">
+<Card class="mb-6">
 	<CardHeader class={preferences.compactMode ? 'pb-2' : 'pb-4'}>
 		<CardTitle class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}">
 			<Video class="h-5 w-5 text-blue-600" />

@@ -59,7 +59,7 @@ interface ExtractVideosResponse {
 }
 
 // Configuration constants
-const DEFAULT_SERVER_URL = 'http://localhost:5000';
+const DEFAULT_SERVER_URL = 'http://localhost:8000';
 const REQUEST_TIMEOUT = 500000; // 500 seconds
 
 // Validation functions
@@ -206,8 +206,8 @@ function createErrorResponse(error: Error): Response {
 		const response: ExtractVideosResponse = {
 			success: false,
 			error:
-				'Cannot connect to video processing server. Make sure the processing server is running on port 5000.',
-			details: 'Start the processing server with: python app.py'
+				'Cannot connect to video processing server. Make sure the processing server is running.',
+			details: 'Start the processing server'
 		};
 		return json(response, { status: 503 });
 	}

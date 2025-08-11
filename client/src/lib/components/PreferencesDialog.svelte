@@ -146,7 +146,7 @@
 	function resetToDefaults() {
 		videoStore.updatePreferences({
 			theme: 'system',
-			viewMode: 'grid',
+			viewMode: 'list',
 			sortBy: 'date',
 			sortOrder: 'desc',
 			showThumbnails: true,
@@ -185,9 +185,7 @@
 
 		<div class="space-y-4 pb-4 sm:space-y-8 sm:pb-6">
 			{#each sections as section}
-				<section
-					class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-				>
+				<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 					<!-- Section Content -->
 					<div class="p-3 sm:p-4">
 						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
@@ -232,9 +230,7 @@
 			{/each}
 
 			<!-- View Mode Section -->
-			<section
-				class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-			>
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<LayoutList class="h-4 w-4 text-purple-600" />
@@ -265,9 +261,7 @@
 				</div>
 			</section>
 			<!-- Sorting Options Section -->
-			<section
-				class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-			>
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<SortAsc class="h-4 w-4 text-orange-600" />
@@ -323,36 +317,34 @@
 			</section>
 
 			<!-- Theme Selection -->
-			<section
-				class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-			>
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<Palette class="h-4 w-4 text-pink-600" />
 						Theme Selection
 					</h4>
 				</div>
-				<div class="space-y-2">
-					<Label class="text-sm font-medium">Theme</Label>
-					<div class="flex flex-col gap-2 sm:flex-row">
-						{#each ['light', 'dark', 'system'] as const as theme}
-							<Button
-								variant={preferences.theme === theme ? 'default' : 'outline'}
-								size="sm"
-								onclick={() => videoStore.updatePreferences({ theme })}
-								class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
-							>
-								{theme.charAt(0).toUpperCase() + theme.slice(1)}
-							</Button>
-						{/each}
+				<div class="p-3 sm:p-4">
+					<div class="space-y-2">
+						<Label class="text-sm font-medium">Theme</Label>
+						<div class="flex flex-col gap-2 sm:flex-row">
+							{#each ['light', 'dark', 'system'] as const as theme}
+								<Button
+									variant={preferences.theme === theme ? 'default' : 'outline'}
+									size="sm"
+									onclick={() => videoStore.updatePreferences({ theme })}
+									class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
+								>
+									{theme.charAt(0).toUpperCase() + theme.slice(1)}
+								</Button>
+							{/each}
+						</div>
 					</div>
 				</div>
 			</section>
 
 			<!-- Keyboard Shortcuts Section -->
-			<section
-				class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-			>
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<Keyboard class="h-4 w-4 text-indigo-600" />
@@ -425,9 +417,7 @@
 			</section>
 
 			<!-- Cache & Storage Section -->
-			<section
-				class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-			>
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<HardDrive class="h-4 w-4 text-red-600" />
@@ -487,9 +477,7 @@
 			</section>
 
 			<!-- Reset Section -->
-			<section
-				class="rounded-lg border bg-white shadow-sm dark:border-zinc-700 dark:bg-zinc-800/50"
-			>
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<AlertCircle class="h-4 w-4 text-red-600" />

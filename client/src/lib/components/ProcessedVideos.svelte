@@ -51,7 +51,7 @@
 </script>
 
 {#if hasProcessedVideos}
-	<Card class="mb-6 border shadow-sm {preferences.highContrast ? 'border-2' : ''}">
+	<Card class="mb-6 ">
 		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
 			<div class="flex items-center justify-between">
 				<CardTitle
@@ -82,7 +82,7 @@
 							? 'p-2'
 							: 'p-4'} {preferences.highContrast
 							? 'border-2'
-							: ''} shadow-sm transition-all duration-200 hover:shadow-md"
+							: ''} transition-all duration-200 hover:shadow-md"
 					>
 						<div
 							class="flex items-start justify-between gap-4 {preferences.compactMode
