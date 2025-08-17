@@ -17,7 +17,7 @@
 	let currentSrc = $state(src);
 	let selectedQuality = $state('');
 	let isExternalQualityMenuOpen = $state(false);
-	// let showErrorMessage = $state(false);
+	let showErrorMessage = $state(false);
 
 	// Initialize with first quality if available
 	$effect(() => {
@@ -33,7 +33,7 @@
 
 		currentSrc = qualityOption.src;
 		selectedQuality = qualityOption.label;
-		// showErrorMessage = false;
+		showErrorMessage = false;
 		player.changeQuality(qualities.findIndex((q: any) => q.src === qualityOption.src));
 	}
 
@@ -41,7 +41,7 @@
 		if (player) {
 			player.pause();
 		}
-		// showErrorMessage = true;
+		showErrorMessage = true;
 	}
 </script>
 
@@ -58,6 +58,7 @@
 			view-type="video"
 			crossorigin="anonymous"
 			fullscreen-orientation="none"
+			onerror={handleVideoError}
 		>
 			<media-provider>
 				<media-poster src={poster}></media-poster>
@@ -66,13 +67,13 @@
 		</media-player>
 
 		<!-- Error Message Overlay -->
-		<!-- {#if showErrorMessage}
+		{#if showErrorMessage}
 			<div class="absolute inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
 				<div class="w-full max-w-xs text-center text-white">
 					<p class="text-sm">Failed to load</p>
 				</div>
 			</div>
-		{/if} -->
+		{/if}
 	</div>
 
 	<!-- Quality Selector -->

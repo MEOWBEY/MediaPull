@@ -13,6 +13,7 @@
 	import Video from 'lucide-svelte/icons/video';
 	import Link2 from 'lucide-svelte/icons/link-2';
 	import X from 'lucide-svelte/icons/x';
+	import SearchX from 'lucide-svelte/icons/search-x';
 	import Search from 'lucide-svelte/icons/search';
 	import Hammer from 'lucide-svelte/icons/hammer';
 	import Loader2 from 'lucide-svelte/icons/loader-2';
@@ -21,14 +22,14 @@
 
 	interface Props {
 		handleExtractVideos: () => Promise<void>;
-		handleProcessVideo: (video?: any) => Promise<void>;
+		handlePuppeteerProxyUrlVideo: (video?: any) => Promise<void>;
 		handleCancelOperation: () => void;
 		isOperationRunning: boolean;
 	}
 
 	let {
 		handleExtractVideos,
-		handleProcessVideo,
+		handlePuppeteerProxyUrlVideo,
 		handleCancelOperation,
 		isOperationRunning
 	}: Props = $props();
@@ -37,8 +38,7 @@
 
 	let preferences = $derived(videoStore.preferences);
 	let isExtracting = $derived(videoStore.extracting);
-	let isProcessing = $derived(videoStore.processing);
-
+	let isPuppeteerProxyingUrl = $derived(videoStore.puppeteerProxyingUrl);
 
 	$effect(() => {
 		videoStore.updateInputUrl(inputUrl);
@@ -62,9 +62,11 @@
 	<CardHeader class={preferences.compactMode ? 'pb-2' : 'pb-4'}>
 		<CardTitle class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}">
 			<Video class="h-5 w-5 text-blue-600" />
-			Video Processing
+			Video PuppeteerProxyingUrl
 		</CardTitle>
-		<CardDescription>Enter a video URL to extract formats or process directly</CardDescription>
+		<CardDescription
+			>Enter a video URL to extract formats or puppeteerProxyUrl directly</CardDescription
+		>
 	</CardHeader>
 	<CardContent class={preferences.compactMode ? 'space-y-2' : 'space-y-4'}>
 		<div class="flex gap-2">
@@ -108,18 +110,18 @@
 			<div class="flex items-center gap-2">
 				<Button
 					variant="secondary"
-					onclick={() => handleProcessVideo()}
+					onclick={() => handlePuppeteerProxyUrlVideo()}
 					disabled={!inputUrl.trim() || isOperationRunning}
 					class="cursor-pointer border bg-gray-200 hover:bg-gray-300 dark:bg-zinc-800 hover:dark:bg-zinc-700 {isOperationRunning
 						? 'w-[calc(100%-50px)]'
 						: 'w-full md:w-auto'}"
 				>
-					{#if isProcessing}
+					{#if isPuppeteerProxyingUrl}
 						<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-						Processing...
+						PuppeteerProxyingUrl...
 					{:else}
 						<Hammer class="mr-2 h-4 w-4" />
-						Process
+						PuppeteerProxyUrl
 					{/if}
 				</Button>
 
@@ -130,7 +132,7 @@
 						size="icon"
 						class="ml-2 cursor-pointer"
 					>
-						<X class="h-4 w-4" />
+						<SearchX class="h-4 w-4" />
 					</Button>
 				{/if}
 			</div>

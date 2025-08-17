@@ -28,7 +28,7 @@
 	let { showPreferences = $bindable() }: Props = $props();
 
 	let preferences = $derived(videoStore.preferences);
-	let processedVideos = $derived(videoStore.getSortedProcessedVideos());
+	let puppeteerProxiedUrlVideos = $derived(videoStore.getSortedPuppeteerProxiedUrlVideos());
 
 	const sections = [
 		{
@@ -122,38 +122,19 @@
 				}
 			]
 		},
-		{
-			title: 'Sorting',
-			icon: SortAsc,
-			color: 'text-orange-600',
-			settings: [
-				{
-					id: 'sort-by-name',
-					label: 'Sort by name',
-					key: 'sortByName',
-					description: 'Sort videos alphabetically by name instead of date'
-				},
-				{
-					id: 'sort-ascending',
-					label: 'Sort ascending',
-					key: 'sortAscending',
-					description: 'Sort in ascending order (oldest first for date, A-Z for name)'
-				}
-			]
-		}
 	];
 
 	function resetToDefaults() {
 		videoStore.updatePreferences({
 			theme: 'system',
 			viewMode: 'list',
-			sortBy: 'date',
+			sortBy: 'quality',
 			sortOrder: 'desc',
 			showThumbnails: true,
 			animationsEnabled: true,
 			compactMode: false,
 			muteByDefault: true,
-			preloadMetadata: true,
+			preloadMetadata: false,
 			useProxy: true,
 			showHlsDownloadButton: false,
 			cacheEnabled: true,
@@ -179,7 +160,7 @@
 		<Dialog.Header class="text-left">
 			<Dialog.Title class="text-lg font-bold sm:text-xl">Preferences</Dialog.Title>
 			<Dialog.Description class="text-sm text-zinc-600 dark:text-zinc-400">
-				Customize your video processing experience
+				Customize your video puppeteerProxyingUrl experience
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -274,7 +255,7 @@
 						<div class="space-y-2">
 							<Label class="text-sm font-medium">Sort by</Label>
 							<div class="flex flex-col gap-2 sm:flex-row">
-								{#each ['name', 'date', 'size', 'quality'] as const as sortOption}
+								{#each ['name', 'size', 'quality'] as const as sortOption}
 									<Button
 										variant={preferences.sortBy === sortOption ? 'default' : 'outline'}
 										size="sm"
@@ -452,10 +433,10 @@
 								class="rounded-lg border border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100 p-3 text-center sm:p-4 dark:border-purple-800 dark:from-purple-900/20 dark:to-purple-800/20"
 							>
 								<div class="text-xl font-bold text-purple-700 sm:text-3xl dark:text-purple-300">
-									{processedVideos.length}
+									{puppeteerProxiedUrlVideos.length}
 								</div>
 								<div class="text-xs font-medium text-purple-600 sm:text-sm dark:text-purple-400">
-									Processed
+									PuppeteerProxiedUrl
 								</div>
 							</div>
 						</div>

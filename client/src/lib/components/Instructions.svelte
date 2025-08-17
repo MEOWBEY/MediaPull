@@ -232,7 +232,7 @@
 					? 'text-xs'
 					: 'text-sm'}"
 			>
-				Advanced capabilities for the best video processing experience.
+				Advanced capabilities for the best video puppeteerProxyingUrl experience.
 			</p>
 		</CardHeader>
 		<CardContent>

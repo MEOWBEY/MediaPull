@@ -28,12 +28,10 @@ export interface VideoFormat {
 	aspectRatio?: string;
 }
 
-export interface ProcessedVideo extends VideoFormat {
-	processingTime?: number;
+export interface PuppeteerProxiedUrlVideo extends VideoFormat {
 	downloadUrl: string;
 	id: string;
-	processedAt: number;
-	status: 'processing' | 'completed' | 'failed';
+	status: 'puppeteerProxyingUrl' | 'completed' | 'failed';
 	progress?: number;
 	errorMessage?: string;
 }
@@ -309,29 +307,29 @@ class VideoDataStore {
 	inputUrl = $state<string>('');
 
 	// Operation states
-	processing = $state<boolean>(false);
+	puppeteerProxyingUrl = $state<boolean>(false);
 	extracting = $state<boolean>(false);
-	processingQueue = createReactiveSet<string>();
+	puppeteerProxyUrlQueue = createReactiveSet<string>();
 
 	// Data states
-	processedVideos = $state<ProcessedVideo[]>([]);
+	puppeteerProxiedUrlVideos = $state<PuppeteerProxiedUrlVideo[]>([]);
 	extractedData = $state<ExtractedVideoData | null>(null);
 
 	// Error states
-	processingError = $state<string | null>(null);
+	puppeteerProxyUrlError = $state<string | null>(null);
 	extractionError = $state<string | null>(null);
 
 	// UI preferences
 	preferences = $state({
 		theme: 'system' as 'light' | 'dark' | 'system',
 		viewMode: 'list' as 'grid' | 'list',
-		sortBy: 'date' as 'name' | 'date' | 'size' | 'quality',
+		sortBy: 'quality' as 'name' | 'size' | 'quality',
 		sortOrder: 'desc' as 'asc' | 'desc',
 		showThumbnails: true,
 		animationsEnabled: true,
 		compactMode: false,
 		muteByDefault: true,
-		preloadMetadata: true,
+		preloadMetadata: false,
 		useProxy: true,
 		showHlsDownloadButton: false,
 		cacheEnabled: true,
@@ -341,7 +339,7 @@ class VideoDataStore {
 	});
 
 	private readonly storageKeys = {
-		processedVideos: 'directlinker_processed_videos_v2',
+		puppeteerProxiedUrlVideos: 'directlinker_puppeteerProxiedUrl_videos_v2',
 		extractedData: 'directlinker_extracted_data_v2',
 		preferences: 'directlinker_preferences_v2',
 		inputUrl: 'directlinker_input_url'
@@ -355,11 +353,9 @@ class VideoDataStore {
 
 	private loadPersistedData(): void {
 		try {
-			const storedProcessed = localStorage.getItem(this.storageKeys.processedVideos);
-			if (storedProcessed) {
-				const parsed = JSON.parse(storedProcessed);
-				const dayAgo = Date.now() - 24 * 60 * 60 * 1000;
-				this.processedVideos = parsed.filter((v: ProcessedVideo) => v.processedAt > dayAgo);
+			const storedPuppeteerProxiedUrl = localStorage.getItem(this.storageKeys.puppeteerProxiedUrlVideos);
+			if (storedPuppeteerProxiedUrl) {
+				this.puppeteerProxiedUrlVideos = JSON.parse(storedPuppeteerProxiedUrl);
 			}
 
 			const storedExtracted = localStorage.getItem(this.storageKeys.extractedData);
@@ -386,35 +382,34 @@ class VideoDataStore {
 	}
 
 	reset(): void {
-		this.processedVideos.length = 0;
+		this.puppeteerProxiedUrlVideos.length = 0;
 		this.extractedData = null;
-		this.processingError = null;
+		this.puppeteerProxyUrlError = null;
 		this.extractionError = null;
-		this.processingQueue.clear();
+		this.puppeteerProxyUrlQueue.clear();
 		this.clearPersistedData();
 	}
 
 	clearErrors(): void {
-		this.processingError = null;
+		this.puppeteerProxyUrlError = null;
 		this.extractionError = null;
 	}
 
-	addProcessedVideo(video: ProcessedVideo): void {
-		video.processedAt = Date.now();
+	addPuppeteerProxiedUrlVideo(video: PuppeteerProxiedUrlVideo): void {
 		video.status = 'completed';
 
-		const existingIndex = this.processedVideos.findIndex((v) => v.id === video.id);
+		const existingIndex = this.puppeteerProxiedUrlVideos.findIndex((v) => v.id === video.id);
 		if (existingIndex !== -1) {
-			this.processedVideos[existingIndex] = video;
+			this.puppeteerProxiedUrlVideos[existingIndex] = video;
 		} else {
-			this.processedVideos.unshift(video);
+			this.puppeteerProxiedUrlVideos.unshift(video);
 		}
 
-		if (this.processedVideos.length > 50) {
-			this.processedVideos = this.processedVideos.slice(0, 50);
+		if (this.puppeteerProxiedUrlVideos.length > 50) {
+			this.puppeteerProxiedUrlVideos = this.puppeteerProxiedUrlVideos.slice(0, 50);
 		}
 
-		this.saveProcessedVideos();
+		this.savePuppeteerProxiedUrlVideos();
 	}
 
 	setExtractedData(data: ExtractedVideoData): void {
@@ -435,10 +430,10 @@ class VideoDataStore {
 		}
 	}
 
-	clearProcessedVideos(): void {
-		this.processedVideos.length = 0;
+	clearPuppeteerProxiedUrlVideos(): void {
+		this.puppeteerProxiedUrlVideos.length = 0;
 		if (browser) {
-			localStorage.removeItem(this.storageKeys.processedVideos);
+			localStorage.removeItem(this.storageKeys.puppeteerProxiedUrlVideos);
 		}
 	}
 
@@ -452,8 +447,8 @@ class VideoDataStore {
 		this.saveInputUrl();
 	}
 
-	getSortedProcessedVideos(): ProcessedVideo[] {
-		const sorted = [...this.processedVideos];
+	getSortedPuppeteerProxiedUrlVideos(): PuppeteerProxiedUrlVideo[] {
+		const sorted = [...this.puppeteerProxiedUrlVideos];
 
 		sorted.sort((a, b) => {
 			let comparison = 0;
@@ -461,9 +456,6 @@ class VideoDataStore {
 			switch (this.preferences.sortBy) {
 				case 'name':
 					comparison = (a.filename || '').localeCompare(b.filename || '');
-					break;
-				case 'date':
-					comparison = (a.processedAt || 0) - (b.processedAt || 0);
 					break;
 				case 'size': {
 					const aSize = parseInt(a.fileSize || '0');
@@ -486,12 +478,15 @@ class VideoDataStore {
 	}
 
 	// Persistence methods
-	private saveProcessedVideos(): void {
+	private savePuppeteerProxiedUrlVideos(): void {
 		if (!browser) return;
 		try {
-			localStorage.setItem(this.storageKeys.processedVideos, JSON.stringify(this.processedVideos));
+			localStorage.setItem(
+				this.storageKeys.puppeteerProxiedUrlVideos,
+				JSON.stringify(this.puppeteerProxiedUrlVideos)
+			);
 		} catch (error) {
-			console.warn('Failed to save processed videos:', error);
+			console.warn('Failed to save puppeteerProxiedUrl videos:', error);
 		}
 	}
 

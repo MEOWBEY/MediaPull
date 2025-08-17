@@ -1,165 +1,181 @@
 import { logger } from '$lib/server/logger.js';
 import type { RequestHandler } from './$types.js';
 
-// Type definitions
-interface VideoStreamParams {
-	url: string;
-	referer?: string;
-	userAgent?: string;
-	cookies?: string;
-	download?: boolean;
+// Default browser user agent for requests
+const DEFAULT_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
+
+/**
+ * Detects the type of video from URL
+ * This helps us handle different video formats appropriately
+ */
+function getVideoType(url: string) {
+	const lower = url.toLowerCase();
+	if (lower.includes('.m3u8')) return 'hls'; // HLS playlist
+	if (lower.includes('.mpd')) return 'dash'; // DASH manifest
+	if (lower.includes('.ts')) return 'hls_fragment'; // HLS video chunk
+	return 'direct'; // Regular MP4/WebM video
 }
 
-interface CookieObject {
-	name: string;
-	value: string;
-}
-
-interface StreamHeaders {
-	[key: string]: string;
-}
-
-interface RetryConfig {
-	maxRetries: number;
-	baseDelay: number;
-}
-
-type VideoType = 'hls' | 'dash' | 'direct' | 'hls_fragment';
-
-// Configuration constants
-const DEFAULT_USER_AGENT =
-	'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-const RETRY_CONFIG: RetryConfig = {
-	maxRetries: 3,
-	baseDelay: 1000
-};
-
-// Video type detection
-function detectVideoType(url: string): VideoType {
-	const urlLower = url.toLowerCase();
-
-	if (urlLower.includes('.m3u8')) return 'hls';
-	if (urlLower.includes('.mpd')) return 'dash';
-	if (urlLower.includes('.ts') || urlLower.includes('frag')) return 'hls_fragment';
-
-	return 'direct';
-}
-
-// URL and origin utilities
-function extractOriginFromUrl(url: string): string {
+/**
+ * Converts relative URLs to absolute URLs
+ * Needed for HLS playlists that contain relative paths
+ */
+function makeAbsoluteUrl(relativeUrl: string, baseUrl: string): string {
 	try {
-		return new URL(url).origin;
-	} catch {
-		return url;
-	}
-}
+		if (relativeUrl.startsWith('http')) return relativeUrl;
 
-function resolveAbsoluteUrl(relativeUrl: string, baseUrl: string): string {
-	try {
 		const base = new URL(baseUrl);
 
-		if (relativeUrl.startsWith('http')) {
-			return relativeUrl;
-		}
-
+		// Handle root-relative URLs (/path/to/file)
 		if (relativeUrl.startsWith('/')) {
-			return `${base.protocol}//${base.host}${relativeUrl}`;
+			return `${base.origin}${relativeUrl}`;
 		}
 
+		// Handle relative URLs (./file or ../file)
 		const basePath = base.pathname.substring(0, base.pathname.lastIndexOf('/') + 1);
-		return `${base.protocol}//${base.host}${basePath}${relativeUrl}`;
+		return `${base.origin}${basePath}${relativeUrl}`;
 	} catch {
-		logger.warn('Failed to resolve relative URL:', relativeUrl);
-		throw new Error(`Unable to resolve URL: ${relativeUrl}`);
+		return relativeUrl; // Fallback to original if parsing fails
 	}
 }
 
-function extractBaseUrl(request: Request): string {
-	const url = new URL(request.url);
-	return `${url.protocol}//${url.host}`;
+/**
+ * Rewrites HLS playlist to proxy all video chunks through our server
+ * This ensures CORS headers are properly set for all segments
+ */
+function rewriteHlsPlaylist(
+	content: string,
+	originalUrl: string,
+	requestUrl: string,
+	params: URLSearchParams
+): string {
+	const lines = content.split('\n');
+	const baseUrl = new URL(requestUrl).origin;
+
+	return lines
+		.map((line) => {
+			const trimmed = line.trim();
+
+			if (!trimmed || trimmed.startsWith('#')) return line;
+
+			// Rewrite video segment URLs to go through our proxy
+			const absoluteUrl = makeAbsoluteUrl(trimmed, originalUrl);
+			const newParams = new URLSearchParams(params);
+			newParams.set('url', absoluteUrl);
+
+			return `${baseUrl}/api/proxy-video?${newParams}`;
+		})
+		.join('\n');
 }
 
-// Cookie handling
-function parseCookieHeader(cookiesStr: string): string {
-	if (!cookiesStr) return '';
-
-	try {
-		const cookiesObj = JSON.parse(cookiesStr);
-
-		if (Array.isArray(cookiesObj)) {
-			return cookiesObj.map((cookie: CookieObject) => `${cookie.name}=${cookie.value}`).join('; ');
-		}
-
-		return cookiesStr;
-	} catch {
-		logger.debug('Using cookies as raw string');
-		return cookiesStr;
-	}
-}
-
-// Request headers building
-function buildStreamHeaders(params: {
-	referer: string;
+/**
+ * Builds headers for the video request
+ * Includes authentication, CORS, and video-specific headers
+ */
+function buildRequestHeaders(params: {
+	referer?: string;
 	userAgent: string;
-	cookieHeader: string;
-	range?: string;
-	videoType?: VideoType;
-}): StreamHeaders {
-	const { referer, userAgent, cookieHeader, range, videoType } = params;
-	const origin = extractOriginFromUrl(referer);
-
-	const headers: StreamHeaders = {
-		'User-Agent': userAgent,
+	cookies?: string;
+	range?: string | null;
+	videoType: string;
+}): HeadersInit {
+	const headers: Record<string, string> = {
+		'User-Agent': params.userAgent,
 		Accept: '*/*',
-		'Accept-Language': 'en-US,en;q=0.9',
 		'Accept-Encoding': 'gzip, deflate, br',
-		Connection: 'keep-alive',
-		'Cache-Control': 'no-cache',
-		Pragma: 'no-cache'
+		'Cache-Control': 'no-cache'
 	};
 
-	// Add referer and origin if provided
-	if (referer) {
-		headers['Referer'] = referer;
-		if (origin && origin !== referer) {
-			headers['Origin'] = origin;
+	// Add referer if provided (some sites require this)
+	if (params.referer) {
+		headers['Referer'] = params.referer;
+		try {
+			headers['Origin'] = new URL(params.referer).origin;
+		} catch {
+			// Ignore if parsing fails
 		}
 	}
 
-	// Add cookies if provided
-	if (cookieHeader) {
-		headers['Cookie'] = cookieHeader;
+	// Add cookies for authenticated content
+	if (params.cookies) {
+		try {
+			// Handle both JSON array and string format
+			const parsed = JSON.parse(params.cookies);
+			if (Array.isArray(parsed)) {
+				headers['Cookie'] = parsed.map((c) => `${c.name}=${c.value}`).join('; ');
+			} else {
+				headers['Cookie'] = params.cookies;
+			}
+		} catch {
+			headers['Cookie'] = params.cookies;
+		}
 	}
 
-	// Add range header for partial requests
-	if (range) {
-		headers['Range'] = range;
+	// Add range header for video seeking
+	if (params.range) {
+		headers['Range'] = params.range;
 	}
 
-	// Video type specific headers
-	switch (videoType) {
-		case 'hls':
-			headers['Accept'] = 'application/vnd.apple.mpegurl, application/x-mpegurl, */*';
-			headers['Sec-Fetch-Dest'] = 'empty';
-			headers['Sec-Fetch-Mode'] = 'cors';
-			headers['Sec-Fetch-Site'] = 'cross-site';
-			break;
-		case 'hls_fragment':
-			headers['Sec-Fetch-Dest'] = 'empty';
-			headers['Sec-Fetch-Mode'] = 'cors';
-			headers['Sec-Fetch-Site'] = 'cross-site';
-			break;
-		default:
-			headers['Sec-Fetch-Dest'] = 'video';
-			headers['Sec-Fetch-Mode'] = 'cors';
-			headers['Sec-Fetch-Site'] = 'cross-site';
+	// Add video-specific headers for better compatibility
+	if (params.videoType === 'hls' || params.videoType === 'hls_fragment') {
+		headers['Sec-Fetch-Dest'] = 'empty';
+		headers['Sec-Fetch-Mode'] = 'cors';
 	}
 
 	return headers;
 }
 
-// Filename extraction
-function extractFilename(url: string, contentDisposition?: string): string {
+/**
+ * Builds response headers with proper CORS and caching
+ */
+function buildResponseHeaders(options: {
+	contentType: string;
+	filename: string;
+	download: boolean;
+	videoType: string;
+	contentLength?: string | null;
+	contentRange?: string | null;
+}): HeadersInit {
+	const headers: Record<string, string> = {
+		'Content-Type': options.contentType,
+		'Access-Control-Allow-Origin': '*',
+		'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
+		'Access-Control-Allow-Headers': 'Range',
+		'Access-Control-Expose-Headers': 'Content-Length, Content-Range',
+		'Accept-Ranges': 'bytes'
+	};
+
+	// Set caching based on content type
+	// Cache fragments longer to reduce bandwidth
+	if (options.videoType === 'hls_fragment') {
+		headers['Cache-Control'] = 'public, max-age=3600'; // 1 hour cache for segments
+	} else if (options.videoType === 'hls') {
+		headers['Cache-Control'] = 'no-cache'; // Don't cache playlists
+	} else {
+		headers['Cache-Control'] = 'public, max-age=600'; // 10 min for regular videos
+	}
+
+	// Set download or inline viewing
+	headers['Content-Disposition'] = options.download
+		? `attachment; filename="${options.filename}"`
+		: `inline; filename="${options.filename}"`;
+
+	// Add content length and range if available
+	if (options.contentLength) {
+		headers['Content-Length'] = options.contentLength;
+	}
+	if (options.contentRange) {
+		headers['Content-Range'] = options.contentRange;
+	}
+
+	return headers;
+}
+
+/**
+ * Extract filename from URL or content-disposition header
+ */
+function getFilename(url: string, contentDisposition?: string | null): string {
+	// Try to get from content-disposition header first
 	if (contentDisposition) {
 		const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
 		if (match?.[1]) {
@@ -167,315 +183,163 @@ function extractFilename(url: string, contentDisposition?: string): string {
 		}
 	}
 
+	// Try to get from URL
 	try {
-		const urlPath = new URL(url).pathname;
-		const urlFilename = urlPath.split('/').pop();
-
-		if (urlFilename && urlFilename.includes('.')) {
-			const videoType = detectVideoType(url);
-			if (videoType === 'hls_fragment' && url.includes('.ts')) {
-				return urlFilename.replace(/\.[^.]+$/, '.ts');
-			}
-			return urlFilename;
+		const pathname = new URL(url).pathname;
+		const filename = pathname.split('/').pop();
+		if (filename && filename.includes('.')) {
+			return filename;
 		}
 	} catch {
-		// Fall through to default
+		// Ignore if parsing fails
 	}
 
+	// Default filename
 	return 'video.mp4';
 }
 
-// HLS playlist rewriting
-function rewriteHlsPlaylist(
-	playlistContent: string,
-	originalUrl: string,
-	proxyBaseUrl: string,
-	referer: string,
-	userAgent: string,
-	cookies: string
-): string {
-	const lines = playlistContent.split('\n');
-	const rewrittenLines: string[] = [];
+// ============================================
+// MAIN HANDLER
+// ============================================
 
-	for (const line of lines) {
-		const trimmedLine = line.trim();
-
-		// Skip comments and empty lines
-		if (!trimmedLine || trimmedLine.startsWith('#')) {
-			rewrittenLines.push(line);
-			continue;
-		}
-
-		try {
-			// Resolve relative URLs to absolute URLs
-			const absoluteUrl = resolveAbsoluteUrl(trimmedLine, originalUrl);
-
-			// Create proxy URL
-			const proxyUrl = new URL('/api/proxy-video', proxyBaseUrl);
-			proxyUrl.searchParams.set('url', encodeURIComponent(absoluteUrl));
-			proxyUrl.searchParams.set('referer', referer);
-			proxyUrl.searchParams.set('userAgent', userAgent);
-
-			if (cookies) {
-				proxyUrl.searchParams.set('cookies', cookies);
-			}
-
-			rewrittenLines.push(proxyUrl.toString());
-		} catch {
-			logger.warn(`Failed to rewrite playlist line: ${trimmedLine}`);
-			rewrittenLines.push(line);
-		}
-	}
-
-	return rewrittenLines.join('\n');
-}
-
-// Retry mechanism for fetch requests
-async function fetchWithRetry(
-	url: string,
-	headers: StreamHeaders,
-	config: RetryConfig = RETRY_CONFIG
-): Promise<Response> {
-	let lastError: Error | null = null;
-
-	for (let attempt = 0; attempt < config.maxRetries; attempt++) {
-		try {
-			const response = await fetch(url, {
-				method: 'GET',
-				headers
-			});
-
-			// Success or partial content
-			if (response.ok || response.status === 206) {
-				return response;
-			}
-
-			// Handle authentication errors by removing security headers
-			if (response.status === 403 || response.status === 401) {
-				logger.warn(`Access denied (${response.status}), retrying with modified headers`);
-				delete headers['Origin'];
-				delete headers['Sec-Fetch-Site'];
-				delete headers['Sec-Fetch-Mode'];
-				delete headers['Sec-Fetch-Dest'];
-			}
-
-			throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-		} catch (error) {
-			lastError = error instanceof Error ? error : new Error('Unknown fetch error');
-
-			if (attempt < config.maxRetries - 1) {
-				const delay = config.baseDelay * (attempt + 1);
-				logger.info(
-					`Fetch attempt ${attempt + 1} failed, retrying in ${delay}ms: ${lastError.message}`
-				);
-				await new Promise((resolve) => setTimeout(resolve, delay));
-			}
-		}
-	}
-
-	throw lastError || new Error('All fetch attempts failed');
-}
-
-// Response header building
-function buildResponseHeaders(
-	contentType: string,
-	acceptRanges: string,
-	filename: string,
-	forceDownload: boolean,
-	videoType: VideoType,
-	contentLength?: string,
-	contentRange?: string
-): StreamHeaders {
-	const headers: StreamHeaders = {
-		'Content-Type': contentType,
-		'Accept-Ranges': acceptRanges,
-		'Access-Control-Allow-Origin': '*',
-		'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-		'Access-Control-Allow-Headers': 'Range, Content-Type, Authorization',
-		'Access-Control-Expose-Headers':
-			'Content-Length, Content-Range, Content-Type, Content-Disposition'
-	};
-
-	// Cache control based on video type
-	if (videoType === 'hls_fragment') {
-		headers['Cache-Control'] = 'public, max-age=3600';
-	} else {
-		headers['Cache-Control'] = 'public, max-age=3600';
-	}
-
-	// Content disposition
-	headers['Content-Disposition'] = forceDownload
-		? `attachment; filename="${filename}"`
-		: `inline; filename="${filename}"`;
-
-	// Optional headers
-	if (contentLength) {
-		headers['Content-Length'] = contentLength;
-	}
-
-	if (contentRange) {
-		headers['Content-Range'] = contentRange;
-	}
-
-	return headers;
-}
-
-// Parameter extraction and validation
-function extractStreamParams(url: URL): VideoStreamParams {
-	const videoUrl = url.searchParams.get('url');
-
-	if (!videoUrl) {
-		throw new Error('No video URL provided');
-	}
-
-	return {
-		url: decodeURIComponent(videoUrl),
-		referer: url.searchParams.get('referer') || '',
-		userAgent: url.searchParams.get('userAgent') || DEFAULT_USER_AGENT,
-		cookies: url.searchParams.get('cookies') || '',
-		download: url.searchParams.get('download') === 'true'
-	};
-}
-
-// Main streaming logic
-async function handleVideoStream(params: VideoStreamParams, request: Request): Promise<Response> {
-	const {
-		url: videoUrl,
-		referer = '',
-		userAgent = DEFAULT_USER_AGENT,
-		cookies = '',
-		download = false
-	} = params;
-	const videoType = detectVideoType(videoUrl);
-	const range = request.headers.get('range');
-
-	logger.info(
-		`Processing ${download ? 'download' : 'stream'} request for: ${videoUrl.substring(0, 100)}...`
-	);
-	logger.info(`Detected video type: ${videoType}`);
-
-	// Parse cookies and build headers
-	const cookieHeader = parseCookieHeader(cookies);
-	const requestHeaders = buildStreamHeaders({
-		referer,
-		userAgent,
-		cookieHeader,
-		range: range || undefined,
-		videoType
-	});
-
-	// Log headers (hide sensitive data)
-	const headersForLog = { ...requestHeaders };
-	if (headersForLog.Cookie) {
-		headersForLog.Cookie = '[REDACTED]';
-	}
-	logger.debug('Request headers:', headersForLog);
-
-	// Fetch video response with retry
-	const response = await fetchWithRetry(videoUrl, requestHeaders);
-
-	// Handle HLS playlist rewriting
-	if (videoType === 'hls') {
-		const playlistContent = await response.text();
-		const baseUrl = extractBaseUrl(request);
-		const rewrittenPlaylist = rewriteHlsPlaylist(
-			playlistContent,
-			videoUrl,
-			baseUrl,
-			referer,
-			userAgent,
-			cookies
-		);
-
-		logger.info('Rewritten HLS playlist with proxy URLs');
-
-		return new Response(rewrittenPlaylist, {
-			status: 200,
-			headers: {
-				'Content-Type': 'application/vnd.apple.mpegurl',
-				'Access-Control-Allow-Origin': '*',
-				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-				'Access-Control-Allow-Headers': 'Range, Content-Type, Authorization',
-				'Cache-Control': 'no-cache, no-store, must-revalidate',
-				Pragma: 'no-cache',
-				Expires: '0'
-			}
-		});
-	}
-
-	// Extract response metadata
-	const contentLength = response.headers.get('content-length');
-	const contentType = response.headers.get('content-type') || 'video/mp4';
-	const contentDisposition = response.headers.get('content-disposition');
-	const acceptRanges = response.headers.get('accept-ranges') || 'bytes';
-	const contentRange = response.headers.get('content-range');
-
-	const filename = extractFilename(videoUrl, contentDisposition || undefined);
-
-	// Build response headers
-	const responseHeaders = buildResponseHeaders(
-		contentType,
-		acceptRanges,
-		filename,
-		download,
-		videoType,
-		contentLength || undefined,
-		contentRange || undefined
-	);
-
-	// Handle partial content (206)
-	if (range && response.status === 206) {
-		logger.info(`Streaming partial content: ${contentRange || 'unknown range'}`);
-		return new Response(response.body, {
-			status: 206,
-			headers: responseHeaders
-		});
-	}
-
-	// Return full content stream
-	const contentLengthMB = contentLength
-		? `${(parseInt(contentLength) / 1024 / 1024).toFixed(1)} MB`
-		: 'Unknown size';
-
-	const action = download ? 'download' : 'stream';
-	logger.success(`Starting ${action} of ${filename} (${contentLengthMB})`);
-
-	return new Response(response.body, {
-		status: 200,
-		headers: responseHeaders
-	});
-}
-
-// Main GET handler
+/**
+ * GET handler - Proxies video content with proper headers
+ */
 export const GET: RequestHandler = async ({ url, request }) => {
 	try {
-		const params = extractStreamParams(url);
-		return await handleVideoStream(params, request);
+		// Extract parameters from query string
+		const videoUrl = url.searchParams.get('url');
+		if (!videoUrl) {
+			throw new Error('No video URL provided');
+		}
+
+		const params = {
+			url: decodeURIComponent(videoUrl),
+			referer: url.searchParams.get('referer') || undefined,
+			userAgent: url.searchParams.get('userAgent') || DEFAULT_USER_AGENT,
+			cookies: url.searchParams.get('cookies') || undefined,
+			download: url.searchParams.get('download') === 'true'
+		};
+
+		// Detect video type and get range header
+		const videoType = getVideoType(params.url);
+		const range = request.headers.get('range');
+
+		logger.info(`Proxying ${videoType} video: ${params.url.substring(0, 80)}...`);
+
+		// Build request headers
+		const headers = buildRequestHeaders({
+			referer: params.referer,
+			userAgent: params.userAgent,
+			cookies: params.cookies,
+			range,
+			videoType
+		});
+
+		// Fetch the video with retry on failure
+		let response: Response;
+		let retries = 0;
+		const maxRetries = 2;
+
+		while (retries <= maxRetries) {
+			try {
+				response = await fetch(params.url, { headers });
+
+				// Break if successful or partial content
+				if (response.ok || response.status === 206) break;
+
+				// If forbidden, try without some headers
+				if (response.status === 403 && retries < maxRetries) {
+					delete (headers as any)['Origin'];
+					delete (headers as any)['Referer'];
+					retries++;
+					logger.warn(`Retrying without origin/referer headers (attempt ${retries + 1})`);
+					continue;
+				}
+
+				throw new Error(`HTTP ${response.status}`);
+			} catch (error) {
+				if (retries >= maxRetries) throw error;
+				retries++;
+				await new Promise((r) => setTimeout(r, 1000)); // Wait 1 second between retries
+			}
+		}
+
+		// Special handling for HLS playlists - rewrite URLs
+		if (videoType === 'hls') {
+			const playlistContent = await response!.text();
+
+			// Create new params without the URL for cleaner rewriting
+			const proxyParams = new URLSearchParams();
+			if (params.referer) proxyParams.set('referer', params.referer);
+			if (params.userAgent) proxyParams.set('userAgent', params.userAgent);
+			if (params.cookies) proxyParams.set('cookies', params.cookies);
+
+			const rewritten = rewriteHlsPlaylist(playlistContent, params.url, request.url, proxyParams);
+
+			return new Response(rewritten, {
+				status: 200,
+				headers: {
+					'Content-Type': 'application/vnd.apple.mpegurl',
+					'Access-Control-Allow-Origin': '*',
+					'Cache-Control': 'no-cache'
+				}
+			});
+		}
+
+		// Extract response info
+		const contentType = response!.headers.get('content-type') || 'video/mp4';
+		const contentLength = response!.headers.get('content-length');
+		const contentRange = response!.headers.get('content-range');
+		const contentDisposition = response!.headers.get('content-disposition');
+
+		const filename = getFilename(params.url, contentDisposition);
+
+		// Build response headers
+		const responseHeaders = buildResponseHeaders({
+			contentType,
+			filename,
+			download: params.download,
+			videoType,
+			contentLength,
+			contentRange
+		});
+
+		// Log successful proxy
+		const size = contentLength
+			? `${(parseInt(contentLength) / 1024 / 1024).toFixed(1)}MB`
+			: 'unknown';
+		logger.success(`Proxying ${filename} (${size})`);
+
+		// Return response with appropriate status
+		return new Response(response!.body, {
+			status: response!.status, // 200 for full content, 206 for partial
+			headers: responseHeaders
+		});
 	} catch (error) {
-		const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+		const message = error instanceof Error ? error.message : 'Unknown error';
+		logger.error('Proxy error:', message);
 
-		logger.error('Error processing video request:', errorMessage);
-
-		return new Response(`Error processing video: ${errorMessage}`, {
+		return new Response(`Proxy error: ${message}`, {
 			status: 500,
 			headers: {
-				'Access-Control-Allow-Origin': '*',
-				'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-				'Access-Control-Allow-Headers': 'Range, Content-Type, Authorization'
+				'Access-Control-Allow-Origin': '*'
 			}
 		});
 	}
 };
 
-// OPTIONS handler for CORS preflight requests
+/**
+ * OPTIONS handler - Handle CORS preflight requests
+ */
 export const OPTIONS: RequestHandler = async () => {
 	return new Response(null, {
 		status: 200,
 		headers: {
 			'Access-Control-Allow-Origin': '*',
 			'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-			'Access-Control-Allow-Headers': 'Range, Content-Type, Authorization',
-			'Access-Control-Max-Age': '86400'
+			'Access-Control-Allow-Headers': 'Range',
+			'Access-Control-Max-Age': '86400' // Cache preflight for 24 hours
 		}
 	});
 };

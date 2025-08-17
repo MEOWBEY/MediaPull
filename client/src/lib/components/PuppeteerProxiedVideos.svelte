@@ -9,14 +9,13 @@
 	import Trash2 from 'lucide-svelte/icons/trash-2';
 
 	import VideoPlayer from '$lib/components/VideoPlayer.svelte';
-	import { videoStore, type ProcessedVideo } from '$lib/stores/app-state.svelte';
+	import { videoStore, type PuppeteerProxiedUrlVideo } from '$lib/stores/app-state.svelte';
 
-	let processedVideoPreviewStates = $state(new Map<string, boolean>());
+	let puppeteerProxiedUrlVideoPreviewStates = $state(new Map<string, boolean>());
 
-	let processedVideos = $derived(videoStore.getSortedProcessedVideos());
+	let puppeteerProxiedUrlVideos = $derived(videoStore.getSortedPuppeteerProxiedUrlVideos());
 	let preferences = $derived(videoStore.preferences);
-	let hasProcessedVideos = $derived(processedVideos.length > 0);
-
+	let hasPuppeteerProxiedUrlVideos = $derived(puppeteerProxiedUrlVideos.length > 0);
 
 	// Helper functions
 	async function copyToClipboard(text: string, id: string) {
@@ -33,24 +32,24 @@
 		}
 	}
 
-	function clearProcessedVideos() {
-		videoStore.clearProcessedVideos();
-		processedVideoPreviewStates.clear();
-		toast.info('Processed videos cleared');
+	function clearPuppeteerProxiedUrlVideos() {
+		videoStore.clearPuppeteerProxiedUrlVideos();
+		puppeteerProxiedUrlVideoPreviewStates.clear();
+		toast.info('PuppeteerProxiedUrl videos cleared');
 	}
 
-	function downloadVideo(video: ProcessedVideo) {
-		// Always use download URL for processed videos
+	function downloadVideo(video: PuppeteerProxiedUrlVideo) {
+		// Always use download URL for puppeteerProxiedUrl videos
 		window.open(video.downloadUrl, '_blank');
 	}
 
-	function copyVideoUrl(video: ProcessedVideo, id: string) {
-		// Always use download URL for processed videos
+	function copyVideoUrl(video: PuppeteerProxiedUrlVideo, id: string) {
+		// Always use download URL for puppeteerProxiedUrl videos
 		copyToClipboard(video.downloadUrl, id);
 	}
 </script>
 
-{#if hasProcessedVideos}
+{#if hasPuppeteerProxiedUrlVideos}
 	<Card class="mb-6 ">
 		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
 			<div class="flex items-center justify-between">
@@ -60,14 +59,18 @@
 						: 'text-base md:text-lg'}"
 				>
 					<Download class="h-4 w-4 shrink-0 text-green-600" />
-					Processed
+					PuppeteerProxiedUrl
 				</CardTitle>
-				<Button variant="outline" size="sm" onclick={clearProcessedVideos} class="cursor-pointer">
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={clearPuppeteerProxiedUrlVideos}
+					class="cursor-pointer"
+				>
 					<Trash2 class="mr-2 h-4 w-4" />
 					Clear
 				</Button>
 			</div>
-
 		</CardHeader>
 
 		<CardContent>
@@ -76,7 +79,7 @@
 					? 'sm:grid-cols-2'
 					: 'grid-cols-1'}"
 			>
-				{#each processedVideos as video (video.id)}
+				{#each puppeteerProxiedUrlVideos as video (video.id)}
 					<div
 						class="group relative rounded-lg border {preferences.compactMode
 							? 'p-2'
@@ -92,7 +95,6 @@
 							<div class="flex-1 {preferences.compactMode ? 'space-y-1' : 'space-y-2'}">
 								<div class="flex flex-wrap items-center gap-2">
 									<Badge variant="outline">{video.quality || 'Unknown'}</Badge>
-
 								</div>
 								{#if video.title}
 									<p class="line-clamp-2 text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -110,8 +112,8 @@
 								<Button
 									variant="outline"
 									size="icon"
-									onclick={() => copyVideoUrl(video, `processed-${video.id}`)}
-									data-copy-id="processed-{video.id}"
+									onclick={() => copyVideoUrl(video, `puppeteerProxiedUrl-${video.id}`)}
+									data-copy-id="puppeteerProxiedUrl-{video.id}"
 									class="cursor-pointer"
 									title="Copy URL"
 								>

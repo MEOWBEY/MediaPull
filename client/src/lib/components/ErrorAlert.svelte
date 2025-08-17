@@ -4,7 +4,7 @@
 	import AlertCircle from 'lucide-svelte/icons/alert-circle';
 	import { videoStore } from '$lib/stores/app-state.svelte';
 
-	let processingError = $derived(videoStore.processingError);
+	let puppeteerProxyUrlError = $derived(videoStore.puppeteerProxyUrlError);
 	let extractionError = $derived(videoStore.extractionError);
 </script>
 
@@ -13,7 +13,7 @@
 	<Alert.Description class="flex items-start justify-between">
 		<div>
 			<p class="mb-1 font-medium">Error</p>
-			<p class="max-w-2xl text-xs">{extractionError || processingError}</p>
+			<p class="max-w-2xl text-xs">{extractionError || puppeteerProxyUrlError}</p>
 		</div>
 		<Button
 			variant="outline"

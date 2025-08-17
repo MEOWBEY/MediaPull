@@ -24,7 +24,6 @@ interface BrowserConfig {
 
 interface VideoElement {
 	src: string;
-	duration: number;
 	videoWidth: number;
 	videoHeight: number;
 	readyState: number;
@@ -240,7 +239,7 @@ class PuppeteerService {
 				if (!handled) {
 					await dialog.accept(videoUrl);
 					handled = true;
-					logger.progress('video-processing', 50, { message: 'URL submitted' });
+					logger.progress('puppeteerProxyingUrl', 50, { message: 'URL submitted' });
 					resolve();
 				}
 			});
@@ -253,7 +252,7 @@ class PuppeteerService {
 			timeout: this.config.selectorTimeout
 		});
 		await page.click('.el-dropdown__icon.el-icon-arrow-down');
-		logger.progress('video-processing', 40, { message: 'Dropdown opened' });
+		logger.progress('puppeteerProxyingUrl', 40, { message: 'Dropdown opened' });
 	}
 
 	private async selectUrlOption(page: Page): Promise<void> {
@@ -262,7 +261,7 @@ class PuppeteerService {
 			timeout: this.config.selectorTimeout
 		});
 		await page.click('.el-dropdown-menu__item.url');
-		logger.progress('video-processing', 60, { message: 'URL option selected' });
+		logger.progress('puppeteerProxyingUrl', 60, { message: 'URL option selected' });
 	}
 
 	private async extractVideoInfo(page: Page): Promise<VideoInfo> {
@@ -279,7 +278,6 @@ class PuppeteerService {
 
 				return {
 					src: video.src,
-					duration: video.duration || 0,
 					videoWidth: video.videoWidth || 0,
 					videoHeight: video.videoHeight || 0,
 					readyState: video.readyState
@@ -326,50 +324,46 @@ class PuppeteerService {
 		logger.info('Cleanup completed');
 	}
 
-	async getProcessedVideoInfo(userVideoUrl: string): Promise<VideoInfo> {
-		const startTime = Date.now();
-
+	async puppeteerProxiedUrl(userVideoUrl: string): Promise<VideoInfo> {
 		try {
-			logger.progress('video-processing', 5, { message: 'Starting processing' });
+			logger.progress('puppeteerProxyingUrl', 5, { message: 'Starting Puppeteer proxying' });
 
-			const processPromise = this.processVideo(userVideoUrl);
+			const proxyPromise = this.puppeteerProxyUrl(userVideoUrl);
 			const timeoutPromise = new Promise<never>((_, reject) =>
 				setTimeout(
-					() => reject(new Error(`Processing timeout after ${this.config.timeout / 1000} seconds`)),
+					() => reject(new Error(`Puppeteer proxying timeout after ${this.config.timeout / 1000} seconds`)),
 					this.config.timeout
 				)
 			);
 
-			const result = await Promise.race([processPromise, timeoutPromise]);
+			const result = await Promise.race([proxyPromise, timeoutPromise]);
 
-			const duration = Date.now() - startTime;
-			logger.success(`Video processed successfully in ${duration}ms`);
+			logger.success(`Video URL proxied successfully`);
 
 			return result;
 		} catch (error) {
-			const duration = Date.now() - startTime;
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			logger.error(`Video processing failed after ${duration}ms:`, errorMessage);
-			throw new Error(`Failed to process video: ${errorMessage}`);
+			logger.error(`Puppeteer proxying failed:`, errorMessage);
+			throw new Error(`Failed to proxy video URL: ${errorMessage}`);
 		} finally {
 			await this.cleanup(null, null);
 		}
 	}
 
-	private async processVideo(userVideoUrl: string): Promise<VideoInfo> {
+	private async puppeteerProxyUrl(userVideoUrl: string): Promise<VideoInfo> {
 		const browser = await this.launchBrowser();
 		const page = await this.setupPage(browser);
 
-		logger.progress('video-processing', 10, { message: 'Navigating to site' });
+		logger.progress('puppeteerProxyingUrl', 10, { message: 'Navigating to site' });
 		await this.navigateToSite(page);
 
-		logger.progress('video-processing', 25, { message: 'Site loaded' });
+		logger.progress('puppeteerProxyingUrl', 25, { message: 'Site loaded' });
 		await this.handleUrlSubmission(page, userVideoUrl);
 
-		logger.progress('video-processing', 70, { message: 'Processing video' });
+		logger.progress('puppeteerProxyingUrl', 70, { message: 'Extracting proxied video URL' });
 		const videoInfo = await this.extractVideoInfo(page);
 
-		logger.progress('video-processing', 100, { message: 'Processing completed' });
+		logger.progress('puppeteerProxyingUrl', 100, { message: 'Puppeteer proxying completed' });
 		return videoInfo;
 	}
 }

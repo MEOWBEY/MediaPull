@@ -30,15 +30,15 @@
 	} from '$lib/stores/app-state.svelte';
 
 	interface Props {
-		handleProcessVideo: (video?: VideoFormat) => Promise<void>;
+		handlePuppeteerProxyUrlVideo: (video?: VideoFormat) => Promise<void>;
 	}
 
-	let { handleProcessVideo }: Props = $props();
+	let { handlePuppeteerProxyUrlVideo }: Props = $props();
 
 	let extractedData = $derived(videoStore.extractedData);
 	let preferences = $derived(videoStore.preferences);
-	let processingQueue = $derived(videoStore.processingQueue);
-	let isOperationRunning = $derived(videoStore.processing || videoStore.extracting);
+	let puppeteerProxyUrlQueue = $derived(videoStore.puppeteerProxyUrlQueue);
+	let isOperationRunning = $derived(videoStore.puppeteerProxyingUrl || videoStore.extracting);
 	let hasExtractedData = $derived(extractedData !== null);
 	let organizedVideos = $derived(organizeVideosBySourceAndType(extractedData?.formats || []));
 
@@ -78,18 +78,18 @@
 		}
 	}
 
-	async function processVideoWithToast(video: VideoFormat) {
+	async function puppeteerProxyUrlWithToast(video: VideoFormat) {
 		try {
-			await handleProcessVideo(video);
-			toast.success('Video processing started');
+			await handlePuppeteerProxyUrlVideo(video);
+			toast.success('Video puppeteerProxyingUrl started');
 		} catch (error) {
-			toast.error('Failed to start processing');
+			toast.error('Failed to start puppeteerProxyingUrl');
 		}
 	}
 
-	function isVideoProcessing(video: VideoFormat): boolean {
-		const processKey = `${video.originalUrl}-${video.quality}`;
-		return processingQueue.has(processKey);
+	function isVideoPuppeteerProxyingUrl(video: VideoFormat): boolean {
+		const puppeteerProxyUrlKey = `${video.originalUrl}-${video.quality}`;
+		return puppeteerProxyUrlQueue.has(puppeteerProxyUrlKey);
 	}
 
 	function getBestQuality(typeGroup: any) {
@@ -249,12 +249,13 @@
 																<Button
 																	variant="ghost"
 																	size="icon"
-																	onclick={() => processVideoWithToast(video)}
-																	disabled={isVideoProcessing(video) || isOperationRunning}
+																	onclick={() => puppeteerProxyUrlWithToast(video)}
+																	disabled={isVideoPuppeteerProxyingUrl(video) ||
+																		isOperationRunning}
 																	class="h-8 w-8 text-gray-500 transition-colors hover:bg-gray-200 hover:text-green-500 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-green-400"
-																	aria-label="Process video"
+																	aria-label="PuppeteerProxyUrl video"
 																>
-																	{#if isVideoProcessing(video)}
+																	{#if isVideoPuppeteerProxyingUrl(video)}
 																		<Loader2 class="h-4 w-4 animate-spin" />
 																	{:else}
 																		<Hammer class="h-4 w-4" />

@@ -3,7 +3,7 @@ import {
 	apiCache,
 	uiState,
 	type ExtractedVideoData,
-	type ProcessedVideo
+	type PuppeteerProxiedUrlVideo
 } from '$lib/stores/app-state.svelte';
 
 interface VideoProcessorOptions {
@@ -92,7 +92,7 @@ class VideoProcessor {
 				return { success: false, cancelled: true };
 			} else {
 				const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-				videoStore.processingError = errorMessage;
+				videoStore.puppeteerProxyUrlError = errorMessage;
 				return { success: false, error: errorMessage };
 			}
 		} finally {
@@ -101,28 +101,28 @@ class VideoProcessor {
 		}
 	}
 
-	async processVideo(
+	async puppeteerProxyUrl(
 		video: VideoInput,
 		options: VideoProcessorOptions = {}
-	): Promise<ProcessorResult<ProcessedVideo>> {
+	): Promise<ProcessorResult<PuppeteerProxiedUrlVideo>> {
 		const targetUrl = video?.originalUrl || videoStore.inputUrl.trim();
 		if (!targetUrl) {
 			return { success: false, error: 'Please enter a valid URL' };
 		}
 
-		const processKey = `${targetUrl}-${video?.quality || 'default'}`;
-		const loadingKey = `process-${video?.id || 'direct'}`;
+		const puppeteerProxyUrlKey = `${targetUrl}-${video?.quality || 'default'}`;
+		const loadingKey = `puppeteerProxyUrl-${video?.id || 'direct'}`;
 
 		if (video && video.id) {
-			videoStore.processingQueue.add(processKey);
+			videoStore.puppeteerProxyUrlQueue.add(puppeteerProxyUrlKey);
 		} else {
-			videoStore.processing = true;
+			videoStore.puppeteerProxyingUrl = true;
 			videoStore.reset();
 		}
 
 		try {
 			uiState.setLoading(loadingKey, true);
-			const response = await fetch('/api/process-video', {
+			const response = await fetch('/api/puppeteer-proxy-video', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
@@ -140,17 +140,15 @@ class VideoProcessor {
 			const data = await response.json();
 
 			if (data.success && data.video) {
-				const processedVideo: ProcessedVideo = {
+				const puppeteerProxiedUrlVideo: PuppeteerProxiedUrlVideo = {
 					...data.video,
-					processingTime: data.video.processingTime || 0,
 					status: 'completed',
-					originalUrl: targetUrl,
-					processedAt: Date.now()
+					originalUrl: targetUrl
 				};
-				videoStore.addProcessedVideo(processedVideo);
-				return { success: true, data: processedVideo };
+				videoStore.addPuppeteerProxiedUrlVideo(puppeteerProxiedUrlVideo);
+				return { success: true, data: puppeteerProxiedUrlVideo };
 			} else {
-				throw new Error(data.error || 'Processing failed');
+				throw new Error(data.error || 'PuppeteerProxyingUrl failed');
 			}
 		} catch (error: unknown) {
 			if (error instanceof Error && error.name === 'AbortError') {
@@ -162,25 +160,25 @@ class VideoProcessor {
 			}
 		} finally {
 			if (video && video.id) {
-				videoStore.processingQueue.delete(processKey);
+				videoStore.puppeteerProxyUrlQueue.delete(puppeteerProxyUrlKey);
 			} else {
-				videoStore.processing = false;
+				videoStore.puppeteerProxyingUrl = false;
 			}
 			uiState.setLoading(loadingKey, false);
 		}
 	}
 
-	// Utility method to check if a video is currently being processed
-	isVideoProcessing(video: VideoInput): boolean {
-		const processKey = `${video.originalUrl}-${video.quality || 'default'}`;
-		return videoStore.processingQueue.has(processKey);
+	// Utility method to check if a video is currently being puppeteerProxiedUrl
+	isVideoPuppeteerProxyUrl(video: VideoInput): boolean {
+		const puppeteerProxyUrlKey = `${video.originalUrl}-${video.quality || 'default'}`;
+		return videoStore.puppeteerProxyUrlQueue.has(puppeteerProxyUrlKey);
 	}
 
 	// Utility method to cancel all operations
 	cancelAllOperations(): void {
-		videoStore.processing = false;
+		videoStore.puppeteerProxyingUrl = false;
 		videoStore.extracting = false;
-		videoStore.processingQueue.clear();
+		videoStore.puppeteerProxyUrlQueue.clear();
 	}
 }
 

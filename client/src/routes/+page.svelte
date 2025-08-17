@@ -6,7 +6,7 @@
 	import StatusBar from '$lib/components/StatusBar.svelte';
 	import VideoInput from '$lib/components/VideoInput.svelte';
 	import ErrorAlert from '$lib/components/ErrorAlert.svelte';
-	import ProcessedVideos from '$lib/components/ProcessedVideos.svelte';
+	import PuppeteerProxiedUrlVideos from '$lib/components/PuppeteerProxiedVideos.svelte';
 	import ExtractedVideos from '$lib/components/ExtractedVideos.svelte';
 	import Instructions from '$lib/components/Instructions.svelte';
 	import PreferencesDialog from '$lib/components/PreferencesDialog.svelte';
@@ -22,9 +22,11 @@
 	let timerInterval: NodeJS.Timeout | null = null;
 	let abortController: AbortController | null = null;
 
-	let isOperationRunning = $derived(videoStore.processing || videoStore.extracting);
+	let isOperationRunning = $derived(videoStore.puppeteerProxyingUrl || videoStore.extracting);
 	let preferences = $derived(videoStore.preferences);
-	let hasErrors = $derived(Boolean(videoStore.processingError || videoStore.extractionError));
+	let hasErrors = $derived(
+		Boolean(videoStore.puppeteerProxyUrlError || videoStore.extractionError)
+	);
 
 	// Apply theme effects
 	$effect(() => {
@@ -93,8 +95,8 @@
 		abortController = null;
 	}
 
-	async function handleProcessVideo(video?: any) {
-		const result = await videoProcessor.processVideo(
+	async function handlePuppeteerProxyUrlVideo(video?: any) {
+		const result = await videoProcessor.puppeteerProxyUrl(
 			video || { originalUrl: videoStore.inputUrl },
 			{
 				abortController: video ? null : (abortController = new AbortController())
@@ -102,7 +104,7 @@
 		);
 
 		if (result.success) {
-			toast.success(`Processed in ${result?.data?.processingTime}ms`, {
+			toast.success(`PuppeteerProxiedUrl is done`, {
 				action: {
 					label: 'Download',
 					onClick: () => window.open(result?.data?.downloadUrl, '_blank')
@@ -120,9 +122,9 @@
 			abortController.abort();
 			toast.info('Operation cancelled');
 		}
-		videoStore.processing = false;
+		videoStore.puppeteerProxyingUrl = false;
 		videoStore.extracting = false;
-		videoStore.processingQueue.clear();
+		videoStore.puppeteerProxyUrlQueue.clear();
 	}
 
 	function autoCleanCache() {
@@ -137,8 +139,8 @@
 </script>
 
 <svelte:head>
-	<title>DirectLinker - Video Processing</title>
-	<meta name="description" content="Extract and process videos from URLs efficiently" />
+	<title>DirectLinker - Video PuppeteerProxyingUrl</title>
+	<meta name="description" content="Extract and puppeteerProxyUrl videos from URLs efficiently" />
 </svelte:head>
 
 <div class=" {preferences.compactMode ? 'compact-mode' : ''}">
@@ -149,7 +151,7 @@
 		<!-- Main Input -->
 		<VideoInput
 			{handleExtractVideos}
-			{handleProcessVideo}
+			{handlePuppeteerProxyUrlVideo}
 			{handleCancelOperation}
 			{isOperationRunning}
 		/>
@@ -159,11 +161,11 @@
 			<ErrorAlert />
 		{/if}
 
-		<!-- Processed Videos -->
-		<ProcessedVideos />
+		<!-- PuppeteerProxiedUrl Videos -->
+		<PuppeteerProxiedUrlVideos />
 
 		<!-- Extracted Videos -->
-		<ExtractedVideos {handleProcessVideo} />
+		<ExtractedVideos {handlePuppeteerProxyUrlVideo} />
 
 		<!-- Instructions -->
 		<Instructions />
