@@ -3,7 +3,6 @@ import { browser } from '$app/environment';
 // ============================================================================
 // ESSENTIAL TYPE DEFINITIONS
 // ============================================================================
-
 export interface VideoFormat {
 	id: string;
 	title?: string;
@@ -26,6 +25,24 @@ export interface VideoFormat {
 	codec?: string;
 	container?: string;
 	aspectRatio?: string;
+}
+
+export type MediaType = 'video' | 'audio' | 'hls' | 'dash' | 'other';
+
+export interface VideoQuality {
+	src: string;
+	label: string;
+	resolution: string;
+}
+
+export interface OrganizedVideo {
+	key: string;
+	title: string;
+	sourceUrl: string;
+	thumbnail?: string;
+	duration?: number;
+	type: MediaType;
+	qualities: VideoQuality[];
 }
 
 export interface PuppeteerProxiedUrlVideo extends VideoFormat {
@@ -64,7 +81,7 @@ export interface VideoGroup {
 	types: Record<
 		string,
 		{
-			type: 'video' | 'audio' | 'hls' | 'dash' | 'subtitle';
+			type: 'video' | 'audio' | 'hls' | 'dash';
 			formats: Record<string, VideoFormat>;
 			bestQuality?: VideoFormat;
 		}
@@ -322,7 +339,7 @@ class VideoDataStore {
 	// UI preferences
 	preferences = $state({
 		theme: 'system' as 'light' | 'dark' | 'system',
-		viewMode: 'list' as 'grid' | 'list',
+		viewMode: 'grid' as 'grid' | 'list',
 		sortBy: 'quality' as 'name' | 'size' | 'quality',
 		sortOrder: 'desc' as 'asc' | 'desc',
 		showThumbnails: true,
@@ -353,7 +370,9 @@ class VideoDataStore {
 
 	private loadPersistedData(): void {
 		try {
-			const storedPuppeteerProxiedUrl = localStorage.getItem(this.storageKeys.puppeteerProxiedUrlVideos);
+			const storedPuppeteerProxiedUrl = localStorage.getItem(
+				this.storageKeys.puppeteerProxiedUrlVideos
+			);
 			if (storedPuppeteerProxiedUrl) {
 				this.puppeteerProxiedUrlVideos = JSON.parse(storedPuppeteerProxiedUrl);
 			}
@@ -554,102 +573,150 @@ export const apiCache = new SmartApiCache();
 export const uiState = new UIStateManager();
 
 // ============================================================================
-// UTILITY FUNCTIONS
+// HELPERS
 // ============================================================================
 
-export function organizeVideosBySourceAndType(formats: VideoFormat[]): Record<string, VideoGroup> {
-	if (!formats || formats.length === 0) return {};
+function getHeight(format: any): number {
+	if (format.height && Number.isFinite(format.height)) return format.height;
 
-	const sourceGroups: Record<string, VideoGroup> = {};
+	if (typeof format.resolution === 'string') {
+		const heightMatch = format.resolution.match(/(\d+)p/);
+		if (heightMatch) return parseInt(heightMatch[1], 10);
 
-	for (const video of formats) {
-		const groupKey = extractGroupKey(video);
-		const videoType = getVideoType(video);
-		const resolution = formatResolution(video);
-
-		if (!sourceGroups[groupKey]) {
-			sourceGroups[groupKey] = {
-				groupKey,
-				title: video.title || groupKey.split('/').pop() || 'Unknown Video',
-				sourceUrl: video.originalUrl || '',
-				types: {},
-				thumbnail: video.thumbnail,
-				duration: video.duration
-			};
-		}
-
-		if (!sourceGroups[groupKey].types[videoType]) {
-			sourceGroups[groupKey].types[videoType] = {
-				type: videoType as unknown as 'video' | 'audio' | 'hls' | 'dash' | 'subtitle',
-				formats: {},
-				bestQuality: undefined
-			};
-		}
-
-		sourceGroups[groupKey].types[videoType].formats[resolution] = video;
-
-		const currentBest = sourceGroups[groupKey].types[videoType].bestQuality;
-		if (!currentBest || compareQuality(video, currentBest) > 0) {
-			sourceGroups[groupKey].types[videoType].bestQuality = video;
-		}
+		const dimensionMatch = format.resolution.match(/(\d+)x(\d+)/);
+		if (dimensionMatch) return parseInt(dimensionMatch[2], 10);
 	}
 
-	return sourceGroups;
+	return 0;
 }
 
-function extractGroupKey(video: VideoFormat): string {
+function getMediaType(format: any): string {
+	const ext = (format.extension || '').toString().toLowerCase();
+	const url = (format.originalUrl || format.downloadUrl || '').toLowerCase();
+
+	// HLS detection
+	if (format.isHLS || format.protocol === 'hls' || ext === 'm3u8' || url.includes('.m3u8')) {
+		return 'application/x-mpegURL';
+	}
+
+	// DASH detection
+	if (format.protocol === 'dash' || ext === 'mpd') {
+		return 'application/dash+xml';
+	}
+
+	// Audio formats
+	if (ext === 'mp3') return 'audio/mpeg';
+	if (ext === 'aac') return 'audio/aac';
+	if (ext === 'ogg') return 'audio/ogg';
+	if (ext === 'wav') return 'audio/wav';
+	if (ext === 'flac') return 'audio/flac';
+	if (ext === 'm4a') return 'audio/mp4';
+	if (ext === 'opus') return 'audio/opus';
+
+	// Video formats
+	if (ext === 'mp4') return 'video/mp4';
+	if (ext === 'webm') return 'video/webm';
+	if (ext === 'mkv') return 'video/x-matroska';
+	if (ext === 'mov') return 'video/quicktime';
+	if (ext === 'avi') return 'video/x-msvideo';
+
+	// Default fallback
+	return 'video/mp4';
+}
+
+function createGroupKey(format: any): string {
+	const url = format.originalUrl || format.downloadUrl || '';
+	if (!url) return format.id || 'unknown';
+
 	try {
-		const url = new URL(video.originalUrl || '');
-		const path = url.pathname.split('/');
-		const filename = path[path.length - 1];
-		const baseName = filename.split('-')[0];
-		return `${url.hostname}/${baseName}`;
+		const urlObj = new URL(url);
+		const pathParts = urlObj.pathname.split('/').filter(Boolean);
+		const filename = pathParts.pop() || '';
+		const baseName = filename
+			.replace(/\.[^/.]+$/, '')
+			.replace(/(-\d{2,4}p$)|(-\d{2,4}x\d{2,4}$)/i, '');
+		return `${urlObj.hostname}/${baseName}`;
 	} catch {
-		return video.id;
+		return format.id || 'unknown';
 	}
 }
 
-function getVideoType(video: VideoFormat): 'video' | 'audio' | 'hls' | 'dash' | 'subtitle' {
-	if (video.isHLS || video.protocol === 'hls' || video.extension === 'm3u8') {
-		return 'hls';
-	}
-
-	if (video.protocol === 'dash' || video.extension === 'mpd') {
-		return 'dash';
-	}
-
-	const audioFormats = ['mp3', 'aac', 'ogg', 'wav', 'flac', 'm4a', 'opus'];
-	if (audioFormats.includes(video.extension?.toLowerCase() || '')) {
-		return 'audio';
-	}
-
-	const subtitleFormats = ['srt', 'vtt', 'ass', 'ssa'];
-	if (subtitleFormats.includes(video.extension?.toLowerCase() || '')) {
-		return 'subtitle';
-	}
-
-	return 'video';
+function createQualityLabel(format: any): string {
+	const height = getHeight(format);
+	if (height > 0) return `${height}p`;
+	if (format.resolution) return format.resolution;
+	return format.extension?.toUpperCase() || 'Unknown';
 }
 
-function formatResolution(video: VideoFormat): string {
-	if (video.height) {
-		return `${video.height}p`;
-	}
-	if (video.resolution?.includes('x')) {
-		const height = video.resolution.split('x')[1];
-		return `${height}p`;
-	}
-	return video.resolution || video.quality || 'Unknown';
-}
+// ============================================================================
+// MAIN ORGANIZATION FUNCTION
+// ============================================================================
 
-function compareQuality(a: VideoFormat, b: VideoFormat): number {
-	const getQualityScore = (video: VideoFormat): number => {
-		const height = video.height || parseInt(video.resolution?.split('x')[1] || '0') || 0;
-		const bitrate = video.bitrate || 0;
-		return height * 1000 + bitrate;
-	};
+export function organizeVideoFormats(formats: any[] = []): OrganizedVideo[] {
+	if (!formats.length) return [];
 
-	return getQualityScore(a) - getQualityScore(b);
+	// Group formats by source and type
+	const groups: Record<string, Record<MediaType, any[]>> = {};
+
+	for (const format of formats) {
+		if (!format) continue;
+
+		const groupKey = createGroupKey(format);
+		const mediaType = getMediaType(format);
+
+		if (!groups[groupKey]) {
+			groups[groupKey] = {} as Record<MediaType, any[]>;
+		}
+		if (!groups[groupKey][mediaType]) {
+			groups[groupKey][mediaType] = [];
+		}
+
+		groups[groupKey][mediaType].push(format);
+	}
+
+	// Convert groups to organized videos
+	const result: OrganizedVideo[] = [];
+
+	for (const [groupKey, typeGroups] of Object.entries(groups)) {
+		for (const [mediaType, formatList] of Object.entries(typeGroups) as [MediaType, any[]][]) {
+			if (formatList.length === 0) continue;
+
+			const firstFormat = formatList[0];
+
+			// Create qualities array sorted by height (highest first)
+			const qualities: VideoQuality[] = formatList
+				.map((format) => ({
+					src: format.downloadUrl || format.originalUrl || '',
+					downloadUrl: format.downloadUrl || '',
+					extension: format.extension || '',
+					fileSize: format.fileSize || null,
+					height: format.height || null,
+					id: format.id || '',
+					isHLS: format.isHLS || false,
+					originalUrl: format.originalUrl || '',
+					thumbnail: format.thumbnail || '',
+					width: format.width || null,
+					label: createQualityLabel(format),
+					resolution: format.resolution || `${getHeight(format)}p`,
+				}))
+				.filter((q) => q.src) // Only include formats with valid URLs
+				.sort((a, b) => (b.resolution || 0) - (a.resolution || 0));
+
+			const organized: OrganizedVideo = {
+				key: `${groupKey}-${mediaType}`,
+				title: firstFormat.title || groupKey.split('/').pop() || 'Unknown',
+				sourceUrl: firstFormat.originalUrl || firstFormat.downloadUrl || '',
+				thumbnail: firstFormat.thumbnail || null,
+				duration: firstFormat.duration || null,
+				type: mediaType,
+				qualities
+			};
+
+			result.push(organized);
+		}
+	}
+
+	return result;
 }
 
 // ============================================================================

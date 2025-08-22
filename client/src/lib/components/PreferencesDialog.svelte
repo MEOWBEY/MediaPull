@@ -127,7 +127,7 @@
 	function resetToDefaults() {
 		videoStore.updatePreferences({
 			theme: 'system',
-			viewMode: 'list',
+			viewMode: 'grid',
 			sortBy: 'quality',
 			sortOrder: 'desc',
 			showThumbnails: true,
@@ -215,7 +215,7 @@
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<LayoutList class="h-4 w-4 text-purple-600" />
-						View Mode
+						View Mode In Desktop
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">

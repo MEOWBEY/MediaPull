@@ -44,6 +44,7 @@
 	},
 	"dependencies": {
 		"@sparticuz/chromium": "^138.0.1",
+		"hls.js": "^1.6.10",
 		"lucide-svelte": "^0.525.0",
 		"media-icons": "^1.1.5",
 		"mode-watcher": "^1.1.0",

@@ -13,21 +13,20 @@
 	} from '$lib/components/ui/card';
 	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
 
-	import MonitorPlay from 'lucide-svelte/icons/monitor-play';
+	import SquarePlay from 'lucide-svelte/icons/square-play';
+	import TableProperties from 'lucide-svelte/icons/table-properties';
 	import ChevronDown from 'lucide-svelte/icons/chevron-down';
 	import Copy from 'lucide-svelte/icons/copy';
 	import Download from 'lucide-svelte/icons/download';
-	import Hammer from 'lucide-svelte/icons/hammer';
+	import Waypoints from 'lucide-svelte/icons/waypoints';
 	import Loader2 from 'lucide-svelte/icons/loader-2';
 	import Trash2 from 'lucide-svelte/icons/trash-2';
 	import Globe from 'lucide-svelte/icons/globe';
 
 	import VideoPlayer from '$lib/components/VideoPlayer.svelte';
-	import {
-		videoStore,
-		organizeVideosBySourceAndType,
-		type VideoFormat
-	} from '$lib/stores/app-state.svelte';
+	import { videoStore, type VideoFormat } from '$lib/stores/app-state.svelte';
+
+	import { organizeVideoFormats, type OrganizedVideo } from '$lib/stores/app-state.svelte';
 
 	interface Props {
 		handlePuppeteerProxyUrlVideo: (video?: VideoFormat) => Promise<void>;
@@ -39,91 +38,66 @@
 	let preferences = $derived(videoStore.preferences);
 	let puppeteerProxyUrlQueue = $derived(videoStore.puppeteerProxyUrlQueue);
 	let isOperationRunning = $derived(videoStore.puppeteerProxyingUrl || videoStore.extracting);
-	let hasExtractedData = $derived(extractedData !== null);
-	let organizedVideos = $derived(organizeVideosBySourceAndType(extractedData?.formats || []));
+
+	let organizedVideos = $derived(organizeVideoFormats(extractedData?.formats || []));
 
 	function clearExtractedVideos() {
 		videoStore.clearExtractedData();
 		toast.info('Extracted data cleared');
 	}
 
-	async function copyToClipboard(text: string, id: string, useProxy: boolean = false) {
+	function getVideoUrl(quality: any): string {
+		return preferences.useProxy
+			? quality.downloadUrl || quality.src
+			: quality.originalUrl || quality.src;
+	}
+
+	async function copyToClipboard(url: string, id: string) {
 		try {
-			await navigator.clipboard.writeText(text);
-			toast.success(`Copied ${useProxy ? 'original' : 'download'} URL to clipboard`);
+			await navigator.clipboard.writeText(url);
+			toast.success('Copied URL to clipboard: ' + url);
 			const element = document.querySelector(`[data-copy-id="${id}"]`);
 			if (element) {
 				element.classList.add('text-green-500');
 				setTimeout(() => element.classList.remove('text-green-500'), 2000);
 			}
 		} catch (error) {
-			toast.error('Failed to copy');
+			toast.error('Failed to copy: ' + error);
 		}
 	}
 
-	function downloadVideo(video: VideoFormat, id: string) {
+	function downloadVideo(organized: OrganizedVideo, qualityIndex = 0) {
 		try {
+			const quality = organized.qualities[qualityIndex] || organized.qualities[0];
+			const videoUrl = getVideoUrl(quality);
+			const filename = `${organized.title}-${quality.label}`;
+
 			const link = document.createElement('a');
-			link.href = getUrlForAction(video);
-			link.download = video.filename || 'video';
+			link.href = videoUrl;
+			link.download = filename;
 			link.click();
-			toast.success('Download started');
-			const element = document.querySelector(`[data-download-id="${id}"]`);
-			if (element) {
-				element.classList.add('text-green-500');
-				setTimeout(() => element.classList.remove('text-green-500'), 2000);
-			}
+
+			toast.success('Download started: ' + filename);
 		} catch (error) {
-			toast.error('Failed to start download');
+			toast.error('Failed to start download: ' + error);
 		}
 	}
 
-	async function puppeteerProxyUrlWithToast(video: VideoFormat) {
+	async function proxyVideo(organized: OrganizedVideo, qualityIndex = 0) {
 		try {
-			await handlePuppeteerProxyUrlVideo(video);
-			toast.success('Video puppeteerProxyingUrl started');
+			const quality = organized.qualities[qualityIndex] || organized.qualities[0];
+
+			await handlePuppeteerProxyUrlVideo(quality);
+			toast.success('Proxy started');
 		} catch (error) {
-			toast.error('Failed to start puppeteerProxyingUrl');
+			toast.error('Failed to start proxy' + error);
 		}
 	}
 
-	function isVideoPuppeteerProxyingUrl(video: VideoFormat): boolean {
-		const puppeteerProxyUrlKey = `${video.originalUrl}-${video.quality}`;
-		return puppeteerProxyUrlQueue.has(puppeteerProxyUrlKey);
-	}
-
-	function getBestQuality(typeGroup: any) {
-		const resolutions = Object.entries(typeGroup.formats);
-		const sortedResolutions = resolutions.sort((a, b) => {
-			const aHeight = parseInt(a[0].replace('p', '')) || 0;
-			const bHeight = parseInt(b[0].replace('p', '')) || 0;
-			return bHeight - aHeight;
-		});
-		return sortedResolutions[0]?.[1] as VideoFormat;
-	}
-
-	function getVideoQualities(
-		typeGroup: any
-	): Array<{ src: string; label: string; resolution?: string }> {
-		let qualities: any = [];
-
-		if (!typeGroup?.formats) {
-			return qualities;
-		}
-
-		Object.entries(typeGroup.formats).forEach(([resolution, format]: [string, any]) => {
-			qualities.push({
-				src: preferences.useProxy ? format.downloadUrl : format.originalUrl,
-				label: resolution,
-				resolution: format.resolution
-			});
-		});
-
-		return qualities;
-	}
-
-	function getUrlForAction(video: VideoFormat): string {
-		return preferences.useProxy ? video.downloadUrl : video.originalUrl;
+	function isVideoInProxyQueue(organized: OrganizedVideo, qualityIndex = 0): boolean {
+		const quality = organized.qualities[qualityIndex] || organized.qualities[0];
+		const proxyKey = `${quality.src}-${quality.resolution}`;
+		return puppeteerProxyUrlQueue.has(proxyKey);
 	}
 
 	function toggleGlobalProxy() {
@@ -132,23 +106,23 @@
 	}
 </script>
 
-{#if hasExtractedData}
-	<Card class="mb-6 gap-3">
-		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
+{#if extractedData}
+	<Card class="mb-6">
+		<CardHeader class={preferences.compactMode ? 'border-b py-3 [.border-b]:pb-2' : ' border-b '}>
 			<div class="flex items-center justify-between">
 				<CardTitle
 					class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}"
 				>
-					<MonitorPlay class="h-5 w-5 text-blue-600" />
-					Formats
+					<SquarePlay class="h-5 w-5 text-blue-600" />
+					Media Formats ({organizedVideos.length})
 				</CardTitle>
-				<Button variant="outline" size="sm" onclick={clearExtractedVideos} class="cursor-pointer">
+				<Button variant="outline" size="sm" onclick={clearExtractedVideos}>
 					<Trash2 class="mr-2 h-4 w-4" />
 					Clear
 				</Button>
 			</div>
 			<CardDescription>
-				{extractedData?.title || 'Video'} • {extractedData?.totalFormats} formats
+				{extractedData?.title || 'Media'} • {extractedData?.totalFormats} total formats
 				{#if extractedData?.duration}
 					• {Math.floor(extractedData.duration / 60)}:{(extractedData.duration % 60)
 						.toString()
@@ -156,163 +130,135 @@
 				{/if}
 			</CardDescription>
 		</CardHeader>
-		<CardContent>
-			{#each Object.entries(organizedVideos) as [groupKey, sourceGroup]}
-				<div class="{preferences.compactMode ? 'mb-3' : 'mb-6'} last:mb-0">
-					{#each Object.entries(sourceGroup.types) as [type, typeGroup]}
-						<div
-							class="rounded-lg border {preferences.compactMode
-								? 'p-2'
-								: 'p-4'} {preferences.highContrast ? 'border-2' : ''}"
-						>
-							<div
-								class="flex items-center justify-between {preferences.compactMode
-									? 'mb-2'
-									: 'mb-3'}"
-							>
-								<div class="flex items-center gap-2">
-									<div>
-										<h4
-											class="font-semibold text-gray-900 capitalize dark:text-gray-100 {preferences.compactMode
-												? 'text-xs md:text-sm'
-												: 'text-sm md:text-lg'}"
-										>
-											{type} Formats
-										</h4>
-										<p
-											class="text-gray-600 dark:text-gray-400 {preferences.compactMode
-												? 'text-xs'
-												: 'text-sm'}"
-										>
-											{Object.keys(typeGroup.formats).length} options
-										</p>
-									</div>
+
+		<CardContent class="space-y-4 ">
+			<div
+				class="grid {preferences.compactMode ? 'gap-2' : 'gap-4'} {preferences.viewMode === 'grid'
+					? 'sm:grid-cols-2'
+					: 'grid-cols-1'}"
+			>
+				{#each organizedVideos as organized (organized.key)}
+					<div class="rounded-lg">
+						<!-- Header -->
+						<div class="mb-3 flex items-center justify-between gap-8">
+							<div class="flex items-center gap-3">
+								<div>
+									<h4
+										class="font-semibold text-gray-900 dark:text-gray-100 {preferences.compactMode
+											? 'text-sm'
+											: 'text-base'}"
+									>
+										{organized.type}
+									</h4>
+									<p class="text-sm text-gray-600 dark:text-gray-400">
+										{organized.qualities.length} option{organized.qualities.length !== 1 ? 's' : ''}
+									</p>
 								</div>
-								<div class="flex items-center gap-2">
-									<DropdownMenu.Root>
-										<DropdownMenu.Trigger>
-											<Button
-												variant="outline"
-												size="sm"
-												class="cursor-pointer text-sm md:text-base"
-											>
-												<MonitorPlay class="mr-1 h-4 w-4 md:mr-2" />
-												Options
-												<ChevronDown class="ml-1 h-4 w-4 md:ml-2" />
-											</Button>
-										</DropdownMenu.Trigger>
-										<DropdownMenu.Content align="end" class="w-64 rounded-md p-2 shadow-lg ">
-											<div
-												class="flex items-center justify-between rounded-md px-2 py-2 transition-colors"
-											>
-												<div class="flex items-center gap-2">
-													<Globe class="h-4 w-4 text-gray-500 dark:text-gray-400" />
-													<Label
-														for="proxy-global"
-														class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200"
-													>
-														Proxy
-													</Label>
-												</div>
-												<Switch
-													id="proxy-global"
-													checked={preferences.useProxy || false}
-													onCheckedChange={toggleGlobalProxy}
-													class=""
-												/>
-											</div>
+							</div>
 
-											<!-- Quality Options Section -->
-											<DropdownMenu.Separator class="my-1 border-gray-200 dark:border-gray-600" />
+							<!-- Actions Dropdown -->
+							<DropdownMenu.Root>
+								<DropdownMenu.Trigger>
+									<Button variant="outline" size="sm" class="cursor-pointer">
+										<TableProperties class="mr-2 h-4 w-4" />
+										Actions
+										<ChevronDown class="ml-2 h-4 w-4" />
+									</Button>
+								</DropdownMenu.Trigger>
+								<DropdownMenu.Content align="end" class="w-72">
+									<!-- Global Proxy Toggle -->
+									<div class="flex items-center justify-between p-2">
+										<div class="flex items-center gap-2">
+											<Globe class="h-4 w-4 text-gray-500" />
+											<Label for="proxy-toggle" class="text-sm font-medium">Global Proxy</Label>
+										</div>
+										<Switch
+											id="proxy-toggle"
+											checked={preferences.useProxy || false}
+											onCheckedChange={toggleGlobalProxy}
+										/>
+									</div>
 
-											<div class="space-y-1">
-												{#each Object.entries(typeGroup.formats) as [resolution, video]}
-													<div
-														class="flex items-center justify-between rounded-md px-2 py-2 transition-colors hover:bg-gray-100 dark:hover:bg-gray-600/50"
-													>
-														<div class="flex items-center gap-2">
-															<Badge
-																variant="outline"
-																class="border-gray-300 text-xs font-medium text-gray-700 dark:border-gray-600 dark:text-gray-200"
-															>
-																{resolution}
-															</Badge>
+									<DropdownMenu.Separator />
 
-															{#if video.fps}
-																<span class="text-xs text-gray-500 dark:text-gray-400">
-																	{video.fps}fps
-																</span>
-															{/if}
-														</div>
-														<div class="flex items-center gap-1">
-															{#if !video.isHLS && type !== 'hls' && type !== 'dash'}
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onclick={() => puppeteerProxyUrlWithToast(video)}
-																	disabled={isVideoPuppeteerProxyingUrl(video) ||
-																		isOperationRunning}
-																	class="h-8 w-8 text-gray-500 transition-colors hover:bg-gray-200 hover:text-green-500 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-green-400"
-																	aria-label="PuppeteerProxyUrl video"
-																>
-																	{#if isVideoPuppeteerProxyingUrl(video)}
-																		<Loader2 class="h-4 w-4 animate-spin" />
-																	{:else}
-																		<Hammer class="h-4 w-4" />
-																	{/if}
-																</Button>
-															{/if}
+									<!-- Quality Options -->
+									<div class="p-2">
+										<h5 class="mb-2 text-sm font-medium text-gray-700 dark:text-gray-300">
+											Quality Options
+										</h5>
+										<div class="space-y-1">
+											{#each organized.qualities as quality, index}
+												<div class="flex items-center justify-between rounded py-2">
+													<Badge variant="outline" class="text-xs">
+														{quality.label}
+													</Badge>
+
+													<div class="flex items-center gap-1">
+														<!-- Proxy Button -->
+														{#if organized.type === 'video' || organized.type === 'audio'}
 															<Button
 																variant="ghost"
 																size="icon"
-																onclick={() =>
-																	copyToClipboard(
-																		getUrlForAction(video),
-																		`${groupKey}-${type}-${resolution}`,
-																		preferences.useProxy
-																	)}
-																class="h-8 w-8 text-gray-500 transition-colors hover:bg-gray-200 hover:text-green-500 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-green-400"
-																aria-label="Copy video URL"
-																data-copy-id="{groupKey}-{type}-{resolution}"
+																onclick={() => proxyVideo(organized, index)}
+																disabled={isVideoInProxyQueue(organized, index) ||
+																	isOperationRunning}
+																class="h-8 w-8"
+																title="Proxy this quality"
 															>
-																<Copy class="h-4 w-4" />
+																{#if isVideoInProxyQueue(organized, index)}
+																	<Loader2 class="h-4 w-4 animate-spin" />
+																{:else}
+																	<Waypoints class="h-4 w-4" />
+																{/if}
 															</Button>
-															{#if (!video.isHLS && type !== 'hls' && type !== 'dash') || preferences.showHlsDownloadButton}
-																<Button
-																	variant="ghost"
-																	size="icon"
-																	onclick={() =>
-																		downloadVideo(video, `${groupKey}-${type}-${resolution}`)}
-																	class="h-8 w-8 text-gray-500 transition-colors hover:bg-gray-200 hover:text-green-500 dark:text-gray-400 dark:hover:bg-gray-600 dark:hover:text-green-400"
-																	aria-label="Download video"
-																	data-download-id="{groupKey}-{type}-{resolution}"
-																>
-																	<Download class="h-4 w-4" />
-																</Button>
-															{/if}
-														</div>
+														{/if}
+
+														<!-- Copy Button -->
+														<Button
+															variant="ghost"
+															size="icon"
+															onclick={() =>
+																copyToClipboard(getVideoUrl(quality), `${organized.key}-${index}`)}
+															class="h-8 w-8"
+															title="Copy URL"
+															data-copy-id="{organized.key}-{index}"
+														>
+															<Copy class="h-4 w-4" />
+														</Button>
+
+														<!-- Download Button -->
+														{#if !(organized.type === 'hls' || organized.type === 'dash') || preferences.showHlsDownloadButton}
+															<Button
+																variant="ghost"
+																size="icon"
+																onclick={() => downloadVideo(organized, index)}
+																class="h-8 w-8"
+																title="Download"
+															>
+																<Download class="h-4 w-4" />
+															</Button>
+														{/if}
 													</div>
-												{/each}
-											</div>
-										</DropdownMenu.Content>
-									</DropdownMenu.Root>
-								</div>
-							</div>
-							{#if getBestQuality(typeGroup)}
-								<div class="overflow-hidden">
-									<VideoPlayer
-										src={getUrlForAction(getBestQuality(typeGroup))}
-										poster={preferences.showThumbnails ? getBestQuality(typeGroup)?.thumbnail : ''}
-										muted={preferences.muteByDefault}
-										preload={preferences.preloadMetadata ? 'metadata' : 'none'}
-										qualities={getVideoQualities(typeGroup)}
-									/>
-								</div>
-							{/if}
+												</div>
+											{/each}
+										</div>
+									</div>
+								</DropdownMenu.Content>
+							</DropdownMenu.Root>
 						</div>
-					{/each}
-				</div>
-			{/each}
+
+						<!-- Video Player -->
+						<div class="overflow-hidden rounded-lg">
+							<VideoPlayer
+								poster={preferences.showThumbnails ? organized.thumbnail || '' : ''}
+								muted={preferences.muteByDefault}
+								preload={preferences.preloadMetadata ? 'metadata' : 'none'}
+								qualities={organized.qualities}
+							/>
+						</div>
+					</div>
+				{/each}
+			</div>
 		</CardContent>
 	</Card>
 {/if}

@@ -15,7 +15,7 @@
 		<div class="w-full max-w-md">
 			<!-- Error Card -->
 			<div
-				class="rounded-lg border border-gray-200 bg-white p-8 text-center dark:border-zinc-700 dark:bg-zinc-800"
+				class="rounded-lg border border-gray-200 bg-white p-8 text-center dark:border-zinc-800 dark:bg-zinc-900"
 			>
 				<div class="mb-6 flex justify-center">
 					<div class="rounded-lg bg-red-100 p-4 dark:bg-red-900/20">

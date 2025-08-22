@@ -99,10 +99,6 @@
 			<div class="grid {preferences.compactMode ? 'gap-2' : 'gap-4'} sm:grid-cols-2">
 				<div class={preferences.compactMode ? 'space-y-2' : 'space-y-3'}>
 					<div class="flex items-start gap-2">
-						<Badge
-							variant="outline"
-							class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-xs">1</Badge
-						>
 						<div>
 							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
 								Paste Video URL
@@ -118,10 +114,6 @@
 					</div>
 
 					<div class="flex items-start gap-2">
-						<Badge
-							variant="outline"
-							class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-xs">2</Badge
-						>
 						<div>
 							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
 								Extract & Analyze
@@ -137,10 +129,6 @@
 					</div>
 
 					<div class="flex items-start gap-2">
-						<Badge
-							variant="outline"
-							class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-xs">3</Badge
-						>
 						<div>
 							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
 								Choose Quality
@@ -158,10 +146,6 @@
 
 				<div class={preferences.compactMode ? 'space-y-2' : 'space-y-3'}>
 					<div class="flex items-start gap-2">
-						<Badge
-							variant="outline"
-							class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-xs">4</Badge
-						>
 						<div>
 							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
 								Enable Acceleration
@@ -177,10 +161,6 @@
 					</div>
 
 					<div class="flex items-start gap-2">
-						<Badge
-							variant="outline"
-							class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-xs">5</Badge
-						>
 						<div>
 							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
 								Preview or Download
@@ -196,10 +176,6 @@
 					</div>
 
 					<div class="flex items-start gap-2">
-						<Badge
-							variant="outline"
-							class="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-xs">6</Badge
-						>
 						<div>
 							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
 								Enjoy Fast Streaming

@@ -1,12 +1,12 @@
 <script lang="ts">
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
-	import { Badge } from '$lib/components/ui/badge';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 
 	import Download from 'lucide-svelte/icons/download';
 	import Copy from 'lucide-svelte/icons/copy';
 	import Trash2 from 'lucide-svelte/icons/trash-2';
+	import Waypoints from 'lucide-svelte/icons/waypoints';
 
 	import VideoPlayer from '$lib/components/VideoPlayer.svelte';
 	import { videoStore, type PuppeteerProxiedUrlVideo } from '$lib/stores/app-state.svelte';
@@ -51,14 +51,18 @@
 
 {#if hasPuppeteerProxiedUrlVideos}
 	<Card class="mb-6 ">
-		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
+		<CardHeader
+			class={preferences.compactMode
+				? 'border-b py-3 [.border-b]:pb-2'
+				: ' border-b [.border-b]:pb-3'}
+		>
 			<div class="flex items-center justify-between">
 				<CardTitle
 					class="flex items-center gap-2 {preferences.compactMode
 						? 'text-xs md:text-sm'
 						: 'text-base md:text-lg'}"
 				>
-					<Download class="h-4 w-4 shrink-0 text-green-600" />
+					<Waypoints class="h-4 w-4 shrink-0 text-green-600" />
 					PuppeteerProxiedUrl
 				</CardTitle>
 				<Button
@@ -80,32 +84,22 @@
 					: 'grid-cols-1'}"
 			>
 				{#each puppeteerProxiedUrlVideos as video (video.id)}
-					<div
-						class="group relative rounded-lg border {preferences.compactMode
-							? 'p-2'
-							: 'p-4'} {preferences.highContrast
-							? 'border-2'
-							: ''} transition-all duration-200 hover:shadow-md"
-					>
+					<div class="group relative rounded-lg">
 						<div
 							class="flex items-start justify-between gap-4 {preferences.compactMode
 								? 'mb-2'
 								: 'mb-3'}"
 						>
-							<div class="flex-1 {preferences.compactMode ? 'space-y-1' : 'space-y-2'}">
-								<div class="flex flex-wrap items-center gap-2">
-									<Badge variant="outline">{video.quality || 'Unknown'}</Badge>
+							<div class="flex items-center gap-3">
+								<div>
+									<h4
+										class="font-semibold text-gray-900 dark:text-gray-100 {preferences.compactMode
+											? 'text-sm'
+											: 'text-base'}"
+									>
+										Proxied
+									</h4>
 								</div>
-								{#if video.title}
-									<p class="line-clamp-2 text-sm font-medium text-gray-900 dark:text-gray-100">
-										{video.title}
-									</p>
-								{/if}
-								{#if video.filename}
-									<p class="line-clamp-1 text-xs text-gray-600 dark:text-gray-400">
-										{video.filename}
-									</p>
-								{/if}
 							</div>
 
 							<div class="flex gap-1.5">
@@ -132,7 +126,6 @@
 
 						<div class="mt-2">
 							<VideoPlayer
-								src={video.downloadUrl}
 								poster={preferences.showThumbnails ? video.thumbnail : ''}
 								muted={preferences.muteByDefault}
 								preload={preferences.preloadMetadata ? 'metadata' : 'none'}

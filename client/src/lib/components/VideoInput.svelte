@@ -10,12 +10,12 @@
 		CardTitle
 	} from '$lib/components/ui/card';
 
-	import Video from 'lucide-svelte/icons/video';
+	import Unlink from 'lucide-svelte/icons/unlink';
 	import Link2 from 'lucide-svelte/icons/link-2';
 	import X from 'lucide-svelte/icons/x';
 	import SearchX from 'lucide-svelte/icons/search-x';
 	import Search from 'lucide-svelte/icons/search';
-	import Hammer from 'lucide-svelte/icons/hammer';
+	import Waypoints from 'lucide-svelte/icons/waypoints';
 	import Loader2 from 'lucide-svelte/icons/loader-2';
 
 	import { videoStore } from '$lib/stores/app-state.svelte';
@@ -61,8 +61,8 @@
 <Card class="mb-6">
 	<CardHeader class={preferences.compactMode ? 'pb-2' : 'pb-4'}>
 		<CardTitle class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}">
-			<Video class="h-5 w-5 text-blue-600" />
-			Video PuppeteerProxyingUrl
+			<Unlink class="h-5 w-5 text-blue-600" />
+			Video Downloader
 		</CardTitle>
 		<CardDescription
 			>Enter a video URL to extract formats or puppeteerProxyUrl directly</CardDescription
@@ -120,7 +120,7 @@
 						<Loader2 class="mr-2 h-4 w-4 animate-spin" />
 						PuppeteerProxyingUrl...
 					{:else}
-						<Hammer class="mr-2 h-4 w-4" />
+						<Waypoints class="mr-2 h-4 w-4" />
 						PuppeteerProxyUrl
 					{/if}
 				</Button>

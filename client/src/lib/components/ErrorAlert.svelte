@@ -8,7 +8,7 @@
 	let extractionError = $derived(videoStore.extractionError);
 </script>
 
-<Alert.Root variant="destructive" class="mb-6">
+<Alert.Root variant="destructive" class="mb-6 dark:bg-zinc-900">
 	<AlertCircle class="h-4 w-4" />
 	<Alert.Description class="flex items-start justify-between">
 		<div>
