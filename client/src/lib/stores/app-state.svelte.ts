@@ -4,45 +4,69 @@ import { browser } from '$app/environment';
 // ESSENTIAL TYPE DEFINITIONS
 // ============================================================================
 export interface VideoFormat {
-	id: string;
+	id?: string;
+	format_id?: string;
 	title?: string;
-	originalUrl: string;
+	originalUrl?: string;
 	downloadUrl: string;
 	filename?: string;
-	extension?: string;
+	ext?: string;
 	quality?: string;
-	resolution?: string;
+	resolution?: string | number;
 	height?: number;
 	width?: number;
 	fileSize?: string;
-	filesize?: string;
+	filesize?: number;
 	thumbnail?: string;
 	duration?: number;
-	isHLS?: boolean;
-	protocol?: 'http' | 'https' | 'hls' | 'dash';
+	protocol?: string;
 	bitrate?: number;
+	tbr?: number;
 	fps?: number;
 	codec?: string;
 	container?: string;
 	aspectRatio?: string;
 }
-
-export type MediaType = 'video' | 'audio' | 'hls' | 'dash' | 'other';
+export interface VideoMetadata {
+	id?: string;
+	title?: string;
+	duration?: number;
+	width?: number;
+	height?: number;
+	thumbnail?: string;
+	upload_date?: string;
+	webpage_url?: string;
+	aspect_ratio?: string;
+	tags?: string[];
+	category?: string;
+	language?: string;
+}
 
 export interface VideoQuality {
 	src: string;
-	label: string;
-	resolution: string;
+	downloadUrl: string;
+	originalUrl: string;
+	ext: string;
+	tbr: number;
+	filesize: number;
+	protocol: string;
+	format_id: string;
+	resolution: number;
 }
 
 export interface OrganizedVideo {
 	key: string;
-	title: string;
+	title?: string;
 	sourceUrl: string;
 	thumbnail?: string;
 	duration?: number;
-	type: MediaType;
+	type: string;
 	qualities: VideoQuality[];
+	height?: number;
+	width?: number;
+	id?: string;
+	upload_date?: string;
+	aspect_ratio?: string;
 }
 
 export interface PuppeteerProxiedUrlVideo extends VideoFormat {
@@ -60,34 +84,16 @@ export interface ExtractedVideoData {
 	duration?: number;
 	thumbnail?: string;
 	uploader?: string;
-	uploadDate?: string;
+	upload_date?: string;
 	viewCount?: number;
 	formats: VideoFormat[];
 	totalFormats: number;
 	sourceUrl: string;
 	extractedAt: number;
-	metadata?: {
-		tags?: string[];
-		category?: string;
-		language?: string;
-		subtitles?: Array<{ lang: string; url: string }>;
-	};
-}
-
-export interface VideoGroup {
-	groupKey: string;
-	title: string;
-	sourceUrl: string;
-	types: Record<
-		string,
-		{
-			type: 'video' | 'audio' | 'hls' | 'dash';
-			formats: Record<string, VideoFormat>;
-			bestQuality?: VideoFormat;
-		}
-	>;
-	thumbnail?: string;
-	duration?: number;
+	height?: number;
+	width?: number;
+	aspect_ratio?: string;
+	metadata?: VideoMetadata;
 }
 
 export interface CacheEntry<T = unknown> {
@@ -438,12 +444,10 @@ class VideoDataStore {
 		this.saveExtractedData();
 	}
 
-	// Fixed cache clearing methods
 	clearExtractedData(): void {
 		this.extractedData = null;
 		if (browser) {
 			localStorage.removeItem(this.storageKeys.extractedData);
-			// Clear related cache entries
 			const cacheKey = `extract-${this.inputUrl.trim()}`;
 			apiCache.delete(cacheKey);
 		}
@@ -573,34 +577,20 @@ export const apiCache = new SmartApiCache();
 export const uiState = new UIStateManager();
 
 // ============================================================================
-// HELPERS
+// MEDIA TYPE AND FORMAT HELPERS
 // ============================================================================
 
-function getHeight(format: any): number {
-	if (format.height && Number.isFinite(format.height)) return format.height;
-
-	if (typeof format.resolution === 'string') {
-		const heightMatch = format.resolution.match(/(\d+)p/);
-		if (heightMatch) return parseInt(heightMatch[1], 10);
-
-		const dimensionMatch = format.resolution.match(/(\d+)x(\d+)/);
-		if (dimensionMatch) return parseInt(dimensionMatch[2], 10);
-	}
-
-	return 0;
-}
-
-function getMediaType(format: any): string {
-	const ext = (format.extension || '').toString().toLowerCase();
-	const url = (format.originalUrl || format.downloadUrl || '').toLowerCase();
+function getMediaType(format: VideoFormat): string {
+	const ext = (format.ext || '').toString().toLowerCase();
+	const protocol = (format.protocol || '').toString().toLowerCase();
 
 	// HLS detection
-	if (format.isHLS || format.protocol === 'hls' || ext === 'm3u8' || url.includes('.m3u8')) {
+	if (protocol === 'm3u8_native') {
 		return 'application/x-mpegURL';
 	}
 
 	// DASH detection
-	if (format.protocol === 'dash' || ext === 'mpd') {
+	if (protocol === 'dash') {
 		return 'application/dash+xml';
 	}
 
@@ -624,99 +614,86 @@ function getMediaType(format: any): string {
 	return 'video/mp4';
 }
 
-function createGroupKey(format: any): string {
-	const url = format.originalUrl || format.downloadUrl || '';
-	if (!url) return format.id || 'unknown';
+function createVideoQuality(format: VideoFormat, metadata: ExtractedVideoData): VideoQuality | null {
+	const src = format.downloadUrl || format.originalUrl || '';
+	if (!src) return null;
 
-	try {
-		const urlObj = new URL(url);
-		const pathParts = urlObj.pathname.split('/').filter(Boolean);
-		const filename = pathParts.pop() || '';
-		const baseName = filename
-			.replace(/\.[^/.]+$/, '')
-			.replace(/(-\d{2,4}p$)|(-\d{2,4}x\d{2,4}$)/i, '');
-		return `${urlObj.hostname}/${baseName}`;
-	} catch {
-		return format.id || 'unknown';
-	}
+	const filesize =
+		metadata?.duration && format.tbr
+			? ((format.tbr * metadata.duration) / 8) * 1024
+			: format.filesize || 0;
+
+	return {
+		src,
+		downloadUrl: format.downloadUrl || '',
+		originalUrl: format.originalUrl || '',
+		ext: format.ext || '',
+		tbr: format.tbr || 0,
+		filesize,
+		protocol: format.protocol || '',
+		format_id: format.format_id || '',
+		resolution: typeof format.resolution === 'string' ? 
+			parseInt(format.resolution.replace(/\D/g, '')) || 0 : 
+			format.resolution || 0
+	};
 }
 
-function createQualityLabel(format: any): string {
-	const height = getHeight(format);
-	if (height > 0) return `${height}p`;
-	if (format.resolution) return format.resolution;
-	return format.extension?.toUpperCase() || 'Unknown';
+function createOrganizedVideo(
+	key: string, 
+	title: string | undefined, 
+	formats: VideoFormat[], 
+	metadata: ExtractedVideoData
+): OrganizedVideo {
+	const qualities = formats
+		.map((format) => createVideoQuality(format, metadata))
+		.filter((q): q is VideoQuality => q !== null)
+		.sort((a, b) => b.resolution - a.resolution);
+
+	return {
+		key,
+		title,
+		sourceUrl: formats[0]?.originalUrl || '',
+		thumbnail: metadata?.thumbnail,
+		duration: metadata?.duration,
+		type: getMediaType(formats[0]),
+		qualities,
+		height: metadata?.height,
+		width: metadata?.width,
+		id: metadata?.id,
+		upload_date: metadata?.upload_date,
+		aspect_ratio: metadata?.aspect_ratio
+	};
 }
 
 // ============================================================================
 // MAIN ORGANIZATION FUNCTION
 // ============================================================================
 
-export function organizeVideoFormats(formats: any[] = []): OrganizedVideo[] {
+export function organizeVideoFormats(formats: VideoFormat[] = [], metadata: ExtractedVideoData): OrganizedVideo[] {
 	if (!formats.length) return [];
 
-	// Group formats by source and type
-	const groups: Record<string, Record<MediaType, any[]>> = {};
+	const validFormats = formats.filter(Boolean);
+	const hasValidTitle = metadata?.title && metadata.title !== 'unknown';
 
-	for (const format of formats) {
-		if (!format) continue;
+	if (!hasValidTitle) {
+		// Create separate entry for each format
+		return validFormats.map((format, index) =>
+			createOrganizedVideo(`format_${index}-${getMediaType(format)}`, undefined, [format], metadata)
+		);
+	}
 
-		const groupKey = createGroupKey(format);
+	// Group formats by media type
+	const groupedByType = validFormats.reduce((acc, format) => {
 		const mediaType = getMediaType(format);
+		if (!acc[mediaType]) acc[mediaType] = [];
+		acc[mediaType].push(format);
+		return acc;
+	}, {} as Record<string, VideoFormat[]>);
 
-		if (!groups[groupKey]) {
-			groups[groupKey] = {} as Record<MediaType, any[]>;
-		}
-		if (!groups[groupKey][mediaType]) {
-			groups[groupKey][mediaType] = [];
-		}
-
-		groups[groupKey][mediaType].push(format);
-	}
-
-	// Convert groups to organized videos
-	const result: OrganizedVideo[] = [];
-
-	for (const [groupKey, typeGroups] of Object.entries(groups)) {
-		for (const [mediaType, formatList] of Object.entries(typeGroups) as [MediaType, any[]][]) {
-			if (formatList.length === 0) continue;
-
-			const firstFormat = formatList[0];
-
-			// Create qualities array sorted by height (highest first)
-			const qualities: VideoQuality[] = formatList
-				.map((format) => ({
-					src: format.downloadUrl || format.originalUrl || '',
-					downloadUrl: format.downloadUrl || '',
-					extension: format.extension || '',
-					fileSize: format.fileSize || null,
-					height: format.height || null,
-					id: format.id || '',
-					isHLS: format.isHLS || false,
-					originalUrl: format.originalUrl || '',
-					thumbnail: format.thumbnail || '',
-					width: format.width || null,
-					label: createQualityLabel(format),
-					resolution: format.resolution || `${getHeight(format)}p`,
-				}))
-				.filter((q) => q.src) // Only include formats with valid URLs
-				.sort((a, b) => (b.resolution || 0) - (a.resolution || 0));
-
-			const organized: OrganizedVideo = {
-				key: `${groupKey}-${mediaType}`,
-				title: firstFormat.title || groupKey.split('/').pop() || 'Unknown',
-				sourceUrl: firstFormat.originalUrl || firstFormat.downloadUrl || '',
-				thumbnail: firstFormat.thumbnail || null,
-				duration: firstFormat.duration || null,
-				type: mediaType,
-				qualities
-			};
-
-			result.push(organized);
-		}
-	}
-
-	return result;
+	// Create organized videos for each media type
+	return Object.entries(groupedByType).map(([mediaType, formatList]) =>
+		createOrganizedVideo(`${metadata.title}-${mediaType}`, metadata.title, formatList, metadata)
+	);
 }
 
 // ============================================================================

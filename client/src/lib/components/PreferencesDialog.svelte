@@ -121,7 +121,7 @@
 					description: 'Automatically clear cache data after a certain period to save storage'
 				}
 			]
-		},
+		}
 	];
 
 	function resetToDefaults() {
@@ -155,7 +155,7 @@
 
 <Dialog.Root bind:open={showPreferences}>
 	<Dialog.Content
-		class="m-2 mx-auto h-[90vh] overflow-auto p-3 sm:m-4 sm:h-full sm:max-w-2xl sm:p-6"
+		class="!z-[999999] m-2 mx-auto h-[90vh] overflow-auto p-3 sm:m-4 sm:h-full sm:max-w-2xl sm:p-6"
 	>
 		<Dialog.Header class="text-left">
 			<Dialog.Title class="text-lg font-bold sm:text-xl">Preferences</Dialog.Title>

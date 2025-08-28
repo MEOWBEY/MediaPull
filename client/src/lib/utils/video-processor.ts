@@ -13,9 +13,9 @@ interface VideoProcessorOptions {
 
 interface VideoInput {
 	originalUrl?: string;
-	quality?: string;
-	extension?: string;
-	id?: string;
+	resolution?: string;
+	ext?: string;
+	format_id?: string;
 }
 
 interface ProcessorResult<T> {
@@ -76,7 +76,6 @@ class VideoProcessor {
 			if (data.success && data.video) {
 				const extractedData: ExtractedVideoData = {
 					...data.video,
-					sourceUrl: inputUrl.trim(),
 					totalFormats: data.video.formats?.length || 0
 				};
 				videoStore.setExtractedData(extractedData);
@@ -110,10 +109,10 @@ class VideoProcessor {
 			return { success: false, error: 'Please enter a valid URL' };
 		}
 
-		const puppeteerProxyUrlKey = `${targetUrl}-${video?.quality || 'default'}`;
-		const loadingKey = `puppeteerProxyUrl-${video?.id || 'direct'}`;
+		const puppeteerProxyUrlKey = `${targetUrl}-${video?.resolution || 'default'}`;
+		const loadingKey = `puppeteerProxyUrl-${video?.format_id || 'direct'}`;
 
-		if (video && video.id) {
+		if (video && video.format_id) {
 			videoStore.puppeteerProxyUrlQueue.add(puppeteerProxyUrlKey);
 		} else {
 			videoStore.puppeteerProxyingUrl = true;
@@ -127,8 +126,8 @@ class VideoProcessor {
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					userVideoUrl: targetUrl,
-					quality: video?.quality,
-					format: video?.extension
+					resolution: video?.resolution,
+					format: video?.ext
 				}),
 				signal: options.abortController?.signal
 			});
@@ -159,7 +158,7 @@ class VideoProcessor {
 				return { success: false, error: errorMessage };
 			}
 		} finally {
-			if (video && video.id) {
+			if (video && video.format_id) {
 				videoStore.puppeteerProxyUrlQueue.delete(puppeteerProxyUrlKey);
 			} else {
 				videoStore.puppeteerProxyingUrl = false;
@@ -170,7 +169,7 @@ class VideoProcessor {
 
 	// Utility method to check if a video is currently being puppeteerProxiedUrl
 	isVideoPuppeteerProxyUrl(video: VideoInput): boolean {
-		const puppeteerProxyUrlKey = `${video.originalUrl}-${video.quality || 'default'}`;
+		const puppeteerProxyUrlKey = `${video.originalUrl}-${video.resolution || 'default'}`;
 		return videoStore.puppeteerProxyUrlQueue.has(puppeteerProxyUrlKey);
 	}
 

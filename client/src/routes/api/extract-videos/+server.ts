@@ -2,6 +2,8 @@ import { json } from '@sveltejs/kit';
 import { SERVER_BASE_URL, CLIENT_BASE_URL } from '$env/static/private';
 import { logger } from '$lib/server/logger.js';
 import type { RequestHandler } from './$types.js';
+import type { VideoFormat, VideoMetadata } from '$lib/stores/app-state.svelte';
+
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		const { url } = await request.json();
@@ -25,30 +27,33 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		const data = await response.json();
 
-		const formats = (data.video?.formats || []).map((format: any) => ({
-			id: format.format_id,
-			quality: format.format,
-			resolution: format.resolution,
-			width: format.width,
-			height: format.height,
-			fileSize: format.filesize || null,
-			extension: format.ext,
-			protocol: format.protocol,
-			originalUrl: format.url || format.manifest_url || '',
-			downloadUrl: `${CLIENT_BASE_URL}/api/proxy-video?url=${encodeURIComponent(format.url || '')}&userAgent=${encodeURIComponent(format.http_headers?.['User-Agent'] || '')}`,
-			thumbnail: format.thumbnail || '',
-			isHLS: format.protocol === 'm3u8_native'
+		const formats = (data.video?.formats || []).map((format: VideoFormat) => ({
+			format_id: format.format_id || '',
+			resolution: format.resolution || '',
+			ext: format.ext || '',
+			tbr: format.tbr || '',
+			protocol: format.protocol || '',
+			originalUrl: format.url || '',
+			downloadUrl: `${CLIENT_BASE_URL}/api/proxy-video?url=${encodeURIComponent(format.url || '')}&userAgent=${encodeURIComponent(format.http_headers?.['User-Agent'] || '')}`
 		}));
 
 		logger.success(`Found ${formats.length} video formats`);
 
+		const metadata: VideoMetadata = {
+			id: data.video?.id ?? null,
+			title: data.video?.title ?? null,
+			duration: data.video?.duration ?? null,
+			width: data.video?.width ?? null,
+			height: data.video?.height ?? null,
+			thumbnail: data.video?.thumbnail ?? null,
+			upload_date: data.video?.upload_date ?? null,
+			webpage_url: data.video?.webpage_url ?? null,
+			aspect_ratio: data.video?.aspect_ratio ?? null
+		};
+
 		return json({
 			success: true,
-			video: {
-				duration: data.video.duration,
-				formats,
-				totalFormats: formats.length
-			}
+			video: { metadata, formats }
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : 'Unknown error';
