@@ -5,13 +5,11 @@ import { env } from '$env/dynamic/private';
 import { platform } from 'os';
 import { existsSync } from 'fs';
 
-export interface VideoInfo {
-	videoSrc: string;
+export interface ScrapingVideoPageResults {
+	ovcVideoUrl: string;
 	cookies: unknown[];
 	userAgent: string;
 	requestHeaders: Record<string, string>;
-	filename?: string;
-	size?: string;
 }
 
 interface BrowserConfig {
@@ -22,14 +20,9 @@ interface BrowserConfig {
 	defaultViewport?: { width: number; height: number } | null;
 }
 
-interface VideoElement {
-	src: string;
-	videoWidth: number;
-	videoHeight: number;
-	readyState: number;
-}
-
 type PlatformType = 'win32' | 'darwin' | 'linux';
+
+const OVC_WEBSITE_URL = 'https://online-video-cutter.com/';
 
 class PuppeteerService {
 	private readonly config = {
@@ -209,14 +202,14 @@ class PuppeteerService {
 
 	private async navigateToSite(page: Page): Promise<void> {
 		logger.info(`Navigating with ${this.config.timeout / 1000}s timeout`);
-		await page.goto('https://online-video-cutter.com/', {
+		await page.goto(OVC_WEBSITE_URL, {
 			waitUntil: 'networkidle0',
 			timeout: this.config.timeout
 		});
 	}
 
-	private async handleUrlSubmission(page: Page, videoUrl: string): Promise<void> {
-		const dialogPromise = this.setupDialogHandler(page, videoUrl);
+	private async handleUrlSubmission(page: Page, url: string): Promise<void> {
+		const dialogPromise = this.setupDialogHandler(page, url);
 
 		await this.clickDropdownMenu(page);
 		await this.selectUrlOption(page);
@@ -232,14 +225,14 @@ class PuppeteerService {
 		]);
 	}
 
-	private setupDialogHandler(page: Page, videoUrl: string): Promise<void> {
+	private setupDialogHandler(page: Page, url: string): Promise<void> {
 		return new Promise<void>((resolve) => {
 			let handled = false;
 			page.on('dialog', async (dialog: Dialog) => {
 				if (!handled) {
-					await dialog.accept(videoUrl);
+					await dialog.accept(url);
 					handled = true;
-					logger.progress('puppeteerProxyingUrl', 50, { message: 'URL submitted' });
+					logger.progress('Progress: ', 50, { message: 'URL submitted' });
 					resolve();
 				}
 			});
@@ -252,7 +245,7 @@ class PuppeteerService {
 			timeout: this.config.selectorTimeout
 		});
 		await page.click('.el-dropdown__icon.el-icon-arrow-down');
-		logger.progress('puppeteerProxyingUrl', 40, { message: 'Dropdown opened' });
+		logger.progress('Progress: ', 40, { message: 'Dropdown opened' });
 	}
 
 	private async selectUrlOption(page: Page): Promise<void> {
@@ -261,26 +254,23 @@ class PuppeteerService {
 			timeout: this.config.selectorTimeout
 		});
 		await page.click('.el-dropdown-menu__item.url');
-		logger.progress('puppeteerProxyingUrl', 60, { message: 'URL option selected' });
+		logger.progress('Progress: ', 60, { message: 'URL option selected' });
 	}
 
-	private async extractVideoInfo(page: Page): Promise<VideoInfo> {
+	private async scrapVideoInfo(page: Page): Promise<ScrapingVideoPageResults> {
 		logger.info(`Waiting for video with ${this.config.timeout / 1000}s timeout`);
 
 		await page.waitForSelector('video[src^="https://"], video[src^="blob:"]', {
 			timeout: this.config.timeout
 		});
 
-		const [videoInfo, cookies, userAgent] = await Promise.all([
-			page.evaluate((): VideoElement => {
+		const [videoResults, cookies, userAgent] = await Promise.all([
+			page.evaluate(() => {
 				const video = document.querySelector('video') as HTMLVideoElement;
 				if (!video?.src) throw new Error('Video not found');
 
 				return {
-					src: video.src,
-					videoWidth: video.videoWidth || 0,
-					videoHeight: video.videoHeight || 0,
-					readyState: video.readyState
+					src: video.src
 				};
 			}),
 			page.cookies(),
@@ -288,12 +278,12 @@ class PuppeteerService {
 		]);
 
 		return {
-			videoSrc: videoInfo.src,
+			ovcVideoUrl: videoResults.src,
 			cookies,
 			userAgent,
 			requestHeaders: {
-				referer: 'https://online-video-cutter.com/',
-				origin: 'https://online-video-cutter.com',
+				referer: OVC_WEBSITE_URL,
+				origin: OVC_WEBSITE_URL,
 				'user-agent': userAgent
 			}
 		};
@@ -324,14 +314,14 @@ class PuppeteerService {
 		logger.info('Cleanup completed');
 	}
 
-	async puppeteerProxiedUrl(userVideoUrl: string): Promise<VideoInfo> {
+	async processOvcProxyVideo(url: string): Promise<ScrapingVideoPageResults> {
 		try {
-			logger.progress('puppeteerProxyingUrl', 5, { message: 'Starting Puppeteer proxying' });
+			logger.progress('Progress: ', 5, { message: 'Starting Puppeteer' });
 
-			const proxyPromise = this.puppeteerProxyUrl(userVideoUrl);
+			const proxyPromise = this.fetchOvcProxy(url);
 			const timeoutPromise = new Promise<never>((_, reject) =>
 				setTimeout(
-					() => reject(new Error(`Puppeteer proxying timeout after ${this.config.timeout / 1000} seconds`)),
+					() => reject(new Error(`Puppeteer timeout after ${this.config.timeout / 1000} seconds`)),
 					this.config.timeout
 				)
 			);
@@ -343,28 +333,28 @@ class PuppeteerService {
 			return result;
 		} catch (error) {
 			const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-			logger.error(`Puppeteer proxying failed:`, errorMessage);
+			logger.error(`Puppeteer failed:`, errorMessage);
 			throw new Error(`Failed to proxy video URL: ${errorMessage}`);
 		} finally {
 			await this.cleanup(null, null);
 		}
 	}
 
-	private async puppeteerProxyUrl(userVideoUrl: string): Promise<VideoInfo> {
+	private async fetchOvcProxy(url: string): Promise<ScrapingVideoPageResults> {
 		const browser = await this.launchBrowser();
 		const page = await this.setupPage(browser);
 
-		logger.progress('puppeteerProxyingUrl', 10, { message: 'Navigating to site' });
+		logger.progress('Progress: ', 10, { message: 'Navigating to site' });
 		await this.navigateToSite(page);
 
-		logger.progress('puppeteerProxyingUrl', 25, { message: 'Site loaded' });
-		await this.handleUrlSubmission(page, userVideoUrl);
+		logger.progress('Progress: ', 25, { message: 'Site loaded' });
+		await this.handleUrlSubmission(page, url);
 
-		logger.progress('puppeteerProxyingUrl', 70, { message: 'Extracting proxied video URL' });
-		const videoInfo = await this.extractVideoInfo(page);
+		logger.progress('Progress: ', 70, { message: 'Scraping video URL' });
+		const videoResults = await this.scrapVideoInfo(page);
 
-		logger.progress('puppeteerProxyingUrl', 100, { message: 'Puppeteer proxying completed' });
-		return videoInfo;
+		logger.progress('Progress: ', 100, { message: 'Puppeteer completed' });
+		return videoResults;
 	}
 }
 

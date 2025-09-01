@@ -4,23 +4,21 @@
 	import FileText from 'lucide-svelte/icons/file-text';
 	import Zap from 'lucide-svelte/icons/zap';
 	import Keyboard from 'lucide-svelte/icons/keyboard';
-	import { videoStore } from '$lib/stores/app-state.svelte';
-
-	let preferences = $derived(videoStore.preferences);
+	let { preferences } = $props();
 </script>
 
 <div class="space-y-6">
 	<!-- About This Tool Card -->
 	<Card class=" ">
-		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
+		<CardHeader class={preferences.enableCompact ? 'py-3' : ''}>
 			<CardTitle
-				class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}"
+				class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
 			>
 				<FileText class="h-5 w-5 text-gray-600" />
 				About This Tool
 			</CardTitle>
 			<p
-				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.compactMode
+				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.enableCompact
 					? 'text-xs'
 					: 'text-sm'}"
 			>
@@ -29,15 +27,15 @@
 		</CardHeader>
 		<CardContent>
 			<!-- Feature Overview -->
-			<div class="grid {preferences.compactMode ? 'gap-3' : 'gap-4'} sm:grid-cols-2">
-				<div class={preferences.compactMode ? 'space-y-2' : 'space-y-3'}>
+			<div class="grid {preferences.enableCompact ? 'gap-3' : 'gap-4'} sm:grid-cols-2">
+				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Video Extraction
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -53,14 +51,14 @@
 					</div>
 				</div>
 
-				<div class={preferences.compactMode ? 'space-y-2' : 'space-y-3'}>
+				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Video Acceleration
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -80,15 +78,15 @@
 
 	<!-- How It Works Card -->
 	<Card class=" ">
-		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
+		<CardHeader class={preferences.enableCompact ? 'py-3' : ''}>
 			<CardTitle
-				class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}"
+				class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
 			>
 				<Zap class="h-5 w-5 text-gray-600" />
 				How It Works
 			</CardTitle>
 			<p
-				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.compactMode
+				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.enableCompact
 					? 'text-xs'
 					: 'text-sm'}"
 			>
@@ -96,15 +94,15 @@
 			</p>
 		</CardHeader>
 		<CardContent>
-			<div class="grid {preferences.compactMode ? 'gap-2' : 'gap-4'} sm:grid-cols-2">
-				<div class={preferences.compactMode ? 'space-y-2' : 'space-y-3'}>
+			<div class="grid {preferences.enableCompact ? 'gap-2' : 'gap-4'} sm:grid-cols-2">
+				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Paste Video URL
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -115,11 +113,11 @@
 
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Extract & Analyze
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -130,11 +128,11 @@
 
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Choose Quality
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -144,14 +142,14 @@
 					</div>
 				</div>
 
-				<div class={preferences.compactMode ? 'space-y-2' : 'space-y-3'}>
+				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Enable Acceleration
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -162,11 +160,11 @@
 
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Preview or Download
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -177,11 +175,11 @@
 
 					<div class="flex items-start gap-2">
 						<div>
-							<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 								Enjoy Fast Streaming
 							</h4>
 							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 									? 'text-xs'
 									: 'text-sm'}"
 							>
@@ -196,30 +194,32 @@
 
 	<!-- Key Features Card -->
 	<Card class=" ">
-		<CardHeader class={preferences.compactMode ? 'py-3' : ''}>
+		<CardHeader class={preferences.enableCompact ? 'py-3' : ''}>
 			<CardTitle
-				class="flex items-center gap-2 {preferences.compactMode ? 'text-base' : 'text-lg'}"
+				class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
 			>
 				<Keyboard class="h-5 w-5 text-gray-600" />
 				Key Features
 			</CardTitle>
 			<p
-				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.compactMode
+				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.enableCompact
 					? 'text-xs'
 					: 'text-sm'}"
 			>
-				Advanced capabilities for the best video puppeteerProxyingUrl experience.
+				Advanced capabilities for the best video isOVCProxyRunning experience.
 			</p>
 		</CardHeader>
 		<CardContent>
-			<div class="grid {preferences.compactMode ? 'gap-2' : 'gap-4'} sm:grid-cols-2 lg:grid-cols-3">
+			<div
+				class="grid {preferences.enableCompact ? 'gap-2' : 'gap-4'} sm:grid-cols-2 lg:grid-cols-2"
+			>
 				<div class="flex items-start gap-2">
 					<div>
-						<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+						<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 							Built-in Player
 						</h4>
 						<p
-							class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+							class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 								? 'text-xs'
 								: 'text-sm'}"
 						>
@@ -230,34 +230,15 @@
 
 				<div class="flex items-start gap-2">
 					<div>
-						<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
+						<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
 							Privacy Protection
 						</h4>
 						<p
-							class="text-gray-600 dark:text-gray-400 {preferences.compactMode
+							class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
 								? 'text-xs'
 								: 'text-sm'}"
 						>
 							Your browsing remains private. We don't store URLs or content, ensuring anonymity.
-						</p>
-					</div>
-				</div>
-
-				<div class="flex items-start gap-2">
-					<div>
-						<h4 class="mb-1 font-medium {preferences.compactMode ? 'text-sm' : ''}">
-							Keyboard Shortcuts
-						</h4>
-						<p
-							class="text-gray-600 dark:text-gray-400 {preferences.compactMode
-								? 'text-xs'
-								: 'text-sm'}"
-						>
-							{#if preferences.keyboardShortcuts}
-								Use Ctrl+Enter to extract, Escape to cancel operations.
-							{:else}
-								Keyboard shortcuts are disabled in preferences.
-							{/if}
 						</p>
 					</div>
 				</div>

@@ -4,13 +4,10 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { Label } from '$lib/components/ui/label';
 	import * as Dialog from '$lib/components/ui/dialog';
-
-	// Icons
 	import Monitor from 'lucide-svelte/icons/monitor';
 	import Volume2 from 'lucide-svelte/icons/volume-2';
 	import Palette from 'lucide-svelte/icons/palette';
 	import HardDrive from 'lucide-svelte/icons/hard-drive';
-	import Keyboard from 'lucide-svelte/icons/keyboard';
 	import Trash2 from 'lucide-svelte/icons/trash-2';
 	import AlertCircle from 'lucide-svelte/icons/alert-circle';
 	import LayoutList from 'lucide-svelte/icons/layout-list';
@@ -19,16 +16,9 @@
 	import Globe from 'lucide-svelte/icons/globe';
 	import Info from 'lucide-svelte/icons/info';
 
-	import { videoStore, apiCache } from '$lib/stores/app-state.svelte';
+	import { appStore } from '$lib/stores/app-state.svelte';
 
-	interface Props {
-		showPreferences: boolean;
-	}
-
-	let { showPreferences = $bindable() }: Props = $props();
-
-	let preferences = $derived(videoStore.preferences);
-	let puppeteerProxiedUrlVideos = $derived(videoStore.getSortedPuppeteerProxiedUrlVideos());
+	let { preferences, isPreferencesDialogOpen = $bindable() } = $props();
 
 	const sections = [
 		{
@@ -39,25 +29,25 @@
 				{
 					id: 'show-thumbnails',
 					label: 'Show thumbnails',
-					key: 'showThumbnails',
+					key: 'showVideoThumbnail',
 					description: 'Display thumbnail images for videos in the list'
 				},
 				{
 					id: 'animations-enabled',
 					label: 'Enable animations',
-					key: 'animationsEnabled',
+					key: 'enableAnimations',
 					description: 'Enable smooth animations and transitions throughout the interface'
 				},
 				{
 					id: 'compact-mode',
 					label: 'Compact mode',
-					key: 'compactMode',
+					key: 'enableCompact',
 					description: 'Use a more compact layout to fit more content on screen'
 				},
 				{
 					id: 'high-contrast',
 					label: 'High contrast',
-					key: 'highContrast',
+					key: 'enableHighContrast',
 					description: 'Use high contrast colors for better accessibility'
 				}
 			]
@@ -70,13 +60,13 @@
 				{
 					id: 'mute-by-default',
 					label: 'Mute by default',
-					key: 'muteByDefault',
+					key: 'enableVideoMute',
 					description: 'Start videos with audio muted'
 				},
 				{
 					id: 'preload-metadata',
 					label: 'Preload metadata',
-					key: 'preloadMetadata',
+					key: 'enableVideoPreloadMetadata',
 					defaultTrue: true,
 					description: 'Load video metadata in advance for faster playback initialization'
 				}
@@ -90,77 +80,52 @@
 				{
 					id: 'use-proxy',
 					label: 'proxy mode',
-					key: 'useProxy',
+					key: 'enableProxyForVideoExtract',
 					defaultTrue: true,
 					description: 'Use proxy mode to access video URLs when direct access is blocked'
 				},
 				{
 					id: 'show-hls-download-button',
 					label: 'Show HLS download',
-					key: 'showHlsDownloadButton',
+					key: 'showHlsTypeDownloadButton',
 					description: 'Display download button for HLS (HTTP Live Streaming) videos'
-				}
-			]
-		},
-		{
-			title: 'Cache',
-			icon: HardDrive,
-			color: 'text-red-600',
-			settings: [
-				{
-					id: 'cache-enabled',
-					label: 'Enable caching',
-					key: 'cacheEnabled',
-					defaultTrue: true,
-					description: 'Store frequently accessed data to improve performance and reduce API calls'
-				},
-				{
-					id: 'auto-clear-cache',
-					label: 'Auto clear cache',
-					key: 'autoClearCache',
-					description: 'Automatically clear cache data after a certain period to save storage'
 				}
 			]
 		}
 	];
 
 	function resetToDefaults() {
-		videoStore.updatePreferences({
+		appStore.updatePreferences({
 			theme: 'system',
-			viewMode: 'grid',
-			sortBy: 'quality',
-			sortOrder: 'desc',
-			showThumbnails: true,
-			animationsEnabled: true,
-			compactMode: false,
-			muteByDefault: true,
-			preloadMetadata: false,
-			useProxy: true,
-			showHlsDownloadButton: false,
-			cacheEnabled: true,
-			autoClearCache: false,
-			highContrast: false,
-			keyboardShortcuts: true
+			layoutList: 'grid',
+			videoSortField: 'quality',
+			videoSortOrder: 'desc',
+			showVideoThumbnail: true,
+			enableAnimations: true,
+			enableCompact: false,
+			enableVideoMute: true,
+			enableVideoPreloadMetadata: false,
+			enableProxyForVideoExtract: true,
+			showHlsTypeDownloadButton: false,
+			enableHighContrast: false
 		});
 		toast.success('Preferences reset to defaults');
 	}
 
 	function clearAllData() {
-		videoStore.reset();
-		apiCache.clear();
-		if (typeof localStorage !== 'undefined') localStorage.clear();
+		appStore.reset();
 		toast.success('All data cleared');
 	}
 </script>
 
-<Dialog.Root bind:open={showPreferences}>
+<Dialog.Root bind:open={isPreferencesDialogOpen}>
 	<Dialog.Content
 		class="!z-[999999] m-2 mx-auto h-[90vh] overflow-auto p-3 sm:m-4 sm:h-full sm:max-w-2xl sm:p-6"
 	>
 		<Dialog.Header class="text-left">
 			<Dialog.Title class="text-lg font-bold sm:text-xl">Preferences</Dialog.Title>
 			<Dialog.Description class="text-sm text-zinc-600 dark:text-zinc-400">
-				Customize your video puppeteerProxyingUrl experience
+				Customize your video isOVCProxyRunning experience
 			</Dialog.Description>
 		</Dialog.Header>
 
@@ -201,7 +166,7 @@
 											? (preferences as any)[setting.key] !== false
 											: (preferences as any)[setting.key] || false}
 										onCheckedChange={(checked) =>
-											videoStore.updatePreferences({ [setting.key]: checked })}
+											appStore.updatePreferences({ [setting.key]: checked })}
 									/>
 								</div>
 							{/each}
@@ -221,18 +186,18 @@
 				<div class="p-3 sm:p-4">
 					<div class="flex flex-col gap-2 sm:flex-row">
 						<Button
-							variant={preferences.viewMode === 'grid' ? 'default' : 'outline'}
+							variant={preferences.layoutList === 'grid' ? 'default' : 'outline'}
 							size="sm"
-							onclick={() => videoStore.updatePreferences({ viewMode: 'grid' })}
+							onclick={() => appStore.updatePreferences({ layoutList: 'grid' })}
 							class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
 						>
 							<Grid3X3 class="mr-2 h-4 w-4" />
 							Grid View
 						</Button>
 						<Button
-							variant={preferences.viewMode === 'list' ? 'default' : 'outline'}
+							variant={preferences.layoutList === 'list' ? 'default' : 'outline'}
 							size="sm"
-							onclick={() => videoStore.updatePreferences({ viewMode: 'list' })}
+							onclick={() => appStore.updatePreferences({ layoutList: 'list' })}
 							class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
 						>
 							<LayoutList class="mr-2 h-4 w-4" />
@@ -257,11 +222,11 @@
 							<div class="flex flex-col gap-2 sm:flex-row">
 								{#each ['name', 'size', 'quality'] as const as sortOption}
 									<Button
-										variant={preferences.sortBy === sortOption ? 'default' : 'outline'}
+										variant={preferences.videoSortField === sortOption ? 'default' : 'outline'}
 										size="sm"
 										onclick={() =>
-											videoStore.updatePreferences({
-												sortBy: sortOption
+											appStore.updatePreferences({
+												videoSortField: sortOption
 											})}
 										class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
 									>
@@ -276,17 +241,17 @@
 							<Label class="text-sm font-medium">Sort order</Label>
 							<div class="flex flex-col gap-2 sm:flex-row">
 								<Button
-									variant={preferences.sortOrder === 'asc' ? 'default' : 'outline'}
+									variant={preferences.videoSortOrder === 'asc' ? 'default' : 'outline'}
 									size="sm"
-									onclick={() => videoStore.updatePreferences({ sortOrder: 'asc' })}
+									onclick={() => appStore.updatePreferences({ videoSortOrder: 'asc' })}
 									class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
 								>
 									Ascending
 								</Button>
 								<Button
-									variant={preferences.sortOrder === 'desc' ? 'default' : 'outline'}
+									variant={preferences.videoSortOrder === 'desc' ? 'default' : 'outline'}
 									size="sm"
-									onclick={() => videoStore.updatePreferences({ sortOrder: 'desc' })}
+									onclick={() => appStore.updatePreferences({ videoSortOrder: 'desc' })}
 									class="flex-1 cursor-pointer justify-center p-1  px-2 sm:flex-none sm:justify-start"
 								>
 									Descending
@@ -313,7 +278,7 @@
 								<Button
 									variant={preferences.theme === theme ? 'default' : 'outline'}
 									size="sm"
-									onclick={() => videoStore.updatePreferences({ theme })}
+									onclick={() => appStore.updatePreferences({ theme })}
 									class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
 								>
 									{theme.charAt(0).toUpperCase() + theme.slice(1)}
@@ -324,96 +289,23 @@
 				</div>
 			</section>
 
-			<!-- Keyboard Shortcuts Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
-					<h4 class="flex items-center gap-2 text-base font-semibold">
-						<Keyboard class="h-4 w-4 text-indigo-600" />
-						Controls & Shortcuts
-					</h4>
-				</div>
-				<div class="p-3 sm:p-4">
-					<div class="space-y-4">
-						<div
-							class="flex items-start justify-between rounded-lg bg-zinc-50 p-3 transition-colors hover:bg-zinc-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800"
-						>
-							<div class="flex-1 pr-3">
-								<div class="flex items-center gap-2">
-									<Label for="keyboard-shortcuts" class="cursor-pointer text-sm font-medium">
-										Enable keyboard shortcuts
-									</Label>
-									<button
-										type="button"
-										title="Enable or disable keyboard shortcuts for faster navigation and control"
-										class="text-zinc-400 transition-colors hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-									>
-										<Info class="h-3 w-3" />
-									</button>
-								</div>
-								<p class="text-zinc-500dark:text-zinc-400 mt-1 text-xs">
-									Enable or disable keyboard shortcuts for faster navigation and control
-								</p>
-							</div>
-							<Switch
-								id="keyboard-shortcuts"
-								checked={preferences.keyboardShortcuts !== false}
-								onCheckedChange={(checked) =>
-									videoStore.updatePreferences({ keyboardShortcuts: checked })}
-							/>
-						</div>
-
-						{#if preferences.keyboardShortcuts}
-							<div class="rounded-lg border p-4 text-sm dark:border-zinc-600">
-								<h5 class="mb-2 font-medium">Available Shortcuts:</h5>
-								<div class="grid grid-cols-1 gap-1 sm:grid-cols-2">
-									<div class="flex items-center justify-between py-1 sm:block">
-										<span class="text-xs sm:text-sm">Extract videos</span>
-										<kbd class="ml-2 rounded bg-zinc-200 px-2 py-1 text-xs sm:ml-0 dark:bg-zinc-700"
-											>Ctrl+Enter</kbd
-										>
-									</div>
-									<div class="flex items-center justify-between py-1 sm:block">
-										<span class="text-xs sm:text-sm">Cancel operation</span>
-										<kbd class="ml-2 rounded bg-zinc-200 px-2 py-1 text-xs sm:ml-0 dark:bg-zinc-700"
-											>Escape</kbd
-										>
-									</div>
-									<div class="flex items-center justify-between py-1 sm:block">
-										<span class="text-xs sm:text-sm">Focus search</span>
-										<kbd class="ml-2 rounded bg-zinc-200 px-2 py-1 text-xs sm:ml-0 dark:bg-zinc-700"
-											>Ctrl+K</kbd
-										>
-									</div>
-									<div class="flex items-center justify-between py-1 sm:block">
-										<span class="text-xs sm:text-sm">Play/pause video</span>
-										<kbd class="ml-2 rounded bg-zinc-200 px-2 py-1 text-xs sm:ml-0 dark:bg-zinc-700"
-											>Space</kbd
-										>
-									</div>
-								</div>
-							</div>
-						{/if}
-					</div>
-				</div>
-			</section>
-
-			<!-- Cache & Storage Section -->
+			<!-- Cache & Store Section -->
 			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<HardDrive class="h-4 w-4 text-red-600" />
-						Cache & Storage
+						Cache & Store
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">
 					<div class="space-y-4">
 						<!-- Stats Cards -->
-						<div class="grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
 							<div
 								class="rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-3 text-center sm:p-4 dark:border-blue-800 dark:from-blue-900/20 dark:to-blue-800/20"
 							>
 								<div class="text-xl font-bold text-blue-700 sm:text-3xl dark:text-blue-300">
-									{apiCache.getStats().size}
+									{appStore.getStats().size}
 								</div>
 								<div class="text-xs font-medium text-blue-600 sm:text-sm dark:text-blue-400">
 									Cached Items
@@ -423,20 +315,10 @@
 								class="rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-green-100 p-3 text-center sm:p-4 dark:border-green-800 dark:from-green-900/20 dark:to-green-800/20"
 							>
 								<div class="text-xl font-bold text-green-700 sm:text-3xl dark:text-green-300">
-									{Math.round(apiCache.getStats().hitRate)}%
+									{Math.round(appStore.getStats().hitRate)}%
 								</div>
 								<div class="text-xs font-medium text-green-600 sm:text-sm dark:text-green-400">
 									Hit Rate
-								</div>
-							</div>
-							<div
-								class="rounded-lg border border-purple-200 bg-gradient-to-br from-purple-50 to-purple-100 p-3 text-center sm:p-4 dark:border-purple-800 dark:from-purple-900/20 dark:to-purple-800/20"
-							>
-								<div class="text-xl font-bold text-purple-700 sm:text-3xl dark:text-purple-300">
-									{puppeteerProxiedUrlVideos.length}
-								</div>
-								<div class="text-xs font-medium text-purple-600 sm:text-sm dark:text-purple-400">
-									PuppeteerProxiedUrl
 								</div>
 							</div>
 						</div>
@@ -445,7 +327,7 @@
 							variant="outline"
 							size="sm"
 							onclick={() => {
-								apiCache.clear();
+								appStore.reset();
 								toast.success('Cache cleared successfully');
 							}}
 							class="w-full cursor-pointer p-1 px-2 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-700 dark:hover:bg-red-900/10 dark:hover:text-red-400"

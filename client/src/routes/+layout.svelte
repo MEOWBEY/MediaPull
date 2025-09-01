@@ -5,7 +5,9 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import { ToggleMode } from '$lib/components/dark-mode/index';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
+
 	let { children } = $props();
+	const MY_GITHUB = 'https://github.com/meowbey';
 </script>
 
 <Toaster />
@@ -23,7 +25,7 @@
 							class="bg-gradient-to-r from-zinc-900 to-zinc-700 bg-clip-text text-lg font-semibold tracking-tight text-transparent dark:from-zinc-100 dark:to-zinc-300"
 							id="site-title"
 						>
-							DirectLinker
+							Video Extractor
 						</h1>
 					</div>
 				</div>
@@ -34,7 +36,7 @@
 					<Button
 						variant="ghost"
 						size="sm"
-						href="https://github.com/meowbey"
+						href={MY_GITHUB}
 						target="_blank"
 						rel="noopener noreferrer"
 						class="flex hover:bg-zinc-100  dark:hover:bg-zinc-800"
@@ -60,10 +62,10 @@
 		<div
 			class="text-muted-foreground container mx-auto flex h-14 items-center justify-between px-4 text-[0.75rem] sm:text-sm"
 		>
-			<div class="flex items-center gap-1 flex-wrap">
+			<div class="flex flex-wrap items-center gap-1">
 				<span>Made by</span>
 				<a
-					href="https://github.com/meowbey"
+					href={MY_GITHUB}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="hover:text-foreground font-medium underline underline-offset-4"
@@ -73,7 +75,7 @@
 				<span>for educational purposes only.</span>
 			</div>
 			<div class="hidden text-right md:block">
-				<span class="font-medium">&copy; {new Date().getFullYear()} DirectLinker</span>
+				<span class="font-medium">&copy; {new Date().getFullYear()} Video Extractor</span>
 			</div>
 		</div>
 	</footer>

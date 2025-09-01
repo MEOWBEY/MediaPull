@@ -1,179 +1,202 @@
 <script lang="ts">
-	import { onMount, onDestroy } from 'svelte';
 	import { toast } from 'svelte-sonner';
-
-	// Components
-	import StatusBar from '$lib/components/StatusBar.svelte';
-	import VideoInput from '$lib/components/VideoInput.svelte';
+	import OperationStatusBar from '$lib/components/OperationStatusBar.svelte';
+	import InputUrl from '$lib/components/InputUrl.svelte';
 	import ErrorAlert from '$lib/components/ErrorAlert.svelte';
-	import PuppeteerProxiedUrlVideos from '$lib/components/PuppeteerProxiedVideos.svelte';
-	import ExtractedVideos from '$lib/components/ExtractedVideos.svelte';
+	import OvcProxyList from '$lib/components/OvcProxyList.svelte';
+	import VideoExtractList from '$lib/components/VideoExtractList.svelte';
 	import Instructions from '$lib/components/Instructions.svelte';
 	import PreferencesDialog from '$lib/components/PreferencesDialog.svelte';
 
-	// Store and utilities
-	import { videoStore, apiCache } from '$lib/stores/app-state.svelte';
-	import { keyboardShortcuts } from '$lib/utils/keyboard';
-	import { themeManager } from '$lib/utils/theme';
-	import { videoProcessor } from '$lib/utils/video-processor';
+	import { appStore } from '$lib/stores/app-state.svelte';
 
-	let showPreferences = $state(false);
-	let operationTimer = $state(0);
-	let timerInterval: NodeJS.Timeout | null = null;
-	let abortController: AbortController | null = null;
+	let isPreferencesDialogOpen = $state(false);
+	let elapsedOperationSeconds = $state(0);
+	let operationTimerInterval: NodeJS.Timeout | null = null;
 
-	let isOperationRunning = $derived(videoStore.puppeteerProxyingUrl || videoStore.extracting);
-	let preferences = $derived(videoStore.preferences);
-	let hasErrors = $derived(
-		Boolean(videoStore.puppeteerProxyUrlError || videoStore.extractionError)
-	);
+	// abort controller for operations
+	let activeOperationController: AbortController | null = null;
 
-	// Apply theme effects
-	$effect(() => {
-		themeManager.applyTheme(preferences);
-	});
+	let isVideoExtractRunning = $derived(appStore.isVideoExtractRunning);
+	let isOVCProxyRunning = $derived(appStore.isOVCProxyRunning);
 
-	// Timer management
-	$effect(() => {
-		if (isOperationRunning && !timerInterval) startTimer();
-		else if (!isOperationRunning && timerInterval) stopTimer();
-	});
+	let preferences = $derived(appStore.preferences);
+	let ovcProxyError = $derived(appStore.ovcProxyError);
+	let videoExtractError = $derived(appStore.videoExtractError);
+	function startOperation(): void {
+		activeOperationController = new AbortController();
 
-	// Lifecycle
-	onMount(() => {
-		if (isOperationRunning) startTimer();
-		keyboardShortcuts.setup(preferences, {
-			onExtract: handleExtractVideos,
-			onCancel: handleCancelOperation,
-			onTogglePreferences: () => (showPreferences = !showPreferences)
-		});
-		autoCleanCache();
-
-		// Setup auto-clean interval
-		const interval = setInterval(autoCleanCache, 5 * 60 * 1000);
-		return () => clearInterval(interval);
-	});
-
-	onDestroy(() => {
-		stopTimer();
-		if (abortController) abortController.abort();
-		keyboardShortcuts.cleanup();
-	});
-
-	// Timer functions
-	function startTimer() {
-		operationTimer = 0;
-		timerInterval = setInterval(() => operationTimer++, 1000);
+		// start timer
+		elapsedOperationSeconds = 0;
+		operationTimerInterval = setInterval(() => elapsedOperationSeconds++, 1000);
 	}
 
-	function stopTimer() {
-		if (timerInterval) {
-			clearInterval(timerInterval);
-			timerInterval = null;
+	function stopOperation(): void {
+		if (activeOperationController) {
+			activeOperationController.abort();
+			activeOperationController = null;
+		}
+
+		// stop timer
+		if (operationTimerInterval) {
+			clearInterval(operationTimerInterval);
+			operationTimerInterval = null;
 		}
 	}
 
-	// Main operations
-	async function handleExtractVideos() {
-		const inputUrl = videoStore.inputUrl;
-		if (!inputUrl.trim()) {
+	function validateUrl(url: string): boolean {
+		if (!url?.trim()) {
 			toast.error('Please enter a valid URL');
-			return;
+			return false;
 		}
 
-		const result = await videoProcessor.extractVideos(inputUrl, {
-			useCache: preferences.cacheEnabled,
-			abortController: (abortController = new AbortController())
-		});
-
-		if (result.success) {
-			toast.success(`Extracted ${result?.data?.totalFormats} formats`);
-		} else if (result.error && !result.cancelled) {
-			toast.error(`Error: ${result.error}`);
+		try {
+			new URL(url);
+			return true;
+		} catch {
+			toast.error('Invalid URL format');
+			return false;
 		}
-
-		abortController = null;
 	}
 
-	async function handlePuppeteerProxyUrlVideo(video?: any) {
-		const result = await videoProcessor.puppeteerProxyUrl(
-			video || { originalUrl: videoStore.inputUrl },
-			{
-				abortController: video ? null : (abortController = new AbortController())
-			}
-		);
+	async function runVideoExtractFromServer(url) {
+		const inputUrl = url?.trim();
+		if (!validateUrl(inputUrl)) return;
 
-		if (result.success) {
-			toast.success(`PuppeteerProxiedUrl is done`, {
-				action: {
-					label: 'Download',
-					onClick: () => window.open(result?.data?.downloadUrl, '_blank')
-				}
+		startOperation();
+		appStore.isVideoExtractRunning = true;
+		appStore.videoExtractError = null;
+
+		try {
+			const response = await fetch('/api/extract-videos', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ url: inputUrl }),
+				signal: activeOperationController?.signal
 			});
-		} else if (result.error && !result.cancelled) {
-			toast.error(`Error: ${result.error}`);
-		}
 
-		if (!video) abortController = null;
-	}
+			const data = await response.json();
 
-	function handleCancelOperation() {
-		if (abortController) {
-			abortController.abort();
-			toast.info('Operation cancelled');
-		}
-		videoStore.puppeteerProxyingUrl = false;
-		videoStore.extracting = false;
-		videoStore.puppeteerProxyUrlQueue.clear();
-	}
-
-	function autoCleanCache() {
-		if (preferences.autoClearCache) {
-			const stats = apiCache.getStats();
-			if (stats.size > 50) {
-				apiCache.clear();
-				toast.info('Auto-cleared cache (50+ items)');
+			if (!data.success) {
+				throw new Error(data.error || 'Operation failed');
 			}
+
+			if (activeOperationController?.signal.aborted) return;
+
+			appStore.addVideoExtractResultsToStore(data.video);
+
+			toast.success(`Extracted ${data.video.formats?.length} formats`);
+		} catch (error: unknown) {
+			if (error instanceof Error && error.name === 'AbortError') return;
+
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+			appStore.videoExtractError = errorMessage;
+			toast.error(`Error: ${errorMessage}`);
+		} finally {
+			appStore.isVideoExtractRunning = false;
+			stopOperation();
 		}
 	}
+
+	async function runOvcProxyFromServer(url) {
+		const inputUrl = url?.trim();
+		if (!validateUrl(inputUrl)) return;
+
+		startOperation();
+		appStore.isOVCProxyRunning = true;
+		appStore.videoExtractError = null;
+
+		try {
+			const response = await fetch('/api/ovc-proxy-video', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ url: inputUrl }),
+				signal: activeOperationController?.signal
+			});
+
+			const data = await response.json();
+
+			if (!data.success) {
+				throw new Error(data.error || 'Operation failed');
+			}
+
+			if (activeOperationController?.signal.aborted) return;
+
+			appStore.addOvcProxyResultsToStore(data.video);
+			toast.success('Ovc proxy completed');
+		} catch (error: unknown) {
+			if (error instanceof Error && error.name === 'AbortError') return;
+
+			const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+			appStore.videoExtractError = errorMessage;
+			toast.error(`Error: ${errorMessage}`);
+		} finally {
+			appStore.isOVCProxyRunning = false;
+			stopOperation();
+		}
+	}
+
+	function cancelActiveOperation(): void {
+		stopOperation();
+		appStore.isOVCProxyRunning = false;
+		appStore.isVideoExtractRunning = false;
+		toast.info('Operation cancelled');
+	}
+
+	$effect(() => {
+		if (typeof document === 'undefined' || !preferences) return;
+
+		const root = document.documentElement;
+
+		// Apply all preferences
+		root.classList.toggle('dark', preferences.theme === 'dark');
+		root.classList.toggle('high-contrast', preferences.enableHighContrast);
+		root.classList.toggle('compact-mode', preferences.enableCompact);
+		root.classList.toggle('no-animations', !preferences.enableAnimations);
+	});
 </script>
 
 <svelte:head>
-	<title>DirectLinker - Video PuppeteerProxyingUrl</title>
-	<meta name="description" content="Extract and puppeteerProxyUrl videos from URLs efficiently" />
+	<title>Video Extractor - Video Processing</title>
+	<meta name="description" content="Extract and process videos from URLs efficiently" />
 </svelte:head>
 
-<div class=" {preferences.compactMode ? 'compact-mode' : ''}">
+<div class={preferences.enableCompact ? 'compact-mode' : ''}>
 	<div class="container mx-auto px-4 py-6">
-		<!-- Status Bar -->
-		<StatusBar {operationTimer} {isOperationRunning} bind:showPreferences />
-
-		<!-- Main Input -->
-		<VideoInput
-			{handleExtractVideos}
-			{handlePuppeteerProxyUrlVideo}
-			{handleCancelOperation}
-			{isOperationRunning}
+		<OperationStatusBar
+			{elapsedOperationSeconds}
+			{isVideoExtractRunning}
+			{isOVCProxyRunning}
+			{videoExtractError}
+			{ovcProxyError}
+			bind:isPreferencesDialogOpen
 		/>
 
-		<!-- Errors -->
-		{#if hasErrors}
-			<ErrorAlert />
+		<InputUrl
+			{runVideoExtractFromServer}
+			{runOvcProxyFromServer}
+			{cancelActiveOperation}
+			{isVideoExtractRunning}
+			{isOVCProxyRunning}
+			{preferences}
+		/>
+
+		{#if videoExtractError || ovcProxyError}
+			<ErrorAlert {videoExtractError} {ovcProxyError} />
 		{/if}
 
-		<!-- PuppeteerProxiedUrl Videos -->
-		<PuppeteerProxiedUrlVideos />
-
-		<!-- Extracted Videos -->
-		<ExtractedVideos {handlePuppeteerProxyUrlVideo} />
-
-		<!-- Instructions -->
-		<Instructions />
+		<OvcProxyList {preferences} />
+		<VideoExtractList
+			{isVideoExtractRunning}
+			{isOVCProxyRunning}
+			{preferences}
+			{runOvcProxyFromServer}
+		/>
+		<Instructions {preferences} />
 	</div>
 </div>
 
-<!-- Preferences Dialog -->
-<PreferencesDialog bind:showPreferences />
+<PreferencesDialog {preferences} bind:isPreferencesDialogOpen />
 
 <style>
 	:global(.compact-mode) {

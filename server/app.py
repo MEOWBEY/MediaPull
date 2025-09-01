@@ -89,6 +89,7 @@ async def handle_direct_video(url: str):
                 'tbr': 'unknown',
                 'format_id': 'direct',
                 'protocol': 'https',
+                'http_headers': 'unknown',
                 'resolution': 'unknown'
             }],
             'method': 'direct'
@@ -143,6 +144,7 @@ async def extract_with_ytdlp(url: str, use_generic: bool = False):
                     'tbr': fmt.get('tbr', 'unknown'),
                     'format_id': fmt.get('format_id', fmt.get('format', 'unknown')),
                     'protocol': fmt.get('protocol', 'https'),
+                    'http_headers':fmt.get('http_headers', 'unknown'),
                     'resolution': fmt.get('height', 'unknown'),
                 })
             

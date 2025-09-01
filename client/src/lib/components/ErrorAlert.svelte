@@ -2,10 +2,12 @@
 	import { Button } from '$lib/components/ui/button';
 	import * as Alert from '$lib/components/ui/alert';
 	import AlertCircle from 'lucide-svelte/icons/alert-circle';
-	import { videoStore } from '$lib/stores/app-state.svelte';
+	import { appStore } from '$lib/stores/app-state.svelte';
+	let {
+		ovcProxyError,
+		videoExtractError,
+	} = $props();
 
-	let puppeteerProxyUrlError = $derived(videoStore.puppeteerProxyUrlError);
-	let extractionError = $derived(videoStore.extractionError);
 </script>
 
 <Alert.Root variant="destructive" class="mb-6 border-none dark:bg-zinc-900">
@@ -13,12 +15,12 @@
 	<Alert.Description class="flex items-start justify-between">
 		<div>
 			<p class="mb-1 font-medium">Error</p>
-			<p class="max-w-2xl text-xs">{extractionError || puppeteerProxyUrlError}</p>
+			<p class="max-w-2xl text-xs">{videoExtractError || ovcProxyError}</p>
 		</div>
 		<Button
 			variant="outline"
 			size="sm"
-			onclick={() => videoStore.clearErrors()}
+			onclick={() => appStore.clearErrors()}
 			class="cursor-pointer"
 		>
 			Dismiss
