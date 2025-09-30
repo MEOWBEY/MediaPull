@@ -70,9 +70,9 @@
 					: 'grid-cols-1'}"
 			>
 				{#each ovcProxyResults as video}
-					<div class="group relative w-full overflow-hidden rounded-lg border">
+					<div class="group relative w-full rounded-lg border">
 						<!-- Video Player Section -->
-						<div class="aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
+						<div class="aspect-video bg-gray-100 dark:bg-gray-800">
 							<VideoPlayer
 								poster={''}
 								qualities={[
@@ -84,7 +84,7 @@
 						</div>
 
 						<!-- Info Section -->
-						<div class="flex-1 p-4">
+						<div class="flex-1 overflow-hidden p-4">
 							<div class="flex items-start justify-between gap-4">
 								<div class="min-w-0 flex-1">
 									<h4

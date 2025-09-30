@@ -262,7 +262,7 @@ async def extract_videos(request: URLRequest):
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Extraction failed: {e}")
-        raise HTTPException(status_code=500, detail="Extraction failed")
+        raise HTTPException(status_code=500, detail=f"Extraction failed: {e}")
 
 @app.get("/")
 async def root():

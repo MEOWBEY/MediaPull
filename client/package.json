@@ -22,6 +22,7 @@
 		"@sveltejs/kit": "^2.16.0",
 		"@sveltejs/vite-plugin-svelte": "^5.0.0",
 		"@tailwindcss/vite": "^4.1.11",
+		"@types/video.js": "^7.3.58",
 		"bits-ui": "^2.8.11",
 		"clsx": "^2.1.1",
 		"eslint": "^9.18.0",
@@ -44,11 +45,11 @@
 	},
 	"dependencies": {
 		"@sparticuz/chromium": "^138.0.1",
-		"hls.js": "^1.6.10",
+		"hls.js": "^1.6.13",
 		"lucide-svelte": "^0.525.0",
 		"media-icons": "^1.1.5",
 		"mode-watcher": "^1.1.0",
-		"puppeteer-core": "^24.14.0",
-		"vidstack": "^1.12.13"
+		"plyr": "^3.8.3",
+		"puppeteer-core": "^24.14.0"
 	}
 }

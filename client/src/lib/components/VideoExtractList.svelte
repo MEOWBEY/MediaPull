@@ -142,7 +142,7 @@
 			>
 				{#each videoExtractResults as video}
 					<div
-						class="group relative w-full overflow-hidden rounded-lg border bg-white transition-shadow hover:shadow-md dark:bg-zinc-900"
+						class="group relative w-full rounded-lg border bg-white transition-shadow hover:shadow-md dark:bg-zinc-900"
 					>
 						<div
 							class={preferences.layoutList === 'list'
@@ -155,7 +155,7 @@
 
 							<!-- Info + Actions -->
 							<div
-								class="{preferences.enableCompact
+								class=" overflow-hidden {preferences.enableCompact
 									? 'p-3'
 									: 'p-4'} flex-1 {preferences.layoutList === 'list'
 									? 'flex flex-col justify-between'
