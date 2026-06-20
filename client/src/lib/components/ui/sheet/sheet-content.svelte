@@ -1,7 +1,8 @@
 <script lang="ts" module>
 	import { tv, type VariantProps } from "tailwind-variants";
+
 	export const sheetVariants = tv({
-		base: "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500",
+		base: "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-[cubic-bezier(0.32,0.72,0,1)] data-[state=closed]:duration-300 data-[state=open]:duration-[400ms] will-change-transform",
 		variants: {
 			side: {
 				top: "data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b",
@@ -19,11 +20,14 @@
 </script>
 
 <script lang="ts">
-	import { Dialog as SheetPrimitive } from "bits-ui";
 	import XIcon from "@lucide/svelte/icons/x";
-	import type { Snippet } from "svelte";
-	import SheetOverlay from "./sheet-overlay.svelte";
+	import { Dialog as SheetPrimitive } from "bits-ui";
+
 	import { cn, type WithoutChildrenOrChild } from "$lib/utils.js";
+
+	import SheetOverlay from "./sheet-overlay.svelte";
+
+	import type { Snippet } from "svelte";
 
 	let {
 		ref = $bindable(null),
@@ -49,7 +53,7 @@
 	>
 		{@render children?.()}
 		<SheetPrimitive.Close
-			class="ring-offset-background focus-visible:ring-ring rounded-xs focus-visible:outline-hidden absolute right-4 top-4 opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none"
+			class="ring-offset-background focus-visible:ring-ring rounded-xs focus-visible:outline-hidden absolute end-4 top-4 opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none"
 		>
 			<XIcon class="size-4" />
 			<span class="sr-only">Close</span>

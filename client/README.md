@@ -1,38 +1,26 @@
-# sv
+# DirectStream — client
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+The SvelteKit front-end for DirectStream: the UI, the in-browser HLS player, and
+the proxy/stream API routes.
 
-## Creating a project
+See the [root README](../README.md) for the full overview, architecture, and setup
+for both the client and the FastAPI server.
 
-If you're seeing this, you've probably already done this step. Congrats!
-
-```bash
-# create a new project in the current directory
-npx sv create
-
-# create a new project in my-app
-npx sv create my-app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
+## Quick start
 
 ```bash
-npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
+npm install
+cp .env.example .env        # set SERVER_BASE_URL / CLIENT_BASE_URL
+npm run dev                 # http://localhost:5173
 ```
 
-## Building
+The client expects the FastAPI server (in `../server`) to be running. Client
+environment variables are documented in the root README.
 
-To create a production version of your app:
+## Scripts
 
-```bash
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+- `npm run dev` — start the dev server
+- `npm run build` — production build
+- `npm run preview` — preview the production build
+- `npm run check` — type-check with svelte-check
+- `npm run lint` / `npm run format` — lint and format

@@ -5,19 +5,40 @@
 	<meta charset="utf-8" />
 	<link rel="icon" href="%sveltekit.assets%/favicon.png" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<meta name="description" content="Fast and reliable video downloader tool built with SvelteKit" />
-	<meta name="keywords" content="video downloader, youtube downloader, video converter, online video tool" />
-	<meta name="author" content="Video Extractor" />
+	<meta name="description" content="DirectStream extracts direct video links from any webpage using yt-dlp and HTML scraping, with a built-in player and optional proxy streaming." />
+	<meta name="keywords" content="video link extractor, direct video url, yt-dlp, hls player, video proxy, sveltekit" />
+	<meta name="author" content="DirectStream" />
 
 	<!-- Open Graph / Facebook -->
 	<meta property="og:type" content="website" />
-	<meta property="og:title" content="Video Extractor - Video Downloader" />
-	<meta property="og:description" content="Fast and reliable video downloader tool" />
+	<meta property="og:title" content="DirectStream — Direct video link extractor" />
+	<meta property="og:description" content="Extract direct video links from any page, then preview, download, or proxy-stream them." />
 
 	<!-- Twitter -->
 	<meta property="twitter:card" content="summary_large_image" />
-	<meta property="twitter:title" content="Video Extractor - Video Downloader" />
-	<meta property="twitter:description" content="Fast and reliable video downloader tool" />
+	<meta property="twitter:title" content="DirectStream — Direct video link extractor" />
+	<meta property="twitter:description" content="Extract direct video links from any page, then preview, download, or proxy-stream them." />
+
+	<script>
+		// Apply the saved theme before first paint to avoid a light/dark flash.
+		try {
+			var p = JSON.parse(localStorage.getItem('preferences') || '{}');
+			var theme = p.theme || 'system';
+			var dark =
+				theme === 'dark' ||
+				(theme === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+			if (dark) document.documentElement.classList.add('dark');
+		} catch (e) {}
+	</script>
+
+	<!-- Organic design system fonts: Fraunces (display headings) + Nunito (body).
+	     Vazirmatn stays loaded via app.css for Persian glyph fallback. -->
+	<link rel="preconnect" href="https://fonts.googleapis.com" />
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+	<link
+		href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600..800&family=Nunito:wght@400..800&display=swap"
+		rel="stylesheet"
+	/>
 
 	%sveltekit.head%
 </head>

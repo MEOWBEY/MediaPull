@@ -1,98 +1,104 @@
 <script lang="ts">
+	import AlertCircle from '@lucide/svelte/icons/alert-circle';
+	import Grid3X3 from '@lucide/svelte/icons/grid-3x3';
+	import HardDrive from '@lucide/svelte/icons/hard-drive';
+	import Info from '@lucide/svelte/icons/info';
+	import LayoutList from '@lucide/svelte/icons/layout-list';
+	import Monitor from '@lucide/svelte/icons/monitor';
+	import Palette from '@lucide/svelte/icons/palette';
+	import SortAsc from '@lucide/svelte/icons/sort-asc';
+	import Trash2 from '@lucide/svelte/icons/trash-2';
+	import Volume2 from '@lucide/svelte/icons/volume-2';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import { toast } from 'svelte-sonner';
-	import { Button } from '$lib/components/ui/button';
-	import { Switch } from '$lib/components/ui/switch';
-	import { Label } from '$lib/components/ui/label';
-	import * as Dialog from '$lib/components/ui/dialog';
-	import Monitor from 'lucide-svelte/icons/monitor';
-	import Volume2 from 'lucide-svelte/icons/volume-2';
-	import Palette from 'lucide-svelte/icons/palette';
-	import HardDrive from 'lucide-svelte/icons/hard-drive';
-	import Trash2 from 'lucide-svelte/icons/trash-2';
-	import AlertCircle from 'lucide-svelte/icons/alert-circle';
-	import LayoutList from 'lucide-svelte/icons/layout-list';
-	import SortAsc from 'lucide-svelte/icons/sort-asc';
-	import Grid3X3 from 'lucide-svelte/icons/grid-3x3';
-	import Globe from 'lucide-svelte/icons/globe';
-	import Info from 'lucide-svelte/icons/info';
 
+	import { Button } from '$lib/components/ui/button';
+	import { Label } from '$lib/components/ui/label';
+	import * as Sheet from '$lib/components/ui/sheet';
+	import { Switch } from '$lib/components/ui/switch';
+	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
 
-	let { preferences, isPreferencesDialogOpen = $bindable() } = $props();
+	const { t } = i18n;
+
+	let {
+		preferences,
+		isPreferencesDialogOpen = $bindable()
+	}: { preferences: typeof appStore.preferences; isPreferencesDialogOpen?: boolean } = $props();
 
 	const sections = [
 		{
-			title: 'Interface',
+			titleKey: 'prefs.section.interface',
 			icon: Monitor,
 			color: 'text-blue-600',
 			settings: [
 				{
 					id: 'show-thumbnails',
-					label: 'Show thumbnails',
+					labelKey: 'prefs.showThumbnails.label',
 					key: 'showVideoThumbnail',
-					description: 'Display thumbnail images for videos in the list'
+					descKey: 'prefs.showThumbnails.desc'
 				},
 				{
 					id: 'animations-enabled',
-					label: 'Enable animations',
+					labelKey: 'prefs.animations.label',
 					key: 'enableAnimations',
-					description: 'Enable smooth animations and transitions throughout the interface'
+					descKey: 'prefs.animations.desc'
 				},
 				{
 					id: 'compact-mode',
-					label: 'Compact mode',
+					labelKey: 'prefs.compact.label',
 					key: 'enableCompact',
-					description: 'Use a more compact layout to fit more content on screen'
-				},
-				{
-					id: 'high-contrast',
-					label: 'High contrast',
-					key: 'enableHighContrast',
-					description: 'Use high contrast colors for better accessibility'
+					descKey: 'prefs.compact.desc'
 				}
 			]
 		},
 		{
-			title: 'Playback',
+			titleKey: 'prefs.section.playback',
 			icon: Volume2,
 			color: 'text-green-600',
 			settings: [
 				{
 					id: 'mute-by-default',
-					label: 'Mute by default',
+					labelKey: 'prefs.mute.label',
 					key: 'enableVideoMute',
-					description: 'Start videos with audio muted'
+					descKey: 'prefs.mute.desc'
 				},
 				{
 					id: 'preload-metadata',
-					label: 'Preload metadata',
+					labelKey: 'prefs.preload.label',
 					key: 'enableVideoPreloadMetadata',
 					defaultTrue: true,
-					description: 'Load video metadata in advance for faster playback initialization'
+					descKey: 'prefs.preload.desc'
+				},
+				{
+					id: 'show-video-only',
+					labelKey: 'prefs.videoOnly.label',
+					key: 'showVideoOnlyFormats',
+					descKey: 'prefs.videoOnly.desc'
 				}
 			]
 		},
 		{
-			title: 'Proxy & URLs',
-			icon: Globe,
+			titleKey: 'prefs.section.proxy',
+			icon: Waypoints,
 			color: 'text-cyan-600',
 			settings: [
 				{
 					id: 'use-proxy',
-					label: 'proxy mode',
+					labelKey: 'prefs.useProxy.label',
 					key: 'enableProxyForVideoExtract',
 					defaultTrue: true,
-					description: 'Use proxy mode to access video URLs when direct access is blocked'
+					descKey: 'prefs.useProxy.desc'
 				},
 				{
 					id: 'show-hls-download-button',
-					label: 'Show HLS download',
+					labelKey: 'prefs.hlsDownload.label',
 					key: 'showHlsTypeDownloadButton',
-					description: 'Display download button for HLS (HTTP Live Streaming) videos'
+					descKey: 'prefs.hlsDownload.desc'
 				}
 			]
 		}
-	];
+	] as const;
 
 	function resetToDefaults() {
 		appStore.updatePreferences({
@@ -107,64 +113,63 @@
 			enableVideoPreloadMetadata: false,
 			enableProxyForVideoExtract: true,
 			showHlsTypeDownloadButton: false,
-			enableHighContrast: false
+			showVideoOnlyFormats: false
 		});
-		toast.success('Preferences reset to defaults');
+		toast.success(t('toast.prefsReset'));
 	}
 
 	function clearAllData() {
 		appStore.reset();
-		toast.success('All data cleared');
+		toast.success(t('toast.dataCleared'));
 	}
 </script>
 
-<Dialog.Root bind:open={isPreferencesDialogOpen}>
-	<Dialog.Content
-		class="!z-[999999] m-2 mx-auto h-[90vh] overflow-auto p-3 sm:m-4 sm:h-full sm:max-w-2xl sm:p-6"
+<Sheet.Root bind:open={isPreferencesDialogOpen}>
+	<Sheet.Content
+		side="right"
+		class="bg-background z-999999! w-full gap-0 overflow-y-auto p-4 sm:max-w-lg sm:p-6"
 	>
-		<Dialog.Header class="text-left">
-			<Dialog.Title class="text-lg font-bold sm:text-xl">Preferences</Dialog.Title>
-			<Dialog.Description class="text-sm text-zinc-600 dark:text-zinc-400">
-				Customize your video isOVCProxyRunning experience
-			</Dialog.Description>
-		</Dialog.Header>
+		<Sheet.Header class="px-0 text-start">
+			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">
+				{t('prefs.title')}
+			</Sheet.Title>
+			<Sheet.Description class="text-muted-foreground text-sm">
+				{t('prefs.subtitle')}
+			</Sheet.Description>
+		</Sheet.Header>
 
 		<div class="space-y-4 pb-4 sm:space-y-8 sm:pb-6">
-			{#each sections as section}
+			{#each sections as section (section.titleKey)}
 				<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 					<!-- Section Content -->
 					<div class="p-3 sm:p-4">
 						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-							{#each section.settings as setting}
+							{#each section.settings as setting (setting.id)}
 								<div
 									class="flex items-start justify-between rounded-lg bg-zinc-50 p-3 transition-colors hover:bg-zinc-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800"
 								>
-									<div class="flex-1 pr-3">
+									<div class="flex-1 pe-3">
 										<div class="flex items-center gap-2">
 											<Label for={setting.id} class="cursor-pointer text-sm font-medium">
-												{setting.label}
+												{t(setting.labelKey)}
 											</Label>
-											{#if setting.description}
-												<button
-													type="button"
-													title={setting.description}
-													class="text-zinc-400 transition-colors hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
-												>
-													<Info class="h-3 w-3" />
-												</button>
-											{/if}
+											<button
+												type="button"
+												title={t(setting.descKey)}
+												class="text-zinc-400 transition-colors hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+											>
+												<Info class="h-3 w-3" />
+											</button>
 										</div>
-										{#if setting.description}
-											<p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
-												{setting.description}
-											</p>
-										{/if}
+										<p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+											{t(setting.descKey)}
+										</p>
 									</div>
 									<Switch
 										id={setting.id}
-										checked={setting.defaultTrue
-											? (preferences as any)[setting.key] !== false
-											: (preferences as any)[setting.key] || false}
+										checked={'defaultTrue' in setting && setting.defaultTrue
+											? preferences[setting.key as keyof typeof preferences] !== false
+											: preferences[setting.key as keyof typeof preferences] === true}
 										onCheckedChange={(checked) =>
 											appStore.updatePreferences({ [setting.key]: checked })}
 									/>
@@ -180,7 +185,7 @@
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<LayoutList class="h-4 w-4 text-purple-600" />
-						View Mode In Desktop
+						{t('prefs.viewMode')}
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">
@@ -189,19 +194,19 @@
 							variant={preferences.layoutList === 'grid' ? 'default' : 'outline'}
 							size="sm"
 							onclick={() => appStore.updatePreferences({ layoutList: 'grid' })}
-							class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
+							class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 						>
-							<Grid3X3 class="mr-2 h-4 w-4" />
-							Grid View
+							<Grid3X3 class="me-2 h-4 w-4" />
+							{t('prefs.gridView')}
 						</Button>
 						<Button
 							variant={preferences.layoutList === 'list' ? 'default' : 'outline'}
 							size="sm"
 							onclick={() => appStore.updatePreferences({ layoutList: 'list' })}
-							class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
+							class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 						>
-							<LayoutList class="mr-2 h-4 w-4" />
-							List View
+							<LayoutList class="me-2 h-4 w-4" />
+							{t('prefs.listView')}
 						</Button>
 					</div>
 				</div>
@@ -211,16 +216,16 @@
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<SortAsc class="h-4 w-4 text-orange-600" />
-						Sorting Options
+						{t('prefs.sorting')}
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">
 					<div class="space-y-4">
 						<!-- Sort By -->
 						<div class="space-y-2">
-							<Label class="text-sm font-medium">Sort by</Label>
+							<Label class="text-sm font-medium">{t('prefs.sortBy')}</Label>
 							<div class="flex flex-col gap-2 sm:flex-row">
-								{#each ['name', 'size', 'quality'] as const as sortOption}
+								{#each ['name', 'size', 'quality'] as const as sortOption (sortOption)}
 									<Button
 										variant={preferences.videoSortField === sortOption ? 'default' : 'outline'}
 										size="sm"
@@ -228,9 +233,9 @@
 											appStore.updatePreferences({
 												videoSortField: sortOption
 											})}
-										class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
+										class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 									>
-										{sortOption.charAt(0).toUpperCase() + sortOption.slice(1)}
+										{t(`prefs.sort.${sortOption}`)}
 									</Button>
 								{/each}
 							</div>
@@ -238,23 +243,23 @@
 
 						<!-- Sort Order -->
 						<div class="space-y-2">
-							<Label class="text-sm font-medium">Sort order</Label>
+							<Label class="text-sm font-medium">{t('prefs.sortOrder')}</Label>
 							<div class="flex flex-col gap-2 sm:flex-row">
 								<Button
 									variant={preferences.videoSortOrder === 'asc' ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ videoSortOrder: 'asc' })}
-									class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
+									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 								>
-									Ascending
+									{t('prefs.ascending')}
 								</Button>
 								<Button
 									variant={preferences.videoSortOrder === 'desc' ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ videoSortOrder: 'desc' })}
-									class="flex-1 cursor-pointer justify-center p-1  px-2 sm:flex-none sm:justify-start"
+									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 								>
-									Descending
+									{t('prefs.descending')}
 								</Button>
 							</div>
 						</div>
@@ -267,21 +272,21 @@
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<Palette class="h-4 w-4 text-pink-600" />
-						Theme Selection
+						{t('prefs.themeSection')}
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">
 					<div class="space-y-2">
-						<Label class="text-sm font-medium">Theme</Label>
+						<Label class="text-sm font-medium">{t('prefs.themeLabel')}</Label>
 						<div class="flex flex-col gap-2 sm:flex-row">
-							{#each ['light', 'dark', 'system'] as const as theme}
+							{#each ['light', 'dark', 'system'] as const as theme (theme)}
 								<Button
 									variant={preferences.theme === theme ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ theme })}
-									class="flex-1 cursor-pointer justify-center p-1 px-2 sm:flex-none sm:justify-start"
+									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 								>
-									{theme.charAt(0).toUpperCase() + theme.slice(1)}
+									{t(`prefs.theme.${theme}`)}
 								</Button>
 							{/each}
 						</div>
@@ -294,31 +299,19 @@
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<HardDrive class="h-4 w-4 text-red-600" />
-						Cache & Store
+						{t('prefs.storedData')}
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">
 					<div class="space-y-4">
-						<!-- Stats Cards -->
-						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
-							<div
-								class="rounded-lg border border-blue-200 bg-gradient-to-br from-blue-50 to-blue-100 p-3 text-center sm:p-4 dark:border-blue-800 dark:from-blue-900/20 dark:to-blue-800/20"
-							>
-								<div class="text-xl font-bold text-blue-700 sm:text-3xl dark:text-blue-300">
-									{appStore.getStats().size}
+						<!-- Stats Card -->
+						<div class="grid grid-cols-1 gap-3 sm:gap-4">
+							<div class="bg-muted/60 rounded-xl border p-3 text-center sm:p-4">
+								<div class="text-primary text-xl font-bold sm:text-3xl">
+									{appStore.getStats().extracted}
 								</div>
-								<div class="text-xs font-medium text-blue-600 sm:text-sm dark:text-blue-400">
-									Cached Items
-								</div>
-							</div>
-							<div
-								class="rounded-lg border border-green-200 bg-gradient-to-br from-green-50 to-green-100 p-3 text-center sm:p-4 dark:border-green-800 dark:from-green-900/20 dark:to-green-800/20"
-							>
-								<div class="text-xl font-bold text-green-700 sm:text-3xl dark:text-green-300">
-									{Math.round(appStore.getStats().hitRate)}%
-								</div>
-								<div class="text-xs font-medium text-green-600 sm:text-sm dark:text-green-400">
-									Hit Rate
+								<div class="text-muted-foreground text-xs font-medium sm:text-sm">
+									{t('prefs.extractedVideos')}
 								</div>
 							</div>
 						</div>
@@ -328,12 +321,12 @@
 							size="sm"
 							onclick={() => {
 								appStore.reset();
-								toast.success('Cache cleared successfully');
+								toast.success(t('toast.dataCleared'));
 							}}
-							class="w-full cursor-pointer p-1 px-2 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-700 dark:hover:bg-red-900/10 dark:hover:text-red-400"
+							class="w-full h-11 sm:h-10 py-1.5 cursor-pointer px-4 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-700 dark:hover:bg-red-900/10 dark:hover:text-red-400"
 						>
-							<Trash2 class="mr-2 h-4 w-4" />
-							Clear All Cache
+							<Trash2 class="me-2 h-4 w-4" />
+							{t('prefs.clearData')}
 						</Button>
 					</div>
 				</div>
@@ -344,21 +337,21 @@
 				<div class="border-b p-3 dark:border-zinc-700">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<AlertCircle class="h-4 w-4 text-red-600" />
-						Reset & Defaults
+						{t('prefs.resetSection')}
 					</h4>
 				</div>
 				<div class="p-3 sm:p-4">
 					<div class="flex flex-col gap-3 sm:flex-row sm:gap-4">
 						<Button variant="outline" onclick={resetToDefaults} class="flex-1 cursor-pointer">
-							Reset to Defaults
+							{t('prefs.resetDefaults')}
 						</Button>
 						<Button variant="destructive" onclick={clearAllData} class="flex-1 cursor-pointer">
-							<Trash2 class="mr-2 h-4 w-4" />
-							Clear All Data
+							<Trash2 class="me-2 h-4 w-4" />
+							{t('prefs.clearData')}
 						</Button>
 					</div>
 				</div>
 			</section>
 		</div>
-	</Dialog.Content>
-</Dialog.Root>
+	</Sheet.Content>
+</Sheet.Root>

@@ -1,29 +1,45 @@
 <script lang="ts">
-	import { Button } from '$lib/components/ui/button';
+	import AlertCircle from '@lucide/svelte/icons/alert-circle';
+
 	import * as Alert from '$lib/components/ui/alert';
-	import AlertCircle from 'lucide-svelte/icons/alert-circle';
+	import { Button } from '$lib/components/ui/button';
+	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+
+	const {t} = i18n;
+
 	let {
-		ovcProxyError,
-		videoExtractError,
+		videoExtractError
+	}: {
+		videoExtractError: string | null;
 	} = $props();
 
+	let title = $derived(t('error.extractTitle'));
+	let message = $derived(videoExtractError);
 </script>
 
-<Alert.Root variant="destructive" class="mb-6 border-none dark:bg-zinc-900">
+<Alert.Root
+	variant="destructive"
+	class="ds-glass shadow-soft mb-6 rounded-[1.75rem] border-0 ring-1 ring-destructive/25"
+>
 	<AlertCircle class="h-4 w-4" />
-	<Alert.Description class="flex items-start justify-between">
-		<div>
-			<p class="mb-1 font-medium">Error</p>
-			<p class="max-w-2xl text-xs">{videoExtractError || ovcProxyError}</p>
+	<Alert.Description
+		class="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+	>
+		<div class="min-w-0">
+			<p class="mb-1 font-medium">{title}</p>
+			<p class="text-xs wrap-break-word">{message}</p>
+			<p class="mt-1 text-xs opacity-80">
+				{t('error.advice')}
+			</p>
 		</div>
 		<Button
 			variant="outline"
 			size="sm"
 			onclick={() => appStore.clearErrors()}
-			class="cursor-pointer"
+			class="shrink-0 cursor-pointer self-start"
 		>
-			Dismiss
+			{t('error.dismiss')}
 		</Button>
 	</Alert.Description>
 </Alert.Root>

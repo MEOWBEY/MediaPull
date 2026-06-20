@@ -1,120 +1,137 @@
 <script lang="ts">
-	import { toast } from 'svelte-sonner';
-	import { Button } from '$lib/components/ui/button';
-	import { Input } from '$lib/components/ui/input';
-	import {
-		Card,
-		CardContent,
-		CardDescription,
-		CardHeader,
-		CardTitle
-	} from '$lib/components/ui/card';
+	import Clock from '@lucide/svelte/icons/clock';
+	import Globe from '@lucide/svelte/icons/globe';
+	import Loader2 from '@lucide/svelte/icons/loader-2';
+	import Search from '@lucide/svelte/icons/search';
+	import Settings from '@lucide/svelte/icons/settings';
+	import X from '@lucide/svelte/icons/x';
 
-	import Unlink from 'lucide-svelte/icons/unlink';
-	import Link2 from 'lucide-svelte/icons/link-2';
-	import X from 'lucide-svelte/icons/x';
-	import SearchX from 'lucide-svelte/icons/search-x';
-	import Search from 'lucide-svelte/icons/search';
-	import Waypoints from 'lucide-svelte/icons/waypoints';
-	import Loader2 from 'lucide-svelte/icons/loader-2';
+	import { Button } from '$lib/components/ui/button';
+	import { i18n } from '$lib/i18n/index.svelte';
+
+	const {t} = i18n;
 
 	let {
 		runVideoExtractFromServer,
-		runOvcProxyFromServer,
 		cancelActiveOperation,
 		isVideoExtractRunning,
-		isOVCProxyRunning,
-		preferences
+		elapsedOperationSeconds = 0,
+		batchTotal = 0,
+		batchDone = 0,
+		isPreferencesDialogOpen = $bindable()
 	} = $props();
 
 	let inputUrl = $state('');
-	let isOperationRunning = $derived(isVideoExtractRunning || isOVCProxyRunning);
+	// batchTotal stays > 0 for the whole queue, so the running state doesn't flicker
+	// between individual items (keeps the input disabled + cancel button visible).
+	let isBatchRunning = $derived(batchTotal > 0);
+	let isOperationRunning = $derived(isVideoExtractRunning || isBatchRunning);
+
+	// How many URLs the field currently holds (pasted multi-line collapses to
+	// spaces in a single-line input, so whitespace-splitting catches a batch).
+	let urlCount = $derived(inputUrl.trim().split(/\s+/).filter(Boolean).length);
 
 	function clearInputUrl() {
-		if (isOperationRunning) return;
+		if (isOperationRunning) {return;}
 		inputUrl = '';
-		toast.info('Input cleared');
+	}
+
+	function elapsed(seconds: number): string {
+		const mins = Math.floor(seconds / 60);
+		const secs = (seconds % 60).toString().padStart(2, '0');
+
+		return `${mins}:${secs}`;
+	}
+
+	function onKeydown(event: KeyboardEvent) {
+		if (event.key === 'Enter' && inputUrl.trim() && !isOperationRunning) {
+			runVideoExtractFromServer(inputUrl);
+		}
 	}
 </script>
 
-<Card class="mb-6">
-	<CardHeader class={preferences.enableCompact ? 'pb-2' : 'pb-4'}>
-		<CardTitle
-			class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
-		>
-			<Unlink class="h-5 w-5 text-blue-600" />
-			Video Downloader
-		</CardTitle>
-		<CardDescription>Enter a video URL to extract formats or use OVC proxy directly</CardDescription
-		>
-	</CardHeader>
-	<CardContent class={preferences.enableCompact ? 'space-y-2' : 'space-y-4'}>
-		<div class="flex gap-2">
+<div class="mx-auto w-full text-start">
+	<div class="bg-card/80 border-border/60 shadow-soft rounded-4xl border p-2 sm:p-2.5">
+		<!-- Input row -->
+		<div class="flex items-center gap-2">
 			<div class="relative flex-1">
-				<Link2 class="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-gray-500" />
-				<Input
+				<Globe class="text-muted-foreground absolute top-1/2 inset-s-3.5 h-5 w-5 -translate-y-1/2" />
+				<input
 					id="video-url"
 					bind:value={inputUrl}
-					placeholder="https://example.com/video"
+					onkeydown={onKeydown}
+					placeholder={t('input.placeholder')}
 					disabled={isOperationRunning}
-					class="cursor-text pl-10"
+					autocomplete="off"
+					autocapitalize="off"
+					spellcheck="false"
+					class="h-12 w-full rounded-full border-0 bg-transparent pe-10 ps-11 text-base outline-none placeholder:text-muted-foreground/70 disabled:opacity-60"
 				/>
+				{#if inputUrl}
+					<button
+						type="button"
+						onclick={clearInputUrl}
+						disabled={isOperationRunning}
+						aria-label={t('input.clear')}
+						class="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 inset-e-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full transition-colors"
+					>
+						<X class="h-4 w-4" />
+					</button>
+				{/if}
 			</div>
-			{#if inputUrl}
-				<Button
-					variant="outline"
-					size="icon"
-					onclick={clearInputUrl}
-					disabled={isOperationRunning}
-					class="cursor-pointer"
-				>
-					<X class="h-4 w-4" />
-				</Button>
-			{/if}
+
+			<button
+				type="button"
+				onclick={() => (isPreferencesDialogOpen = true)}
+				title={t('input.preferences')}
+				aria-label={t('input.preferences')}
+				class="text-muted-foreground hover:bg-muted hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors"
+			>
+				<Settings class="h-5 w-5" />
+			</button>
 		</div>
-		<div class="flex flex-col flex-wrap gap-2 md:flex-row">
+
+		{#if urlCount > 1 && !isOperationRunning}
+			<p class="text-muted-foreground mt-2 px-3 text-xs">{t('input.batchHint', { n: urlCount })}</p>
+		{/if}
+
+		<!-- Action row -->
+		<div class="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
 			<Button
 				onclick={() => runVideoExtractFromServer(inputUrl)}
 				disabled={!inputUrl.trim() || isOperationRunning}
-				class="cursor-pointer transition-all duration-200"
+				class="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 cursor-pointer rounded-full font-semibold transition-colors sm:flex-none sm:px-6"
 			>
-				{#if isVideoExtractRunning}
-					<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-					isVideoExtractRunning ...
+				{#if isVideoExtractRunning || isBatchRunning}
+					<Loader2 class="me-2 h-4 w-4 animate-spin" /> {t('input.extracting')}
+					{#if batchTotal > 1}<span class="ms-1 tabular-nums">{batchDone}/{batchTotal}</span>{/if}
 				{:else}
-					<Search class="mr-2 h-4 w-4" />
-					Extract Formats
+					<Search class="me-2 h-4 w-4" /> {t('input.extract')}
+					{#if urlCount > 1}<span class="ms-1 tabular-nums">({urlCount})</span>{/if}
 				{/if}
 			</Button>
-			<div class="flex items-center gap-2">
-				<Button
-					variant="secondary"
-					onclick={() => runOvcProxyFromServer(inputUrl)}
-					disabled={!inputUrl.trim() || isOperationRunning}
-					class="cursor-pointer border bg-gray-200 hover:bg-gray-300 dark:bg-zinc-800 hover:dark:bg-zinc-700 {isOperationRunning
-						? 'w-[calc(100%-50px)]'
-						: 'w-full md:w-auto'}"
-				>
-					{#if isOVCProxyRunning}
-						<Loader2 class="mr-2 h-4 w-4 animate-spin" />
-						isOVCProxyRunning...
-					{:else}
-						<Waypoints class="mr-2 h-4 w-4" />
-						Ovc proxy
-					{/if}
-				</Button>
 
-				{#if isOperationRunning}
+			{#if isOperationRunning}
+				<div class="ms-auto flex items-center gap-2">
+					<span
+						class="bg-primary/10 text-primary hidden items-center gap-1.5 rounded-full px-3 py-2 font-mono text-sm font-medium tabular-nums sm:inline-flex"
+						aria-live="polite"
+					>
+						<Clock class="h-3.5 w-3.5" />
+						{elapsed(elapsedOperationSeconds)}
+					</span>
 					<Button
 						variant="destructive"
 						onclick={cancelActiveOperation}
-						size="icon"
-						class="ml-2 cursor-pointer"
+						class="h-11 cursor-pointer rounded-full px-4"
+						title={t('input.cancel')}
+						aria-label={t('input.cancel')}
 					>
-						<SearchX class="h-4 w-4" />
+						<X class="h-4 w-4 sm:me-1.5" />
+						<span class="hidden sm:inline">{t('input.cancel')}</span>
 					</Button>
-				{/if}
-			</div>
+				</div>
+			{/if}
 		</div>
-	</CardContent>
-</Card>
+	</div>
+</div>

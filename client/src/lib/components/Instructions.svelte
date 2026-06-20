@@ -1,248 +1,72 @@
 <script lang="ts">
-	import { Badge } from '$lib/components/ui/badge';
-	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
-	import FileText from 'lucide-svelte/icons/file-text';
-	import Zap from 'lucide-svelte/icons/zap';
-	import Keyboard from 'lucide-svelte/icons/keyboard';
+	import PlayCircle from '@lucide/svelte/icons/circle-play';
+	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
+	import Download from '@lucide/svelte/icons/download';
+	import MonitorSmartphone from '@lucide/svelte/icons/monitor-smartphone';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
+
+	import { i18n } from '$lib/i18n/index.svelte';
+
 	let { preferences } = $props();
+
+	const {t} = i18n;
+
+	// Build reactively so the labels re-translate when the locale changes.
+	const steps = $derived([
+		{ icon: ClipboardPaste, title: t('how.step1.title'), body: t('how.step1.body') },
+		{ icon: Sparkles, title: t('how.step2.title'), body: t('how.step2.body') },
+		{ icon: PlayCircle, title: t('how.step3.title'), body: t('how.step3.body') },
+		{ icon: Download, title: t('how.step4.title'), body: t('how.step4.body') }
+	]);
+
+	const features = $derived([
+		{ icon: Waypoints, title: t('how.feat1.title'), body: t('how.feat1.body') },
+		{ icon: MonitorSmartphone, title: t('how.feat2.title'), body: t('how.feat2.body') }
+	]);
 </script>
 
-<div class="space-y-6">
-	<!-- About This Tool Card -->
-	<Card class=" ">
-		<CardHeader class={preferences.enableCompact ? 'py-3' : ''}>
-			<CardTitle
-				class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
-			>
-				<FileText class="h-5 w-5 text-gray-600" />
-				About This Tool
-			</CardTitle>
-			<p
-				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.enableCompact
-					? 'text-xs'
-					: 'text-sm'}"
-			>
-				Learn how to extract and accelerate video content with our advanced tool.
-			</p>
-		</CardHeader>
-		<CardContent>
-			<!-- Feature Overview -->
-			<div class="grid {preferences.enableCompact ? 'gap-3' : 'gap-4'} sm:grid-cols-2">
-				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Video Extraction
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Paste any webpage URL containing videos. Our extraction engine automatically
-								discovers all available video streams and formats.
-							</p>
-							<div class="mt-2 flex flex-wrap gap-1">
-								<Badge variant="secondary" class="text-xs">MP4</Badge>
-								<Badge variant="secondary" class="text-xs">HLS</Badge>
-								<Badge variant="secondary" class="text-xs">WebM</Badge>
-							</div>
-						</div>
-					</div>
-				</div>
+<section class="mt-12 {preferences.enableCompact ? 'space-y-4' : 'space-y-6'}">
+	<div class="text-center">
+		<h2 class="text-xl font-bold tracking-tight">{t('how.heading')}</h2>
+		<p class="text-muted-foreground mt-1 text-sm">
+			{t('how.subtitle')}
+		</p>
+	</div>
 
-				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Video Acceleration
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Boost streaming speeds and bypass restrictions using high-performance proxy servers.
-								Perfect for slow connections.
-							</p>
-							<div class="mt-2 flex flex-wrap gap-1">
-								<Badge variant="secondary" class="text-xs">Fast Servers</Badge>
-								<Badge variant="secondary" class="text-xs">Geo Unblocking</Badge>
-							</div>
-						</div>
-					</div>
+	<ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+		{#each steps as step, i (i)}
+			<li
+				class="ds-glass shadow-soft relative p-4 {i % 2 === 0
+					? 'rounded-3xl'
+					: 'rounded-[1.9rem]'}"
+			>
+				<span
+					class="bg-primary text-primary-foreground absolute -top-2.5 -inset-s-2.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow-sm"
+				>
+					{i + 1}
+				</span>
+				<step.icon class="text-aurora-1 mb-2 h-5 w-5" />
+				<h3 class="text-sm font-semibold">{step.title}</h3>
+				<p class="text-muted-foreground mt-1 text-xs leading-relaxed">{step.body}</p>
+			</li>
+		{/each}
+	</ol>
+
+	<div class="grid gap-3 sm:grid-cols-2">
+		{#each features as feature, i (i)}
+			<div class="ds-glass shadow-soft flex items-start gap-3 rounded-[1.9rem] p-4">
+				<span
+					class="bg-secondary/15 text-secondary flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl"
+				>
+					<feature.icon class="h-5 w-5" />
+				</span>
+				<div>
+					<h3 class="text-sm font-semibold">{feature.title}</h3>
+					<p class="text-muted-foreground mt-1 text-xs leading-relaxed">{feature.body}</p>
 				</div>
 			</div>
-		</CardContent>
-	</Card>
+		{/each}
+	</div>
 
-	<!-- How It Works Card -->
-	<Card class=" ">
-		<CardHeader class={preferences.enableCompact ? 'py-3' : ''}>
-			<CardTitle
-				class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
-			>
-				<Zap class="h-5 w-5 text-gray-600" />
-				How It Works
-			</CardTitle>
-			<p
-				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.enableCompact
-					? 'text-xs'
-					: 'text-sm'}"
-			>
-				Get started with video extraction and acceleration in simple steps.
-			</p>
-		</CardHeader>
-		<CardContent>
-			<div class="grid {preferences.enableCompact ? 'gap-2' : 'gap-4'} sm:grid-cols-2">
-				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Paste Video URL
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Copy and paste any webpage URL containing videos. We support major platforms.
-							</p>
-						</div>
-					</div>
-
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Extract & Analyze
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Click extract to scan the page and identify available video streams automatically.
-							</p>
-						</div>
-					</div>
-
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Choose Quality
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Select your preferred video quality and format from the available options.
-							</p>
-						</div>
-					</div>
-				</div>
-
-				<div class={preferences.enableCompact ? 'space-y-2' : 'space-y-3'}>
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Enable Acceleration
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Toggle proxy mode for faster streaming and to bypass geographical restrictions.
-							</p>
-						</div>
-					</div>
-
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Preview or Download
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Use the built-in player to preview or directly download the video file.
-							</p>
-						</div>
-					</div>
-
-					<div class="flex items-start gap-2">
-						<div>
-							<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-								Enjoy Fast Streaming
-							</h4>
-							<p
-								class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-									? 'text-xs'
-									: 'text-sm'}"
-							>
-								Experience improved speeds and unblocked access with our optimized network.
-							</p>
-						</div>
-					</div>
-				</div>
-			</div>
-		</CardContent>
-	</Card>
-
-	<!-- Key Features Card -->
-	<Card class=" ">
-		<CardHeader class={preferences.enableCompact ? 'py-3' : ''}>
-			<CardTitle
-				class="flex items-center gap-2 {preferences.enableCompact ? 'text-base' : 'text-lg'}"
-			>
-				<Keyboard class="h-5 w-5 text-gray-600" />
-				Key Features
-			</CardTitle>
-			<p
-				class="mb-4 text-gray-600 dark:text-gray-400 {preferences.enableCompact
-					? 'text-xs'
-					: 'text-sm'}"
-			>
-				Advanced capabilities for the best video isOVCProxyRunning experience.
-			</p>
-		</CardHeader>
-		<CardContent>
-			<div
-				class="grid {preferences.enableCompact ? 'gap-2' : 'gap-4'} sm:grid-cols-2 lg:grid-cols-2"
-			>
-				<div class="flex items-start gap-2">
-					<div>
-						<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-							Built-in Player
-						</h4>
-						<p
-							class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-								? 'text-xs'
-								: 'text-sm'}"
-						>
-							Preview videos with HLS streaming, quality switching, and full-screen playback.
-						</p>
-					</div>
-				</div>
-
-				<div class="flex items-start gap-2">
-					<div>
-						<h4 class="mb-1 font-medium {preferences.enableCompact ? 'text-sm' : ''}">
-							Privacy Protection
-						</h4>
-						<p
-							class="text-gray-600 dark:text-gray-400 {preferences.enableCompact
-								? 'text-xs'
-								: 'text-sm'}"
-						>
-							Your browsing remains private. We don't store URLs or content, ensuring anonymity.
-						</p>
-					</div>
-				</div>
-			</div>
-		</CardContent>
-	</Card>
-</div>
+</section>

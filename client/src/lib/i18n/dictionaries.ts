@@ -1,0 +1,342 @@
+/**
+ * UI translation dictionaries. Frontend strings only — backend/extractor errors
+ * stay in English on purpose (they're technical and often quote upstream tools).
+ *
+ * `en` is the source of truth; `fa` mirrors its keys. Keep keys flat and grouped
+ * by feature prefix so missing translations are easy to spot.
+ */
+
+export type Locale = 'en' | 'fa';
+
+export const LOCALES: { code: Locale; label: string; dir: 'ltr' | 'rtl' }[] = [
+	{ code: 'en', label: 'English', dir: 'ltr' },
+	{ code: 'fa', label: 'فارسی', dir: 'rtl' }
+];
+
+export type MessageKey = keyof typeof en;
+
+export const en = {
+	// Header / footer
+	'nav.madeBy': 'Made by',
+	'nav.language': 'Language',
+
+	// Hero
+	'hero.titleLead': 'Pull',
+	'hero.titleHighlight': 'direct video links',
+	'hero.titleTrail': 'out of any page.',
+	'hero.subtitle':
+		'Paste a page link and get the direct video — preview it here, then download it or stream it through the proxy.',
+
+	// Input
+	'input.placeholder': 'Paste a page or video URL…',
+	'input.batchHint': '{n} links detected — they’ll be processed one by one.',
+	'input.clear': 'Clear',
+	'input.preferences': 'Preferences',
+	'input.extract': 'Extract links',
+	'input.extracting': 'Extracting…',
+	'input.cancel': 'Cancel',
+	'input.jumpToInput': 'New extraction',
+
+	// Empty state
+	'empty.title': 'Ready when you are',
+	'empty.body':
+		'Paste a page link in the bar above and the direct videos we find will land right here.',
+
+	// Extract list
+	'extract.heading': 'Extracted',
+	'extract.proxyMode': 'Proxy mode',
+	'extract.clear': 'Clear',
+	'extract.cardMenu': 'More options',
+	'extract.listMenu': 'List actions',
+	'extract.groupMenu': 'Source actions',
+	'extract.sourceUnknown': 'Unknown source',
+	'extract.removeGroup': 'Remove all from source',
+	'extract.remove': 'Remove',
+	'extract.copyAll': 'Copy all',
+	'extract.searchPlaceholder': 'Filter by title, source, type, or quality…',
+	'extract.noMatches': 'No results match your filter.',
+	'extract.export': 'Export',
+	'extract.exportTxt': 'Links (.txt)',
+	'extract.exportM3u': 'Playlist (.m3u)',
+	'extract.hint':
+		"If a video won't play, try switching quality or proxy mode, or copy the URL into an external player.",
+	'extract.qualityOne': 'quality',
+	'extract.qualityMany': 'qualities',
+	'extract.untitled': 'Untitled',
+	'extract.copyUrl': 'Copy URL',
+	'extract.download': 'Download',
+	'extract.showQr': 'Show QR code',
+	'extract.loading': 'Extracting links…',
+	'extract.resultCount': '{n} links extracted',
+	'extract.videoOnly': 'video only',
+	'extract.videoOnlyHint': 'This quality has no audio (adaptive stream). Plays silently; still downloadable.',
+
+	// QR handoff
+	'qr.title': 'Scan to open on phone',
+	'qr.desc': 'Point your phone camera at the code to open this link.',
+	'qr.error': 'Could not generate a QR code for this link.',
+
+	// Player
+	'player.audioLabel': 'Audio',
+	'player.error':
+		"This link couldn't be played here. Try another quality, switch proxy mode, or open the link in an external player.",
+
+	// Error alert
+	'error.extractTitle': "Couldn't extract links",
+	'error.advice': "Check the URL and try again, or turn on proxy mode for a card if a direct link won't load.",
+	'error.dismiss': 'Dismiss',
+
+	// Instructions
+	'how.heading': 'How it works',
+	'how.subtitle': 'From a page URL to a playable link in four steps.',
+	'how.step1.title': 'Paste a URL',
+	'how.step1.body': 'A page with a video, or a direct video file link.',
+	'how.step2.title': 'Extract',
+	'how.step2.body':
+		'yt-dlp, a generic extractor, then an HTML-scrape fallback resolve the real links.',
+	'how.step3.title': 'Preview',
+	'how.step3.body': 'Play any quality in the built-in HLS-capable player.',
+	'how.step4.title': 'Save or proxy',
+	'how.step4.body': "Download a format, or stream it through the proxy when it won't load directly.",
+	'how.feat1.title': 'Built-in streaming proxy',
+	'how.feat1.body': 'Plays links that block hotlinking or need special headers, and rewrites HLS so it streams smoothly.',
+	'how.feat2.title': 'Stays on your device',
+	'how.feat2.body':
+		"Results and preferences live in your browser's local storage — clear them anytime.",
+
+	// Toasts
+	'toast.invalidUrlEmpty': 'Please enter a valid URL',
+	'toast.invalidUrl': 'Invalid URL format',
+	'toast.loadedCache': 'Loaded {n} formats from cache',
+	'toast.foundOne': 'Found 1 format',
+	'toast.foundMany': 'Found {n} formats',
+	'toast.batchDone': 'Processed {n} links',
+	'toast.batchPartial': 'Done: {ok} succeeded, {failed} failed',
+	'toast.cancelled': 'Operation cancelled',
+	'toast.unknownError': 'Unknown error occurred',
+	'toast.noUrlCopy': 'No URL to copy for this format',
+	'toast.copied': 'Link copied to clipboard',
+	'toast.copyFailed': 'Failed to copy link',
+	'toast.downloadStarted': 'Download started: {name}',
+	'toast.copiedAll': 'Copied {count} links',
+	'toast.exported': 'File downloaded',
+	'toast.nothingToExport': 'Nothing to export',
+	'toast.downloadFailed': 'Failed to start download',
+	'toast.extractCleared': 'Extracted results cleared',
+	'toast.itemRemoved': 'Item removed',
+	'toast.prefsReset': 'Preferences reset to defaults',
+	'toast.dataCleared': 'All data cleared',
+
+	// Error page
+	'errorPage.404Title': 'Page Not Found',
+	'errorPage.404Body': "Oops! The page you're looking for doesn't exist.",
+	'errorPage.500Title': 'Server Error',
+	'errorPage.500Body': 'Sorry! Something went wrong on our end:',
+	'errorPage.genericTitle': 'Error Occurred',
+	'errorPage.genericBody': 'An error has occurred:',
+	'errorPage.unknown': 'Unknown error',
+	'errorPage.home': 'Back to Home',
+
+	// Preferences
+	'prefs.title': 'Preferences',
+	'prefs.subtitle': 'Tune the interface, playback, and stored data.',
+	'prefs.section.interface': 'Interface',
+	'prefs.section.playback': 'Playback',
+	'prefs.section.proxy': 'Proxy & URLs',
+	'prefs.showThumbnails.label': 'Show thumbnails',
+	'prefs.showThumbnails.desc': 'Display thumbnail images for videos in the list',
+	'prefs.animations.label': 'Enable animations',
+	'prefs.animations.desc': 'Enable smooth animations and transitions throughout the interface',
+	'prefs.compact.label': 'Compact mode',
+	'prefs.compact.desc': 'Use a more compact layout to fit more content on screen',
+	'prefs.mute.label': 'Mute by default',
+	'prefs.mute.desc': 'Start videos with audio muted',
+	'prefs.preload.label': 'Preload metadata',
+	'prefs.preload.desc': 'Load video metadata in advance for faster playback initialization',
+	'prefs.useProxy.label': 'Proxy mode',
+	'prefs.useProxy.desc': 'Use proxy mode to access video URLs when direct access is blocked',
+	'prefs.hlsDownload.label': 'Show HLS download',
+	'prefs.hlsDownload.desc': 'Display download button for HLS (HTTP Live Streaming) videos',
+	'prefs.videoOnly.label': 'Show video-only qualities',
+	'prefs.videoOnly.desc':
+		'Include high-res adaptive streams that have no audio (e.g. YouTube above 360p). They play silently but can be downloaded.',
+	'prefs.viewMode': 'View mode on desktop',
+	'prefs.gridView': 'Grid view',
+	'prefs.listView': 'List view',
+	'prefs.sorting': 'Sorting options',
+	'prefs.sortBy': 'Sort by',
+	'prefs.sort.name': 'Name',
+	'prefs.sort.size': 'Size',
+	'prefs.sort.quality': 'Quality',
+	'prefs.sortOrder': 'Sort order',
+	'prefs.ascending': 'Ascending',
+	'prefs.descending': 'Descending',
+	'prefs.themeSection': 'Theme selection',
+	'prefs.themeLabel': 'Theme',
+	'prefs.theme.light': 'Light',
+	'prefs.theme.dark': 'Dark',
+	'prefs.theme.system': 'System',
+	'prefs.storedData': 'Stored data',
+	'prefs.extractedVideos': 'Extracted videos',
+	'prefs.clearData': 'Clear all data',
+	'prefs.resetSection': 'Reset & defaults',
+	'prefs.resetDefaults': 'Reset to defaults'
+} as const;
+
+export const fa: Record<MessageKey, string> = {
+	'nav.madeBy': 'ساخته‌شده توسط',
+	'nav.language': 'زبان',
+
+	'hero.titleLead': 'استخراج',
+	'hero.titleHighlight': 'لینک مستقیم ویدیو',
+	'hero.titleTrail': 'از هر صفحه‌ای.',
+	'hero.subtitle':
+		'یک لینک صفحه را بچسبان تا ویدیوی مستقیم را بگیری — همین‌جا ببین، سپس دانلود کن یا از طریق پروکسی پخش کن.',
+
+	'input.placeholder': 'لینک صفحه یا ویدیو را بچسبانید…',
+	'input.batchHint': '{n} لینک شناسایی شد — یکی‌یکی پردازش می‌شوند.',
+	'input.clear': 'پاک کردن',
+	'input.preferences': 'تنظیمات',
+	'input.extract': 'استخراج لینک‌ها',
+	'input.extracting': 'در حال استخراج…',
+	'input.cancel': 'لغو',
+	'input.jumpToInput': 'استخراج جدید',
+
+	'empty.title': 'هر وقت آماده بودی',
+	'empty.body': 'یک آدرس صفحه را در نوار بالا وارد کن تا ویدیوهای مستقیم همین‌جا نمایش داده شوند.',
+
+	'extract.heading': 'استخراج‌شده',
+	'extract.proxyMode': 'حالت پروکسی',
+	'extract.clear': 'پاک کردن',
+	'extract.cardMenu': 'گزینه‌های بیشتر',
+	'extract.listMenu': 'کارهای فهرست',
+	'extract.groupMenu': 'کارهای منبع',
+	'extract.sourceUnknown': 'منبع نامشخص',
+	'extract.removeGroup': 'حذف همه از این منبع',
+	'extract.remove': 'حذف',
+	'extract.copyAll': 'کپی همه',
+	'extract.searchPlaceholder': 'فیلتر بر اساس عنوان، منبع، نوع یا کیفیت…',
+	'extract.noMatches': 'نتیجه‌ای با فیلتر شما مطابقت ندارد.',
+	'extract.export': 'خروجی',
+	'extract.exportTxt': 'لینک‌ها (.txt)',
+	'extract.exportM3u': 'پلی‌لیست (.m3u)',
+	'extract.hint':
+		'اگر ویدیویی پخش نشد، کیفیت یا حالت پروکسی را عوض کنید یا لینک را در یک پخش‌کننده بیرونی باز کنید.',
+	'extract.qualityOne': 'کیفیت',
+	'extract.qualityMany': 'کیفیت',
+	'extract.untitled': 'بدون عنوان',
+	'extract.copyUrl': 'کپی لینک',
+	'extract.download': 'دانلود',
+	'extract.showQr': 'نمایش کد QR',
+	'extract.loading': 'در حال استخراج لینک‌ها…',
+	'extract.resultCount': '{n} لینک استخراج شد',
+	'extract.videoOnly': 'بدون صدا',
+	'extract.videoOnlyHint': 'این کیفیت صدا ندارد (استریم تطبیقی). بی‌صدا پخش می‌شود؛ قابل دانلود است.',
+
+	// QR handoff
+	'qr.title': 'برای باز کردن روی گوشی اسکن کنید',
+	'qr.desc': 'دوربین گوشی را روی کد بگیرید تا این لینک باز شود.',
+	'qr.error': 'ساخت کد QR برای این لینک ممکن نشد.',
+
+	'player.audioLabel': 'صوت',
+	'player.error':
+		'این لینک اینجا قابل پخش نبود. کیفیت دیگری را امتحان کنید، حالت پروکسی را عوض کنید یا لینک را در پخش‌کننده بیرونی باز کنید.',
+
+	'error.extractTitle': 'استخراج لینک‌ها ممکن نشد',
+	'error.advice':
+		'لینک را بررسی و دوباره تلاش کنید، یا اگر لینک مستقیم باز نشد حالت پروکسی را برای آن کارت روشن کنید.',
+	'error.dismiss': 'بستن',
+
+	'how.heading': 'چطور کار می‌کند',
+	'how.subtitle': 'از لینک یک صفحه تا یک لینک قابل‌پخش در چهار گام.',
+	'how.step1.title': 'چسباندن لینک',
+	'how.step1.body': 'صفحه‌ای که ویدیو دارد، یا لینک مستقیم یک فایل ویدیویی.',
+	'how.step2.title': 'استخراج',
+	'how.step2.body': 'yt-dlp، یک استخراج‌گر عمومی و سپس اسکرپ HTML لینک‌های واقعی را پیدا می‌کنند.',
+	'how.step3.title': 'پیش‌نمایش',
+	'how.step3.body': 'هر کیفیتی را در پخش‌کننده داخلی با پشتیبانی HLS پخش کنید.',
+	'how.step4.title': 'ذخیره یا پروکسی',
+	'how.step4.body': 'یک کیفیت را دانلود کنید، یا وقتی مستقیم باز نمی‌شود از پروکسی پخش کنید.',
+	'how.feat1.title': 'پروکسی پخش داخلی',
+	'how.feat1.body': 'لینک‌هایی که هات‌لینک را مسدود می‌کنند یا به هدر خاص نیاز دارند را پخش می‌کند و HLS را برای پخش روان بازنویسی می‌کند.',
+	'how.feat2.title': 'روی دستگاه شما می‌ماند',
+	'how.feat2.body':
+		'نتایج و تنظیمات در حافظه محلی مرورگر شما ذخیره می‌شوند — هر وقت خواستید پاک کنید.',
+
+	'toast.invalidUrlEmpty': 'لطفاً یک لینک معتبر وارد کنید',
+	'toast.invalidUrl': 'فرمت لینک نامعتبر است',
+	'toast.loadedCache': '{n} فرمت از حافظه بارگذاری شد',
+	'toast.foundOne': '۱ فرمت پیدا شد',
+	'toast.foundMany': '{n} فرمت پیدا شد',
+	'toast.batchDone': '{n} لینک پردازش شد',
+	'toast.batchPartial': 'انجام شد: {ok} موفق، {failed} ناموفق',
+	'toast.cancelled': 'عملیات لغو شد',
+	'toast.unknownError': 'خطای نامشخصی رخ داد',
+	'toast.noUrlCopy': 'لینکی برای کپی این فرمت وجود ندارد',
+	'toast.copied': 'لینک در کلیپ‌بورد کپی شد',
+	'toast.copyFailed': 'کپی لینک ناموفق بود',
+	'toast.downloadStarted': 'دانلود شروع شد: {name}',
+	'toast.copiedAll': '{count} لینک کپی شد',
+	'toast.exported': 'فایل دانلود شد',
+	'toast.nothingToExport': 'چیزی برای خروجی نیست',
+	'toast.downloadFailed': 'شروع دانلود ناموفق بود',
+	'toast.extractCleared': 'نتایج استخراج پاک شد',
+	'toast.itemRemoved': 'مورد حذف شد',
+	'toast.prefsReset': 'تنظیمات به پیش‌فرض بازنشانی شد',
+	'toast.dataCleared': 'همه داده‌ها پاک شد',
+
+	'errorPage.404Title': 'صفحه پیدا نشد',
+	'errorPage.404Body': 'اوه! صفحه‌ای که دنبالش هستید وجود ندارد.',
+	'errorPage.500Title': 'خطای سرور',
+	'errorPage.500Body': 'متأسفیم! مشکلی در سمت ما پیش آمد:',
+	'errorPage.genericTitle': 'خطایی رخ داد',
+	'errorPage.genericBody': 'خطایی رخ داده است:',
+	'errorPage.unknown': 'خطای نامشخص',
+	'errorPage.home': 'بازگشت به خانه',
+
+	'prefs.title': 'تنظیمات',
+	'prefs.subtitle': 'رابط، پخش و داده‌های ذخیره‌شده را تنظیم کنید.',
+	'prefs.section.interface': 'رابط کاربری',
+	'prefs.section.playback': 'پخش',
+	'prefs.section.proxy': 'پروکسی و لینک‌ها',
+	'prefs.showThumbnails.label': 'نمایش بندانگشتی‌ها',
+	'prefs.showThumbnails.desc': 'نمایش تصاویر بندانگشتی ویدیوها در لیست',
+	'prefs.animations.label': 'فعال‌سازی انیمیشن‌ها',
+	'prefs.animations.desc': 'فعال‌سازی انیمیشن‌ها و گذارهای روان در سراسر رابط',
+	'prefs.compact.label': 'حالت فشرده',
+	'prefs.compact.desc': 'استفاده از چیدمان فشرده‌تر برای جای دادن محتوای بیشتر در صفحه',
+	'prefs.mute.label': 'بی‌صدا به‌صورت پیش‌فرض',
+	'prefs.mute.desc': 'شروع ویدیوها با صدای بی‌صدا',
+	'prefs.preload.label': 'پیش‌بارگذاری متادیتا',
+	'prefs.preload.desc': 'بارگذاری زودهنگام متادیتای ویدیو برای شروع سریع‌تر پخش',
+	'prefs.useProxy.label': 'حالت پروکسی',
+	'prefs.useProxy.desc': 'استفاده از حالت پروکسی برای دسترسی به لینک‌ها وقتی دسترسی مستقیم مسدود است',
+	'prefs.hlsDownload.label': 'نمایش دانلود HLS',
+	'prefs.hlsDownload.desc': 'نمایش دکمه دانلود برای ویدیوهای HLS',
+	'prefs.videoOnly.label': 'نمایش کیفیت‌های بدون صدا',
+	'prefs.videoOnly.desc':
+		'شامل استریم‌های تطبیقی باکیفیت که صدا ندارند (مثلاً یوتیوب بالای ۳۶۰p). بی‌صدا پخش می‌شوند اما قابل دانلود هستند.',
+	'prefs.viewMode': 'حالت نمایش در دسکتاپ',
+	'prefs.gridView': 'نمای شبکه‌ای',
+	'prefs.listView': 'نمای لیستی',
+	'prefs.sorting': 'گزینه‌های مرتب‌سازی',
+	'prefs.sortBy': 'مرتب‌سازی بر اساس',
+	'prefs.sort.name': 'نام',
+	'prefs.sort.size': 'اندازه',
+	'prefs.sort.quality': 'کیفیت',
+	'prefs.sortOrder': 'ترتیب مرتب‌سازی',
+	'prefs.ascending': 'صعودی',
+	'prefs.descending': 'نزولی',
+	'prefs.themeSection': 'انتخاب پوسته',
+	'prefs.themeLabel': 'پوسته',
+	'prefs.theme.light': 'روشن',
+	'prefs.theme.dark': 'تیره',
+	'prefs.theme.system': 'سیستم',
+	'prefs.storedData': 'داده‌های ذخیره‌شده',
+	'prefs.extractedVideos': 'ویدیوهای استخراج‌شده',
+	'prefs.clearData': 'پاک کردن همه داده‌ها',
+	'prefs.resetSection': 'بازنشانی و پیش‌فرض‌ها',
+	'prefs.resetDefaults': 'بازنشانی به پیش‌فرض‌ها'
+};
+
+export const DICTIONARIES: Record<Locale, Record<MessageKey, string>> = { en, fa };
