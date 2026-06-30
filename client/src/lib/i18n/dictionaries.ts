@@ -180,7 +180,39 @@ export const en = {
 	'prefs.extractedVideos': 'Extracted videos',
 	'prefs.clearData': 'Clear all data',
 	'prefs.resetSection': 'Reset & defaults',
-	'prefs.resetDefaults': 'Reset to defaults'
+	'prefs.resetDefaults': 'Reset to defaults',
+
+	// Cookies / sign-in
+	'cookies.section': 'Cookies & sign-in',
+	'cookies.desc':
+		'Add your own cookies to unlock age-restricted, private, or login-only videos (YouTube, Instagram, …). They are stored only in this browser and sent only to the matching site.',
+	'cookies.statusSaved': 'Saved',
+	'cookies.statusEmpty': 'Not set',
+	'cookies.add': 'Add',
+	'cookies.edit': 'Edit',
+	'cookies.save': 'Save',
+	'cookies.clear': 'Clear',
+	'cookies.cancel': 'Cancel',
+	'cookies.placeholder': 'Paste the cookies.txt contents for {site} here…',
+	'cookies.customTitle': 'Other site',
+	'cookies.customPlaceholder': 'example.com',
+	'cookies.customAdd': 'Add',
+	'cookies.savedToast': 'Cookies saved for {site}',
+	'cookies.clearedToast': 'Cookies cleared for {site}',
+	'cookies.guideToggle': 'How do I get my cookies?',
+	'cookies.guide.s1': 'Install the “Get cookies.txt LOCALLY” browser extension.',
+	'cookies.guide.s2':
+		'Open a private/incognito window and log in to the site (incognito stops the cookies from being rotated/invalidated).',
+	'cookies.guide.s3': 'Click the extension and Export the cookies for that site.',
+	'cookies.guide.s4': 'Paste the exported text into the box for that site here, then Save.',
+	'cookies.warnTitle': 'Heads up',
+	'cookies.warnThrowaway':
+		'Use a throwaway account — sites can rate-limit or ban accounts used for downloading.',
+	'cookies.warnLocal':
+		'Cookies are sensitive and stay only in this browser. Don’t use this on a shared computer.',
+	'cookies.clearAll': 'Remove all cookies',
+	'cookies.clearedAllToast': 'All cookies removed',
+	'cookies.hint': 'Tip: add your cookies in Settings → Cookies to access this.'
 } as const;
 
 export const fa: Record<MessageKey, string> = {
@@ -336,7 +368,39 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.extractedVideos': 'ویدیوهای استخراج‌شده',
 	'prefs.clearData': 'پاک کردن همه داده‌ها',
 	'prefs.resetSection': 'بازنشانی و پیش‌فرض‌ها',
-	'prefs.resetDefaults': 'بازنشانی به پیش‌فرض‌ها'
+	'prefs.resetDefaults': 'بازنشانی به پیش‌فرض‌ها',
+
+	// Cookies / sign-in
+	'cookies.section': 'کوکی‌ها و ورود',
+	'cookies.desc':
+		'کوکی‌های خودت را اضافه کن تا ویدیوهای محدودشده با سن، خصوصی یا نیازمند ورود (یوتیوب، اینستاگرام، …) باز شوند. کوکی‌ها فقط در همین مرورگر ذخیره و فقط برای همان سایت ارسال می‌شوند.',
+	'cookies.statusSaved': 'ذخیره شد',
+	'cookies.statusEmpty': 'تنظیم نشده',
+	'cookies.add': 'افزودن',
+	'cookies.edit': 'ویرایش',
+	'cookies.save': 'ذخیره',
+	'cookies.clear': 'پاک کردن',
+	'cookies.cancel': 'انصراف',
+	'cookies.placeholder': 'محتوای cookies.txt مربوط به {site} را اینجا بچسبان…',
+	'cookies.customTitle': 'سایت دیگر',
+	'cookies.customPlaceholder': 'example.com',
+	'cookies.customAdd': 'افزودن',
+	'cookies.savedToast': 'کوکی برای {site} ذخیره شد',
+	'cookies.clearedToast': 'کوکی {site} پاک شد',
+	'cookies.guideToggle': 'چطور کوکی‌هایم را بگیرم؟',
+	'cookies.guide.s1': 'افزونه‌ی «Get cookies.txt LOCALLY» را روی مرورگر نصب کن.',
+	'cookies.guide.s2':
+		'یک پنجره‌ی ناشناس (incognito) باز کن و وارد سایت شو (حالت ناشناس از باطل‌شدن کوکی‌ها جلوگیری می‌کند).',
+	'cookies.guide.s3': 'روی افزونه کلیک کن و کوکی‌های آن سایت را Export کن.',
+	'cookies.guide.s4': 'متن خروجی را در کادر همان سایت اینجا بچسبان و ذخیره کن.',
+	'cookies.warnTitle': 'توجه',
+	'cookies.warnThrowaway':
+		'از یک حساب یک‌بارمصرف استفاده کن — سایت‌ها ممکن است حساب‌های دانلود را محدود یا مسدود کنند.',
+	'cookies.warnLocal':
+		'کوکی‌ها حساس هستند و فقط در همین مرورگر می‌مانند. روی رایانه‌ی مشترک از این استفاده نکن.',
+	'cookies.clearAll': 'حذف همه‌ی کوکی‌ها',
+	'cookies.clearedAllToast': 'همه‌ی کوکی‌ها حذف شد',
+	'cookies.hint': 'نکته: برای دسترسی، کوکی‌هایت را در تنظیمات ← کوکی‌ها اضافه کن.'
 };
 
 export const DICTIONARIES: Record<Locale, Record<MessageKey, string>> = { en, fa };

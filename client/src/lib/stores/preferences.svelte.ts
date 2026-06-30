@@ -11,7 +11,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 	enableAnimations: true,
 	enableCompact: false,
 	enableProxyForVideoExtract: true,
-	enableVideoMute: true,
+	enableVideoMute: false,
 	enableVideoPreloadMetadata: false,
 	showVideoThumbnail: true,
 	showHlsTypeDownloadButton: false,

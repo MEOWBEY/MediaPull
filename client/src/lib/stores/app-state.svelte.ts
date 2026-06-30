@@ -8,6 +8,7 @@
 
 import type { GroupedVideo, IncomingVideo, Preferences } from '$lib/types';
 
+import { CookieStore } from './cookies.svelte';
 import { LibraryStore } from './library.svelte';
 import { PreferencesStore } from './preferences.svelte';
 
@@ -22,6 +23,7 @@ export type {
 class AppStore {
 	private readonly prefs = new PreferencesStore();
 	private readonly library = new LibraryStore(this.prefs);
+	private readonly cookieStore = new CookieStore();
 
 	isVideoExtractRunning = $state(false);
 
@@ -29,6 +31,11 @@ class AppStore {
 
 	get preferences(): Preferences {
 		return this.prefs.current;
+	}
+
+	/** Per-site auth cookies (Settings → Cookies). Sensitive; browser-only. */
+	get cookies(): CookieStore {
+		return this.cookieStore;
 	}
 
 	get videoExtractResults(): GroupedVideo[] {

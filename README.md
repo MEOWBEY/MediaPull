@@ -116,6 +116,18 @@ routes to `http://localhost:8000` (no CORS). Open http://localhost:5173.
 | `EXTRACT_WORKERS`      | `4`         | Thread-pool size for blocking yt-dlp work.                                |
 | `CACHE_TTL`            | `300`       | Result cache time-to-live (seconds, `0` disables).                        |
 | `PORT`                 | `8000`      | Server port.                                                              |
+| `COOKIE_FILE`          | _(empty)_   | Path to a server-side default Netscape `cookies.txt` (fallback when a request brings no cookies). Unlocks age-restricted / private / login-gated content. |
+| `PROXY_URL`            | _(empty)_   | Outbound proxy (`http(s)://…` / `socks5://…`) for extraction, probing **and** media streaming. Routes around datacenter-IP blocks/rate-limits. |
+| `YOUTUBE_PLAYER_CLIENTS` | _(empty)_ | Comma list of YouTube player clients (e.g. `default,tv,web_safari`). Keep `default` to preserve the full quality ladder; add age-gate-capable clients. |
+| `YOUTUBE_PO_TOKEN`     | _(empty)_   | Comma-separated PO token(s) to clear YouTube bot-detection on datacenter IPs (usually from a bgutil PO-token sidecar). |
+| `SLEEP_REQUESTS`       | `0`         | Seconds to sleep between extractor requests — `1`–`3` cuts 429/"used too much" blocks under load. |
+
+> **Authentication & blocks.** Age-restricted, private, and most Instagram
+> content require cookies. Set a server-side default with `COOKIE_FILE`, and/or
+> let each user paste their own per-site cookies in the app's **Settings →
+> Cookies** panel (stored only in their browser, sent per-request). For YouTube
+> on a server, also install a JS runtime (Deno/Node) so yt-dlp can solve the
+> n-challenge — see [`deploy/`](deploy/).
 
 ### Client (`client/.env`)
 

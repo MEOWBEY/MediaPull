@@ -15,8 +15,11 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import re
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
+from html import unescape
 from urllib.parse import urlparse
 
 import httpx
@@ -31,11 +34,41 @@ logger = logging.getLogger("directstream.extractor")
 VIDEO_EXTENSIONS = (
     ".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".m4v", ".3gp", ".ts",
 )
+# Broad "media URL anywhere in the page/inline-JSON" patterns. Run against the
+# slash-unescaped page so `https:\/\/…\.mp4` (very common in embedded JSON)
+# matches too.
 _SCRAPE_PATTERNS = (
     re.compile(r'https?://[^"\s<>\\]+\.mp4[^"\s<>\\]*', re.IGNORECASE),
     re.compile(r'https?://[^"\s<>\\]+\.webm[^"\s<>\\]*', re.IGNORECASE),
     re.compile(r'https?://[^"\s<>\\]+\.m3u8[^"\s<>\\]*', re.IGNORECASE),
+    re.compile(r'https?://[^"\s<>\\]+\.(?:mov|m4v|ts)[^"\s<>\\]*', re.IGNORECASE),
 )
+# Targeted selectors — sites that don't expose a bare media URL often still
+# declare the stream in metadata or a <video>/<source> tag. These are trusted
+# (intended-for-playback) so we keep them even without a media extension and let
+# downstream link-validation drop any that turn out to be HTML landing pages.
+_META_VIDEO_PATTERNS = (
+    re.compile(
+        r'<meta[^>]+(?:property|name)=["\'](?:og:video(?::secure_url|:url)?|twitter:player:stream)["\']'
+        r'[^>]*\bcontent=["\']([^"\']+)["\']',
+        re.IGNORECASE,
+    ),
+    re.compile(  # same tag, attribute order reversed (content before property)
+        r'<meta[^>]+\bcontent=["\']([^"\']+)["\'][^>]+'
+        r'(?:property|name)=["\'](?:og:video(?::secure_url|:url)?|twitter:player:stream)["\']',
+        re.IGNORECASE,
+    ),
+)
+_SOURCE_SRC_PATTERN = re.compile(r'<(?:source|video)[^>]+\bsrc=["\']([^"\']+)["\']', re.IGNORECASE)
+_JSONLD_URL_PATTERN = re.compile(r'"(?:contentUrl|embedUrl)"\s*:\s*"([^"]+)"', re.IGNORECASE)
+_OG_TITLE_PATTERN = re.compile(
+    r'<meta[^>]+property=["\']og:title["\'][^>]*\bcontent=["\']([^"\']+)["\']', re.IGNORECASE
+)
+_TITLE_PATTERN = re.compile(r"<title[^>]*>([^<]+)</title>", re.IGNORECASE)
+_OG_IMAGE_PATTERN = re.compile(
+    r'<meta[^>]+property=["\']og:image["\'][^>]*\bcontent=["\']([^"\']+)["\']', re.IGNORECASE
+)
+_MEDIA_EXT_HINT = re.compile(r"\.(?:mp4|webm|m3u8|mov|m4v|ts)(?:[?#]|$)", re.IGNORECASE)
 
 
 def _build_impersonate(client: str):
@@ -83,10 +116,26 @@ def classify_extraction_error(exc: Exception | None) -> tuple[int, str]:
     def has(*needles: str) -> bool:
         return any(n in text for n in needles)
 
+    if has(
+        "confirm you're not a bot",
+        "confirm you’re not a bot",
+        "sign in to confirm",
+        "not a bot",
+    ):
+        return 429, (
+            "The source flagged the server as a bot (common on datacenter IPs). "
+            "Add your cookies in Settings → Cookies, or try again later."
+        )
+    if has("rate-limit", "rate limit", "too many requests", "429"):
+        return 429, (
+            "The source is rate-limiting requests (HTTP 429). Slow down, or add "
+            "your cookies in Settings → Cookies to authenticate."
+        )
     if has("403", "forbidden", "access denied"):
         return 403, (
             "The source blocked the request (HTTP 403). The link may require "
-            "login/cookies or be hotlink-protected. Try the proxy toggle."
+            "login/cookies or be hotlink-protected. Add cookies in Settings or "
+            "try the proxy toggle."
         )
     if has("410", "gone"):
         return 410, "The video is no longer available at the source (HTTP 410)."
@@ -95,11 +144,24 @@ def classify_extraction_error(exc: Exception | None) -> tuple[int, str]:
     if has("geo", "not available in your country", "geo-restricted", "geo restricted"):
         return 451, "This video is geo-restricted and not available from the server's region."
     if has("private video", "this video is private"):
-        return 403, "This video is private."
-    if has("sign in", "log in", "login required", "authentication"):
-        return 401, "This video requires sign-in, which isn't supported."
-    if has("age", "age-restricted", "confirm your age"):
-        return 403, "This video is age-restricted and can't be extracted."
+        return 403, (
+            "This video is private. If you have access, add your cookies in "
+            "Settings → Cookies."
+        )
+    if has("age", "age-restricted", "age restricted", "confirm your age", "inappropriate for some"):
+        return 403, (
+            "This video is age-restricted. Add cookies from a logged-in "
+            "account in Settings → Cookies to extract it."
+        )
+    if has("login required", "requested content is not available", "private", "members-only"):
+        return 401, (
+            "This content needs sign-in. Add your cookies in Settings → Cookies "
+            "to access it."
+        )
+    if has("sign in", "log in", "authentication"):
+        return 401, (
+            "This video requires sign-in. Add your cookies in Settings → Cookies."
+        )
     if has("unsupported url", "no suitable", "is not a valid url"):
         return 422, "This site or URL isn't supported by the extractor."
     if has("no video", "no valid video formats", "no video formats", "no video urls"):
@@ -135,11 +197,16 @@ class Extractor:
         self._pool = ThreadPoolExecutor(
             max_workers=settings.extract_workers, thread_name_prefix="ytdlp"
         )
+        # Optional outbound proxy, shared by the scrape client, the probe session
+        # and (via ProxyService) media streaming, so everything leaves the box
+        # from the same egress.
+        self._proxy = settings.proxy_url or None
         self._client = httpx.AsyncClient(
             follow_redirects=True,
             timeout=httpx.Timeout(settings.request_timeout),
             headers={"User-Agent": settings.user_agent},
             limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
+            proxy=self._proxy,
         )
         # Impersonating session used only to validate format URLs — it mirrors
         # what the proxy does, so a probe that fails is a genuinely dead link
@@ -160,7 +227,7 @@ class Extractor:
 
     # ----- public API ---------------------------------------------------
 
-    async def extract(self, url: str) -> VideoInfo:
+    async def extract(self, url: str, cookies: str | None = None) -> VideoInfo:
         if not is_valid_url(url):
             raise ValueError("Invalid URL format")
 
@@ -170,8 +237,8 @@ class Extractor:
         timeout = self._settings.request_timeout
         half = max(10, timeout // 2)
         strategies = (
-            ("yt-dlp", lambda: self._ytdlp(url, generic=False), timeout),
-            ("yt-dlp-generic", lambda: self._ytdlp(url, generic=True), half),
+            ("yt-dlp", lambda: self._ytdlp(url, generic=False, cookies=cookies), timeout),
+            ("yt-dlp-generic", lambda: self._ytdlp(url, generic=True, cookies=cookies), half),
             ("html-scrape", lambda: self._scrape(url), half),
         )
 
@@ -216,6 +283,7 @@ class Extractor:
             self._probe_session = AsyncSession(
                 timeout=self._settings.validate_timeout,
                 max_clients=self._settings.validate_concurrency,
+                proxies={"http": self._proxy, "https": self._proxy} if self._proxy else None,
             )
 
         sem = asyncio.Semaphore(self._settings.validate_concurrency)
@@ -296,11 +364,65 @@ class Extractor:
             formats=[VideoFormat(url=url, ext=ext, format_id="direct")],
         )
 
-    async def _ytdlp(self, url: str, *, generic: bool) -> VideoInfo:
+    async def _ytdlp(self, url: str, *, generic: bool, cookies: str | None = None) -> VideoInfo:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(self._pool, self._ytdlp_sync, url, generic)
+        return await loop.run_in_executor(self._pool, self._ytdlp_sync, url, generic, cookies)
 
-    def _ytdlp_sync(self, url: str, generic: bool) -> VideoInfo:
+    def _build_extractor_args(self) -> dict:
+        """yt-dlp extractor_args from config (currently YouTube only).
+
+        Lets the deploy choose player clients (e.g. ``default,tv,web_safari`` —
+        keeps the full quality ladder while adding age-gate-capable clients) and
+        pass PO token(s) so a datacenter IP can clear bot-detection.
+        """
+        s = self._settings
+        youtube: dict[str, list[str]] = {}
+        if s.youtube_player_client_list:
+            youtube["player_client"] = s.youtube_player_client_list
+        if s.youtube_po_token_list:
+            youtube["po_token"] = s.youtube_po_token_list
+        return {"youtube": youtube} if youtube else {}
+
+    def _normalize_cookies(self, raw: str, url: str) -> str | None:
+        """Coerce user-pasted cookies into Netscape cookies.txt text.
+
+        Accepts either the Netscape/Mozilla export (tab-separated rows, what the
+        "Get cookies.txt LOCALLY" extension produces) or a single
+        ``Cookie: a=b; c=d`` header line, which we convert to Netscape rows
+        scoped to the URL's host. Returns None when there's nothing usable.
+        """
+        text = (raw or "").strip()
+        if not text:
+            return None
+
+        # Netscape/Mozilla format already (rows are tab-separated). Ensure the
+        # magic header line is present — MozillaCookieJar refuses files without it.
+        if "\t" in text:
+            return text if text.lstrip().startswith("#") else "# Netscape HTTP Cookie File\n" + text
+
+        # Header-style cookies: "Cookie: a=b; c=d" or just "a=b; c=d".
+        if text.lower().startswith("cookie:"):
+            text = text.split(":", 1)[1]
+        pairs = [p.strip() for p in text.split(";") if "=" in p]
+        if not pairs:
+            return None
+
+        host = (urlparse(url).hostname or "").lower()
+        domain = host[4:] if host.startswith("www.") else host
+        if not domain:
+            return None
+        dot_domain = "." + domain
+
+        # domain \t include_subdomains \t path \t secure \t expiry \t name \t value
+        lines = ["# Netscape HTTP Cookie File"]
+        for pair in pairs:
+            name, _, value = pair.partition("=")
+            name = name.strip()
+            if name:
+                lines.append("\t".join((dot_domain, "TRUE", "/", "TRUE", "0", name, value.strip())))
+        return "\n".join(lines) + "\n" if len(lines) > 1 else None
+
+    def _ytdlp_sync(self, url: str, generic: bool, cookies: str | None = None) -> VideoInfo:
         s = self._settings
         opts: dict[str, object] = {
             "quiet": True,
@@ -318,10 +440,10 @@ class Extractor:
             "geo_bypass": True,
             "no_color": True,
             "no_progress": True,
-            # NOTE: do NOT pin youtube player_client. yt-dlp's default client
-            # selection returns the full ladder (e.g. 144p–2160p); forcing
-            # ios/android currently collapses YouTube to a single 360p muxed
-            # stream. Leaving it to yt-dlp also tracks upstream as YouTube changes.
+            # NOTE: youtube player_client is NOT pinned by default. yt-dlp's
+            # default selection returns the full ladder (144p–2160p); forcing a
+            # single mobile client collapses YouTube to 360p. Override via
+            # YOUTUBE_PLAYER_CLIENTS (keep "default" in the list to preserve it).
         }
 
         if self._impersonate is not None:
@@ -333,11 +455,46 @@ class Extractor:
         else:
             opts["http_headers"] = {"User-Agent": s.user_agent}
 
+        if self._proxy:
+            opts["proxy"] = self._proxy
+        if s.sleep_requests:
+            # Random-ish spacing between extractor requests — the cheapest way to
+            # avoid 429/"used too much" blocks under load.
+            opts["sleep_interval_requests"] = s.sleep_requests
+        extractor_args = self._build_extractor_args()
+        if extractor_args:
+            opts["extractor_args"] = extractor_args
+
         if generic:
             opts.update(force_generic_extractor=True, nocheckcertificate=True)
 
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(url, download=False)
+        # Authentication cookies: per-request blob (from the user's Settings)
+        # wins; otherwise the server-side default file. The temp file lives only
+        # for this one extraction and is removed right after.
+        cookie_tmp: str | None = None
+        cookie_text = self._normalize_cookies(cookies, url) if cookies else None
+        if cookie_text:
+            handle = tempfile.NamedTemporaryFile(
+                "w", suffix=".txt", delete=False, encoding="utf-8"
+            )
+            try:
+                handle.write(cookie_text)
+            finally:
+                handle.close()
+            cookie_tmp = handle.name
+            opts["cookiefile"] = cookie_tmp
+        elif s.cookie_file:
+            opts["cookiefile"] = s.cookie_file
+
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+        finally:
+            if cookie_tmp is not None:
+                try:
+                    os.unlink(cookie_tmp)
+                except OSError:
+                    pass
 
         if not info:
             raise ExtractionError("No video information extracted")
@@ -481,32 +638,73 @@ class Extractor:
         except httpx.HTTPError as exc:
             raise ExtractionError(f"Scraping failed: {exc}") from exc
 
-        found: list[str] = []
-        for pattern in _SCRAPE_PATTERNS:
-            for match in pattern.findall(content):
-                clean = match.strip("\"'<>")
-                if clean and clean not in found:
-                    found.append(clean)
-                if len(found) >= self._settings.max_formats:
-                    break
-            if len(found) >= self._settings.max_formats:
-                break
-
+        found = self._scrape_media_urls(content, base=url)
         if not found:
             raise ExtractionError("No video URLs found in page")
 
         formats = [
             VideoFormat(
                 url=video_url,
-                ext="m3u8" if ".m3u8" in video_url else "mp4",
-                protocol="m3u8_native" if ".m3u8" in video_url else "https",
+                ext="m3u8" if ".m3u8" in video_url.lower() else "mp4",
+                protocol="m3u8_native" if ".m3u8" in video_url.lower() else "https",
                 format_id=f"scraped_{i}",
             )
             for i, video_url in enumerate(found)
         ]
         return VideoInfo(
-            id=urlparse(url).netloc,
+            id=parsed.netloc,
+            title=self._scrape_title(content),
+            thumbnail=self._scrape_first(content, _OG_IMAGE_PATTERN),
             webpage_url=url,
             formats=formats,
             method="scraped",
         )
+
+    def _scrape_media_urls(self, content: str, *, base: str) -> list[str]:
+        """Pull playable media URLs out of raw HTML.
+
+        Order of trust: explicit metadata / ``<source>`` tags first (declared for
+        playback), then a broad media-extension sweep over the slash-unescaped
+        page so inline-JSON streams (``https:\\/\\/…\\.mp4``) surface too. Deduped,
+        capped at ``max_formats``; downstream validation drops any HTML decoys.
+        """
+        limit = self._settings.max_formats
+        found: list[str] = []
+
+        def add(raw: str, *, require_media_ext: bool) -> None:
+            cleaned = unescape(raw.replace("\\/", "/")).strip().strip("\"'<>")
+            if not cleaned.lower().startswith(("http://", "https://")):
+                return
+            if require_media_ext and not _MEDIA_EXT_HINT.search(cleaned.split("#")[0]):
+                return
+            if cleaned not in found:
+                found.append(cleaned)
+
+        # 1) Trusted selectors — keep even without a media extension.
+        for pattern in (*_META_VIDEO_PATTERNS, _SOURCE_SRC_PATTERN, _JSONLD_URL_PATTERN):
+            for match in pattern.findall(content):
+                add(match, require_media_ext=False)
+                if len(found) >= limit:
+                    return found[:limit]
+
+        # 2) Broad sweep over slash-unescaped content — media extension required.
+        unescaped = content.replace("\\/", "/")
+        for pattern in _SCRAPE_PATTERNS:
+            for match in pattern.findall(unescaped):
+                add(match, require_media_ext=True)
+                if len(found) >= limit:
+                    return found[:limit]
+
+        return found[:limit]
+
+    @staticmethod
+    def _scrape_first(content: str, pattern: re.Pattern[str]) -> str | None:
+        match = pattern.search(content)
+        return unescape(match.group(1)).strip() if match else None
+
+    @classmethod
+    def _scrape_title(cls, content: str) -> str | None:
+        title = cls._scrape_first(content, _OG_TITLE_PATTERN) or cls._scrape_first(
+            content, _TITLE_PATTERN
+        )
+        return title[:200] if title else None

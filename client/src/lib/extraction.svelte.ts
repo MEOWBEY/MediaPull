@@ -131,7 +131,12 @@ export class ExtractionController {
 
 		if (!url) {return false;}
 
-		const cached = extractCache.get(url);
+		// Per-site auth cookies (if the user added any for this host). Sent only
+		// for the matching domain; bucket the cache so authed/anon results don't mix.
+		const cookies = appStore.cookies.matchFor(url);
+		const cacheKey = cookies ? `${url}#auth` : url;
+
+		const cached = extractCache.get(cacheKey);
 
 		if (cached) {
 			appStore.addVideoExtractResultsToStore(cached);
@@ -144,9 +149,14 @@ export class ExtractionController {
 
 		return this.run({
 			silent: opts.silent,
-			task: (signal) => post<IncomingVideo>('/extract-videos', { url }, { signal }),
+			task: (signal) =>
+				post<IncomingVideo>(
+					'/extract-videos',
+					cookies ? { url, cookies } : { url },
+					{ signal }
+				),
 			onSuccess: (video) => {
-				extractCache.set(url, video);
+				extractCache.set(cacheKey, video);
 				appStore.addVideoExtractResultsToStore(video);
 
 				if (!opts.silent) {

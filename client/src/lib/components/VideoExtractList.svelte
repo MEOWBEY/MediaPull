@@ -341,11 +341,16 @@
 			<p class="text-muted-foreground py-8 text-center text-sm">{t('extract.noMatches')}</p>
 		{/if}
 
-		<!-- Source groups: everything pulled from one page sits in one bordered panel. -->
+		<!-- Source groups: everything pulled from one page sits in one panel. On
+		     mobile the panel chrome (border/padding/round) is dropped so each video
+		     card uses the full screen width — nested "card-in-card" padding made the
+		     player needlessly small on phones. The rich panel returns at sm+. -->
 		{#each groups as group (group.key)}
-			<div class="border-border/60 bg-card/30 shadow-soft mb-6 rounded-4xl border p-3 sm:p-4">
+			<div
+				class="mb-6 sm:p-4 sm:border sm:rounded-4xl sm:border-border/60 sm:bg-card/30 sm:shadow-soft"
+			>
 				<!-- Group header: the origin page + group-wide actions -->
-				<div class="border-border/50 mb-4 flex items-center gap-2 border-b pb-3">
+				<div class="border-border/50 mb-3 flex items-center gap-2 border-b pb-2 sm:mb-4 sm:pb-3">
 					<Link class="text-aurora-1 h-4 w-4 shrink-0" />
 					<!-- Count + URL are one cluster so the badge always hugs the URL: in
 					     front of it in LTR, behind it in RTL. `me-auto` on the cluster eats
@@ -440,12 +445,12 @@
 								useProxy={cardUsesProxy(video)}
 							/>
 
-							<div class="space-y-3 p-4">
+							<div class="space-y-3 p-3 sm:p-4">
 								<!-- Title + meta -->
 								<div>
 									<h3
 										dir="auto"
-										class="line-clamp-2 font-semibold tracking-tight {preferences.enableCompact
+										class="mx-2 line-clamp-2 font-semibold tracking-tight {preferences.enableCompact
 											? 'text-sm'
 											: 'text-base'}"
 										title={video.title}
@@ -620,8 +625,8 @@
 {#if isExtractBusy}
 	<section class="mb-10" role="status" aria-busy="true" aria-label={t('extract.loading')}>
 		<span class="sr-only">{t('extract.loading')}</span>
-		<div class="border-border/60 bg-card/30 shadow-soft mb-6 rounded-4xl border p-3 sm:p-4">
-			<div class="border-border/50 mb-4 flex items-center gap-2 border-b pb-3">
+		<div class="mb-6 sm:p-4 sm:border sm:rounded-4xl sm:border-border/60 sm:bg-card/30 sm:shadow-soft">
+			<div class="border-border/50 mb-3 flex items-center gap-2 border-b pb-2 sm:mb-4 sm:pb-3">
 				<div class="bg-muted h-4 w-4 shrink-0 animate-pulse rounded"></div>
 				<div class="bg-muted h-4 w-48 max-w-full animate-pulse rounded"></div>
 			</div>

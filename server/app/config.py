@@ -28,7 +28,36 @@ class Settings(BaseSettings):
     max_formats: int = Field(default=40, ge=1, le=200)
     request_timeout: int = Field(default=90, ge=5)
     max_retries: int = Field(default=2, ge=0)
-    scrape_max_bytes: int = Field(default=50_000, ge=1_000)
+    scrape_max_bytes: int = Field(default=200_000, ge=1_000)
+
+    # ----- Authentication / anti-block -----------------------------------
+    # Server-side default cookies (Netscape cookies.txt path). Unlocks
+    # age-restricted / private / login-gated content (YouTube, Instagram, …)
+    # and tames "sign in to confirm you're not a bot" on datacenter IPs. Used
+    # only when the request carries no per-user cookies of its own. Empty = off.
+    cookie_file: str = Field(default="", alias="COOKIE_FILE")
+    # Hard cap on the per-request cookie blob the client may paste (bytes).
+    max_cookie_bytes: int = Field(default=262_144, ge=0)
+
+    # Outbound proxy (http/https/socks5) for extraction, link probing AND the
+    # media proxy — routes around datacenter-IP blocks and rate limits. e.g.
+    # "http://user:pass@host:port" or "socks5://host:port". Empty = direct.
+    proxy_url: str = Field(default="", alias="PROXY_URL")
+
+    # YouTube player clients to try, comma-separated (maps to
+    # extractor_args youtube:player_client). Empty = yt-dlp's default (full
+    # quality ladder). Pinning a single mobile client collapses YouTube to
+    # 360p, so prefer a list that keeps "default", e.g.
+    # "default,tv,web_safari". "tv_embedded"/"mweb" help with age-gates.
+    youtube_player_clients: str = Field(default="", alias="YOUTUBE_PLAYER_CLIENTS")
+    # Optional PO token(s) for YouTube (maps to extractor_args youtube:po_token),
+    # comma-separated "CLIENT.CONTEXT+TOKEN" values. Lets a datacenter IP pass
+    # bot-detection. Usually supplied by a bgutil PO-token provider sidecar.
+    youtube_po_token: str = Field(default="", alias="YOUTUBE_PO_TOKEN")
+
+    # Politeness: random sleep (seconds) between extractor HTTP requests. A
+    # small value (1–3) markedly cuts 429/"used too much" blocks under load.
+    sleep_requests: float = Field(default=0.0, ge=0, alias="SLEEP_REQUESTS")
 
     # Browser impersonation (curl_cffi): mimics a real browser's TLS/HTTP
     # fingerprint so anti-bot sites ( tiktok, …) stop
@@ -59,6 +88,14 @@ class Settings(BaseSettings):
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins_raw.split(",") if o.strip()] or ["*"]
+
+    @property
+    def youtube_player_client_list(self) -> list[str]:
+        return [c.strip() for c in self.youtube_player_clients.split(",") if c.strip()]
+
+    @property
+    def youtube_po_token_list(self) -> list[str]:
+        return [t.strip() for t in self.youtube_po_token.split(",") if t.strip()]
 
 
 @lru_cache(maxsize=1)

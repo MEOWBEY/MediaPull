@@ -51,8 +51,15 @@ class ProxyService:
         self._impersonate = (
             settings.impersonate_client if settings.enable_impersonation else ""
         )
+        # Same outbound proxy as extraction, so media leaves the box from the
+        # same egress IP that resolved the link (avoids signed-URL/IP mismatches).
+        self._proxy = settings.proxy_url or None
         # No read timeout: media streams stay open for the whole download.
-        self._session = AsyncSession(timeout=15, max_clients=50)
+        self._session = AsyncSession(
+            timeout=15,
+            max_clients=50,
+            proxies={"http": self._proxy, "https": self._proxy} if self._proxy else None,
+        )
 
     async def aclose(self) -> None:
         await self._session.close()

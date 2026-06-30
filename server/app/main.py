@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import sys
 from contextlib import asynccontextmanager
@@ -97,22 +98,31 @@ def create_app() -> FastAPI:
     @app.post("/extract-videos", response_model=ExtractResponse)
     async def extract_videos(payload: ExtractRequest) -> ExtractResponse:
         url = payload.url.strip()
+        cookies = payload.cookies
         cache: TTLCache[VideoInfo] = app.state.cache
 
-        cached = await cache.get(url)
+        # Cookies change what's extractable (private/age/login-gated), so an
+        # authenticated request must not be served a public-failed cache entry
+        # (or vice-versa). Bucket the cache by a short, non-reversible cookie tag.
+        cache_key = url
+        if cookies:
+            digest = hashlib.sha256(cookies.encode("utf-8", "ignore")).hexdigest()[:16]
+            cache_key = f"{url}#c={digest}"
+
+        cached = await cache.get(cache_key)
         if cached is not None:
             logger.info("cache hit: %s", url)
             return ExtractResponse(
                 video=to_client_video(cached), method=cached.method, cached=True
             )
 
-        logger.info("extracting: %s", url)
+        logger.info("extracting: %s (cookies=%s)", url, "yes" if cookies else "no")
         try:
-            video = await app.state.extractor.extract(url)
+            video = await app.state.extractor.extract(url, cookies=cookies)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-        await cache.set(url, video)
+        await cache.set(cache_key, video)
         return ExtractResponse(
             video=to_client_video(video), method=video.method, cached=False
         )

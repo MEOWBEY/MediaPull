@@ -14,6 +14,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ExtractRequest(BaseModel):
     url: str = Field(min_length=1, max_length=4096)
+    # Optional per-request authentication cookies for the URL's site, supplied
+    # by the user from the client's Settings → Cookies panel. Either Netscape
+    # cookies.txt text or a single "Cookie: a=b; c=d" header line. Stored only
+    # in the user's browser; written to a throwaway temp file for one yt-dlp
+    # call and deleted. Falls back to the server-side COOKIE_FILE when absent.
+    cookies: str | None = Field(default=None, max_length=262_144)
 
 
 # ----- internal extractor models ----------------------------------------

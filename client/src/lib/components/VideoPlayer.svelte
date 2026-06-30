@@ -8,7 +8,7 @@
 	import { appStore } from '$lib/stores/app-state.svelte';
 	import type { VideoFormat } from '$lib/types';
 
-	const {t} = i18n;
+	const { t } = i18n;
 
 	let {
 		poster = '',
@@ -315,12 +315,8 @@
 	<!-- Audio: video.js audio skin (same control styling as the video player, but no
 	     video frame), with a lightweight quality picker above it. dir=ltr keeps the
 	     control bar stable even when the app mirrors for Farsi. -->
-	<div dir="ltr" class="bg-muted/30 flex w-full flex-col gap-2 border-b p-3">
+	<div dir="ltr" class="group relative w-full overflow-hidden rounded-xl bg-black">
 		<div class="flex items-center justify-between gap-3">
-			<!-- <span class="text-muted-foreground flex items-center gap-2 text-sm font-medium">
-				<span aria-hidden="true">🎵</span>
-				{t('player.audioLabel')}
-			</span> -->
 			{#if showQualityMenu}
 				<select
 					class="bg-background text-foreground rounded-lg border px-2 py-1 text-xs font-medium"

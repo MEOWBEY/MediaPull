@@ -12,6 +12,7 @@
 	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import { toast } from 'svelte-sonner';
 
+	import CookiesPanel from '$lib/components/CookiesPanel.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Label } from '$lib/components/ui/label';
 	import * as Sheet from '$lib/components/ui/sheet';
@@ -109,7 +110,7 @@
 			showVideoThumbnail: true,
 			enableAnimations: true,
 			enableCompact: false,
-			enableVideoMute: true,
+			enableVideoMute: false,
 			enableVideoPreloadMetadata: false,
 			enableProxyForVideoExtract: true,
 			showHlsTypeDownloadButton: false,
@@ -179,6 +180,9 @@
 					</div>
 				</section>
 			{/each}
+
+			<!-- Cookies / sign-in -->
+			<CookiesPanel />
 
 			<!-- View Mode Section -->
 			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
