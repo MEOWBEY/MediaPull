@@ -1,0 +1,29 @@
+[Unit]
+Description=DirectStream API (FastAPI backend)
+After=network.target
+
+[Service]
+Type=simple
+User=directstream
+Group=directstream
+WorkingDirectory=/opt/directstream/server
+EnvironmentFile=/opt/directstream/server/.env
+ExecStart=/opt/directstream/server/venv/bin/gunicorn app.main:app \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --bind 127.0.0.1:8000 \
+    --workers 2 \
+    --timeout 120 \
+    --access-logfile - \
+    --error-logfile -
+Restart=on-failure
+RestartSec=5
+
+# Light sandboxing — tighten further if you don't need cookie files / a
+# cache dir outside the repo.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/opt/directstream
+
+[Install]
+WantedBy=multi-user.target

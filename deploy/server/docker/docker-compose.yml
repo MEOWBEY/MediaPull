@@ -1,0 +1,47 @@
+# Personal-server / VPS stack: the app container (client baked in, single
+# process, single port) behind Caddy for automatic HTTPS on your own domain.
+#
+# Usage (from the repo root):
+#   cp server/.env.example server/.env        # edit as needed
+#   DOMAIN=api.example.com docker compose -f deploy/server/docker/docker-compose.yml up -d --build
+#
+# If you don't have a domain yet, leave DOMAIN unset — Caddy falls back to
+# "localhost" and serves plain HTTP on port 80.
+
+services:
+  app:
+    build:
+      context: ../../..
+      dockerfile: deploy/server/docker/Dockerfile
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+    image: directstream:latest
+    restart: unless-stopped
+    env_file:
+      - ../../../server/.env
+    expose:
+      - "8000"
+    volumes:
+      # Optional: mount a Netscape cookies.txt here and point COOKIE_FILE at
+      # it in server/.env (e.g. COOKIE_FILE=/data/cookies/cookies.txt).
+      - cookies:/data/cookies:ro
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy_data:
+  caddy_config:
+  cookies:

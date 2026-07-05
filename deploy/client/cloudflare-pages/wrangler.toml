@@ -1,0 +1,5 @@
+# Only needed for CLI deploys (`wrangler pages deploy`). Dashboard/GitHub
+# integration deploys don't read this file — configure build settings there
+# instead (see README.md in this folder).
+name = "directstream-client"
+pages_build_output_dir = "client/build"

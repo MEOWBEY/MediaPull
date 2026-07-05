@@ -147,6 +147,10 @@ Deploy `client/build/` to any static host (CDN, nginx, etc.) and run the Python
 server somewhere reachable at `VITE_API_BASE_URL`. Set the server's
 `CORS_ORIGINS` to the client's origin.
 
+For ready-made configs and step-by-step guides — Docker, Railway, Render,
+Fly.io, Vercel, Netlify, Cloudflare Pages, Deno Deploy, and a full personal
+VPS/systemd walkthrough — see [`deploy/`](deploy/).
+
 ## Security note
 
 The proxy (`GET /proxy-video`) fetches arbitrary user-supplied URLs without a

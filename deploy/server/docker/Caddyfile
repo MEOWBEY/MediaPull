@@ -1,0 +1,19 @@
+{$DOMAIN:localhost} {
+	# Caddy issues/renews a Let's Encrypt cert automatically for a real
+	# domain. With the default "localhost" it just serves plain HTTP.
+	reverse_proxy app:8000
+
+	encode gzip
+
+	# The extraction + streaming-proxy endpoints can run long; don't cut
+	# them off at Caddy's defaults.
+	@api path /extract-videos /proxy-video
+	handle @api {
+		reverse_proxy app:8000 {
+			transport http {
+				read_timeout 300s
+				write_timeout 300s
+			}
+		}
+	}
+}

@@ -44,6 +44,7 @@ coverage.xml
 .env.*
 !.env.example
 !.env.test
+!.env.production.example
 
 # Logs and temp
 *.log

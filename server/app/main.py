@@ -18,6 +18,11 @@ from . import __version__
 from .cache import TTLCache
 from .config import settings
 from .extractor import ExtractionError, Extractor
+from .logging_context import (
+    RequestContextFilter,
+    client_ip_from_headers,
+    set_request_context,
+)
 from .models import (
     ExtractRequest,
     ExtractResponse,
@@ -29,11 +34,16 @@ from .serializers import to_client_video
 
 
 def _configure_logging() -> None:
-    logging.basicConfig(
-        level=getattr(logging, settings.log_level.upper(), logging.INFO),
-        format="%(asctime)s %(levelname)s %(name)s - %(message)s",
-        stream=sys.stdout,
+    handler = logging.StreamHandler(sys.stdout)
+    handler.addFilter(RequestContextFilter())
+    handler.setFormatter(
+        logging.Formatter(
+            "%(asctime)s %(levelname)s %(name)s [ip=%(client_ip)s ua=%(user_agent)s] - %(message)s"
+        )
     )
+    root = logging.getLogger()
+    root.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
+    root.handlers = [handler]
 
 
 logger = logging.getLogger("directstream")

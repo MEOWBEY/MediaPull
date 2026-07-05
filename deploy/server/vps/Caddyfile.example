@@ -1,0 +1,13 @@
+# Alternative to nginx-backend.conf.example — Caddy gets you automatic
+# HTTPS (Let's Encrypt) with no separate certbot step. Install at
+# /etc/caddy/Caddyfile (or import it from there) and `systemctl reload caddy`.
+
+api.example.com {
+	reverse_proxy 127.0.0.1:8000 {
+		transport http {
+			read_timeout 300s
+			write_timeout 300s
+		}
+	}
+	encode gzip
+}
