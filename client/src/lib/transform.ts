@@ -1,7 +1,29 @@
 /** Pure transforms: raw API video -> grouped, normalized client model. */
 
+import { isAudioType } from '$lib/format';
 import { buildProxiedUrl } from '$lib/proxy-url';
-import type { GroupedVideo, IncomingFormat, IncomingVideo, MediaType, VideoFormat } from '$lib/types';
+import type {
+	FormatGroup,
+	GroupedVideo,
+	IncomingFormat,
+	IncomingVideo,
+	MediaType,
+	SubtitleTrack,
+	VideoFormat
+} from '$lib/types';
+
+// Tab order when a source has several format kinds: progressive video first
+// (the most immediately playable), then adaptive streaming, audio last.
+const KIND_PRIORITY: Record<string, number> = {
+	'application/x-mpegURL': 1,
+	'application/dash+xml': 2
+};
+
+function kindPriority(type: MediaType): number {
+	if (isAudioType(type)) {return 3;}
+
+	return KIND_PRIORITY[type] ?? 0;
+}
 
 const AUDIO_TYPES: Record<string, MediaType> = {
 	mp3: 'audio/mpeg',
@@ -49,7 +71,22 @@ function normalizeFormat(format: IncomingFormat, durationSec: number): VideoForm
 	};
 }
 
-/** Group an incoming video's formats by media type into renderable cards. */
+/** Existing-caption URLs come straight from the source (e.g. YouTube's
+ *  timedtext endpoint) with no proxying. Both the native `<track src>` and
+ *  our own fetch-for-the-panel need to load that cross-origin, and it isn't
+ *  reliably CORS-safe (signed/expiring URLs, referer checks) -- route it
+ *  through the same proxy the video/audio URLs already use so it behaves the
+ *  same regardless of source. */
+function proxiedSubtitleTracks(tracks: SubtitleTrack[] | undefined): SubtitleTrack[] {
+	return (tracks ?? []).map((track) => ({ ...track, url: buildProxiedUrl(track.url, null, 'https') || track.url }));
+}
+
+/** Group an incoming video's formats by media type into renderable cards. A
+ *  video whose formats span several kinds (progressive + HLS + a separate
+ *  audio-only stream, ...) becomes ONE card with several `formatGroups` --
+ *  the player renders these as tabs, since they're all the same source and
+ *  share one subtitle track. Formats that can't be tied to a real title are
+ *  probably unrelated stray content, so each stays its own single-group card. */
 export function groupVideosByQuality(videos: IncomingVideo[] = []): GroupedVideo[] {
 	const results: GroupedVideo[] = [];
 
@@ -76,34 +113,59 @@ export function groupVideosByQuality(videos: IncomingVideo[] = []): GroupedVideo
 			});
 		}
 
-		for (const bucket of Object.values(buckets)) {
-			const qualities = bucket
-				.map((format) => normalizeFormat(format, durationSec))
-				.sort((a, b) => b.resolution - a.resolution);
+		const formatGroups: FormatGroup[] = Object.values(buckets)
+			.map((bucket) => ({
+				type: determineMediaType(bucket[0]),
+				qualities: bucket
+					.map((format) => normalizeFormat(format, durationSec))
+					.sort((a, b) => b.resolution - a.resolution)
+			}))
+			.sort((a, b) => kindPriority(a.type) - kindPriority(b.type));
 
+		if (hasValidTitle) {
 			results.push({
 				id: metadata.id,
-				title: hasValidTitle ? metadata.title : undefined,
+				title: metadata.title,
 				thumbnail: metadata.thumbnail,
 				duration: durationSec || undefined,
-				type: determineMediaType(bucket[0]),
-				qualities,
+				formatGroups,
 				height: metadata.height,
 				width: metadata.width,
 				upload_date: metadata.upload_date,
 				aspect_ratio: metadata.aspect_ratio,
-				webpage_url: metadata.webpage_url
+				webpage_url: metadata.webpage_url,
+				subtitleTracks: proxiedSubtitleTracks(item.subtitleTracks)
 			});
+		} else {
+			for (const group of formatGroups) {
+				results.push({
+					id: metadata.id,
+					thumbnail: metadata.thumbnail,
+					duration: durationSec || undefined,
+					formatGroups: [group],
+					height: metadata.height,
+					width: metadata.width,
+					upload_date: metadata.upload_date,
+					aspect_ratio: metadata.aspect_ratio,
+					webpage_url: metadata.webpage_url,
+					subtitleTracks: proxiedSubtitleTracks(item.subtitleTracks)
+				});
+			}
 		}
 	}
 
 	return results;
 }
 
+/** Every quality across every format-group tab of a card. */
+export function allQualities(item: GroupedVideo): VideoFormat[] {
+	return (item.formatGroups ?? []).flatMap((g) => g.qualities);
+}
+
 export function maxResolution(item: GroupedVideo): number {
-	return (item.qualities ?? []).reduce((max, q) => Math.max(max, Number(q.resolution) || 0), 0);
+	return allQualities(item).reduce((max, q) => Math.max(max, Number(q.resolution) || 0), 0);
 }
 
 export function maxFilesize(item: GroupedVideo): number {
-	return (item.qualities ?? []).reduce((max, q) => Math.max(max, Number(q.filesize) || 0), 0);
+	return allQualities(item).reduce((max, q) => Math.max(max, Number(q.filesize) || 0), 0);
 }

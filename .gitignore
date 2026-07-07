@@ -42,3 +42,6 @@ venv/
 scratch/
 TODO.local.md
 notes.local.md
+
+# ── graphify knowledge graph (regenerated on every commit via .git/hooks/post-commit) ──
+graphify-out/

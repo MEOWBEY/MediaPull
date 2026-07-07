@@ -1,5 +1,6 @@
 <script lang="ts">
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
+	import Captions from '@lucide/svelte/icons/captions';
 	import Grid3X3 from '@lucide/svelte/icons/grid-3x3';
 	import HardDrive from '@lucide/svelte/icons/hard-drive';
 	import Info from '@lucide/svelte/icons/info';
@@ -19,6 +20,7 @@
 	import { Switch } from '$lib/components/ui/switch';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+	import { MediaQuery } from '$lib/viewport.svelte';
 
 	const { t } = i18n;
 
@@ -26,6 +28,9 @@
 		preferences,
 		isPreferencesDialogOpen = $bindable()
 	}: { preferences: typeof appStore.preferences; isPreferencesDialogOpen?: boolean } = $props();
+
+	// Side sheet on desktop, bottom sheet on mobile -- same pattern as SubtitlePanel.
+	const desktop = new MediaQuery('(min-width: 640px)');
 
 	const sections = [
 		{
@@ -98,6 +103,19 @@
 					descKey: 'prefs.hlsDownload.desc'
 				}
 			]
+		},
+		{
+			titleKey: 'prefs.section.captions',
+			icon: Captions,
+			color: 'text-violet-600',
+			settings: [
+				{
+					id: 'auto-open-subtitle-panel',
+					labelKey: 'prefs.autoOpenSubs.label',
+					key: 'autoOpenSubtitlePanel',
+					descKey: 'prefs.autoOpenSubs.desc'
+				}
+			]
 		}
 	] as const;
 
@@ -114,7 +132,8 @@
 			enableVideoPreloadMetadata: false,
 			enableProxyForVideoExtract: true,
 			showHlsTypeDownloadButton: false,
-			showVideoOnlyFormats: false
+			showVideoOnlyFormats: false,
+			autoOpenSubtitlePanel: false
 		});
 		toast.success(t('toast.prefsReset'));
 	}
@@ -127,8 +146,10 @@
 
 <Sheet.Root bind:open={isPreferencesDialogOpen}>
 	<Sheet.Content
-		side="right"
-		class="bg-background z-999999! w-full gap-0 overflow-y-auto p-4 sm:max-w-lg sm:p-6"
+		side={desktop.matches ? 'right' : 'bottom'}
+		class="bg-background z-999999! w-full gap-0 overflow-y-auto p-4 sm:max-w-lg sm:p-6 {desktop.matches
+			? ''
+			: 'h-[65vh] rounded-t-3xl'}"
 	>
 		<Sheet.Header class="px-0 text-start">
 			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">

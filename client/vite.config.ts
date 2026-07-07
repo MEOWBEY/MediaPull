@@ -7,7 +7,7 @@ import { defineConfig } from 'vite';
 // In dev, forward the backend routes to the Python server so the client can use
 // relative URLs (no CORS). Override the target with VITE_API_BASE_URL if needed.
 const backend = process.env.VITE_API_BASE_URL || 'http://localhost:8000';
-const proxied = ['/extract-videos', '/ovc-proxy-video', '/proxy-video', '/health'];
+const proxied = ['/extract-videos', '/proxy-video', '/health', '/transcribe'];
 
 export default defineConfig({
 	plugins: [tailwindcss(), sveltekit()],

@@ -6,7 +6,7 @@
  * it is cross-cutting UI session state.
  */
 
-import type { GroupedVideo, IncomingVideo, Preferences } from '$lib/types';
+import type { GroupedVideo, IncomingVideo, Preferences, SubtitleTrackResult } from '$lib/types';
 
 import { CookieStore } from './cookies.svelte';
 import { LibraryStore } from './library.svelte';
@@ -52,6 +52,12 @@ class AppStore {
 
 	removeVideoExtractResultFromStore(target: GroupedVideo): void {
 		this.library.removeExtractResult(target);
+	}
+
+	/** Persists a generated/reused subtitle track on the card itself, so a page
+	 *  refresh doesn't lose it (and removing the video drops it automatically). */
+	setSubtitleTrackForVideo(target: GroupedVideo, track: SubtitleTrackResult | null): void {
+		this.library.setSubtitleTrack(target, track);
 	}
 
 	clearVideoExtractResultsFromStore(): void {

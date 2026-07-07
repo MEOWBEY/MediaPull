@@ -1,5 +1,5 @@
 <script lang="ts">
-	import Check from '@lucide/svelte/icons/check';
+	import Captions from '@lucide/svelte/icons/captions';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Download from '@lucide/svelte/icons/download';
@@ -7,8 +7,9 @@
 	import Link from '@lucide/svelte/icons/link';
 	import ListMusic from '@lucide/svelte/icons/list-music';
 	import ListVideo from '@lucide/svelte/icons/list-video';
-	import MoreVertical from '@lucide/svelte/icons/more-vertical';
+	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import QrCode from '@lucide/svelte/icons/qr-code';
+	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Search from '@lucide/svelte/icons/search';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
@@ -18,32 +19,37 @@
 	import { writeClipboard } from '$lib/clipboard';
 	import QrDialog from '$lib/components/QrDialog.svelte';
 	import { Button } from '$lib/components/ui/button';
-	import * as DropdownMenu from '$lib/components/ui/dropdown-menu';
-	import VideoPlayer from '$lib/components/VideoPlayer.svelte';
+	import VideoPlayer, {
+		type SubtitleState,
+		type VideoPlayerHandle
+	} from '$lib/components/VideoPlayer.svelte';
 	import { allQualityLinks, buildVideosM3u, downloadTextFile, safeFilename } from '$lib/export';
-	import { formatBytesToMB, formatSecondsToTime, formatYYYYMMDDToDate } from '$lib/format';
+	import { extraction } from '$lib/extraction.svelte';
+	import {
+		formatBytesToMB,
+		formatSecondsToTime,
+		isAudioType,
+		mediaKindLabel
+	} from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
-	import type { GroupedVideo, VideoFormat } from '$lib/types';
+	import type { FormatGroup, GroupedVideo, SubtitleTrack, VideoFormat } from '$lib/types';
 
 	const { t } = i18n;
 
-	let {
-		isExtractBusy = false,
-		preferences
-	} = $props();
+	let { isExtractBusy = false, preferences } = $props();
 
 	let videoExtractResults = $derived(appStore.videoExtractResults);
 
-	function isAudio(type: string) {
-		return typeof type === 'string' && type.startsWith('audio/');
+	function isAudioOnlyCard(video: GroupedVideo): boolean {
+		return video.formatGroups.every((g) => isAudioType(g.type));
 	}
 
 	// Organize cards: video first, then audio. Order within each group is
 	// preserved (newest-last, as stored).
 	let orderedResults = $derived([
-		...videoExtractResults.filter((v) => !isAudio(v.type)),
-		...videoExtractResults.filter((v) => isAudio(v.type))
+		...videoExtractResults.filter((v) => !isAudioOnlyCard(v)),
+		...videoExtractResults.filter((v) => isAudioOnlyCard(v))
 	]);
 
 	type Card = GroupedVideo;
@@ -56,30 +62,118 @@
 		return proxyByCard.get(video) ?? preferences.enableProxyForVideoExtract;
 	}
 
+	// Imperative handles from each rendered VideoPlayer (see its `onReady`
+	// prop) -- not reactive state, just a registry so the toolbar's Subtitles
+	// button can trigger generation without a bind:this ref, which doesn't fit
+	// cleanly inside this keyed {#each}.
+	const playerHandles = new SvelteMap<Card, VideoPlayerHandle>();
+	// Reactive per-card subtitle state pushed up from each VideoPlayer (see its
+	// `onSubtitleState`), so the card's CC button can show generate / spinner+% /
+	// open+download without reaching into the child.
+	const subtitleState = new SvelteMap<Card, SubtitleState>();
+
+	function registerPlayer(video: Card, handle: VideoPlayerHandle): void {
+		playerHandles.set(video, handle);
+	}
+
+	/** First existing caption track the source already provides in a usable
+	 *  (WebVTT) format -- free to use, no transcription pipeline needed. */
+	function existingVttTrack(video: Card): SubtitleTrack | undefined {
+		return (video.subtitleTracks ?? []).find((track) => track.ext === 'vtt');
+	}
+
+	// True as soon as the extractor's own result says a usable caption exists,
+	// even before the user has clicked (which is what actually fetches/parses
+	// it into `subtitleState`). Lets the CC button show its "open" state
+	// immediately instead of only after the first click resolves.
+	function hasCaptionSource(video: Card): boolean {
+		return Boolean(subtitleState.get(video)?.hasTrack) || Boolean(existingVttTrack(video));
+	}
+
+	// The subtitles/CC action for a card. One button covers the whole flow:
+	// open the panel if a track already exists, else reuse an existing caption
+	// track when the source has one, else kick off transcription. Subtitles are
+	// per-video (not per-quality) -- MP4/HLS/audio are the same source, so one
+	// track serves them all.
+	async function subtitleAction(video: Card): Promise<void> {
+		const handle = playerHandles.get(video);
+
+		if (!handle) {
+			return;
+		}
+
+		if (subtitleState.get(video)?.hasTrack) {
+			handle.openSubtitlePanel();
+
+			return;
+		}
+
+		// Resolving an existing track can take a moment -- without this a second
+		// click while it's in flight (the button looks unresponsive otherwise)
+		// would open the panel early against stale state, or double up on work.
+		const state = subtitleState.get(video);
+
+		if (state?.isRunning || state?.isResolvingExisting) {
+			return;
+		}
+
+		const existing = existingVttTrack(video);
+
+		if (existing) {
+			// Await so the panel opens once segments are actually populated,
+			// instead of opening immediately and briefly showing "no captions".
+			await handle.useExistingTrack(existing);
+			handle.openSubtitlePanel();
+		} else {
+			void handle.requestSubtitles();
+		}
+	}
+
 	function toggleCardProxy(video: Card): void {
 		proxyByCard.set(video, !cardUsesProxy(video));
+	}
+
+	// Tab/list order: easiest-to-play first (progressive MP4 -- universal
+	// browser support, no special handling), then everything else that still
+	// needs some extra work to play (WebM/MKV/HLS/...), audio-only last.
+	function groupRank(type: string): number {
+		if (isAudioType(type)) {
+			return 2;
+		}
+
+		return type === 'video/mp4' ? 0 : 1;
 	}
 
 	// Qualities to actually show. By default we hide adaptive video-only (no-audio)
 	// streams — on YouTube those are everything above 360p and play silently. Users
 	// who want them (e.g. to download a high-res file and merge audio themselves)
-	// can flip the "Show video-only qualities" preference on.
-	function visibleQualities(video: Card) {
-		if (preferences.showVideoOnlyFormats) {
-			return video.qualities;
-		}
-
-		return video.qualities.filter((q) => !q.videoOnly);
+	// can flip the "Show video-only qualities" preference on. Also drops any
+	// format-group tab left with nothing to show once that filter applies.
+	function visibleFormatGroups(video: Card): FormatGroup[] {
+		return video.formatGroups
+			.map((g) => ({
+				type: g.type,
+				qualities: preferences.showVideoOnlyFormats
+					? g.qualities
+					: g.qualities.filter((q) => !q.videoOnly)
+			}))
+			.filter((g) => g.qualities.length > 0)
+			.sort((a, b) => groupRank(a.type) - groupRank(b.type));
 	}
 
-	function clearVideoExtractResults() {
-		appStore.clearVideoExtractResultsFromStore();
-		toast.info(t('toast.extractCleared'));
+	// Per-card active tab (format-group), reported up by VideoPlayer's
+	// onActiveGroupChange. Indexes into `visibleFormatGroups(video)`, the same
+	// (filtered) array passed to VideoPlayer as its `formatGroups` prop.
+	const activeGroupByCard = new SvelteMap<Card, number>();
+
+	function activeGroup(video: Card): FormatGroup {
+		const groups = visibleFormatGroups(video);
+
+		return groups[activeGroupByCard.get(video) ?? 0] ?? groups[0] ?? { type: '', qualities: [] };
 	}
 
-	function removeVideoExtractResult(video: Card) {
-		appStore.removeVideoExtractResultFromStore(video);
-		toast.info(t('toast.itemRemoved'));
+	function visibleQualities(video: Card): VideoFormat[] {
+		return activeGroup(video).qualities;
 	}
 
 	let qrUrl = $state('');
@@ -161,6 +255,35 @@
 		toast.info(t('toast.itemRemoved'));
 	}
 
+	// Per-group refresh spinner -- keyed by group.key, not the items themselves
+	// (those get replaced by the refresh).
+	const refreshingGroups = new SvelteMap<string, boolean>();
+
+	// Direct links (especially proxied/CDN ones) can expire; re-pull the same
+	// source URL and swap in the fresh result. Removes the stale cards only
+	// once the re-extraction actually succeeds, so a failed refresh doesn't
+	// wipe out a still-good (if possibly stale) set of links.
+	async function refreshGroup(group: SourceGroup) {
+		if (!group.sourceUrl || refreshingGroups.get(group.key)) {
+			return;
+		}
+
+		refreshingGroups.set(group.key, true);
+
+		try {
+			const staleItems = [...group.items];
+			const ok = await extraction.extractLinks(group.sourceUrl, { forceRefresh: true });
+
+			if (ok) {
+				for (const v of staleItems) {
+					appStore.removeVideoExtractResultFromStore(v);
+				}
+			}
+		} finally {
+			refreshingGroups.set(group.key, false);
+		}
+	}
+
 	function sourceHost(url: string): string {
 		try {
 			return new URL(url).hostname.replace(/^www\./, '');
@@ -190,46 +313,7 @@
 		}
 	}
 
-	// Friendly, organized labels: streaming protocols, then audio "<codec> Audio",
-	// then video "<container> Video". Falls back to the raw subtype.
-	const AUDIO_LABELS: Record<string, string> = {
-		'audio/mpeg': 'MP3',
-		'audio/aac': 'AAC',
-		'audio/ogg': 'OGG',
-		'audio/wav': 'WAV',
-		'audio/flac': 'FLAC',
-		'audio/mp4': 'M4A',
-		'audio/opus': 'Opus'
-	};
-	const VIDEO_LABELS: Record<string, string> = {
-		'video/mp4': 'MP4',
-		'video/webm': 'WebM',
-		'video/x-matroska': 'MKV',
-		'video/quicktime': 'MOV',
-		'video/x-msvideo': 'AVI'
-	};
-
-	function shortType(type: string) {
-		if (type === 'application/x-mpegURL') {
-			return 'HLS';
-		}
-		if (type === 'application/dash+xml') {
-			return 'DASH';
-		}
-		if (AUDIO_LABELS[type]) {
-			return `${AUDIO_LABELS[type]} ${t('player.audioLabel')}`;
-		}
-		if (VIDEO_LABELS[type]) {
-			return `${VIDEO_LABELS[type]} Video`;
-		}
-		if (isAudio(type)) {
-			return `${type.split('/')[1]?.toUpperCase()} ${t('player.audioLabel')}`;
-		}
-
-		return type.split('/')[1]?.toUpperCase() ?? type;
-	}
-
-	// Free-text filter over title, type label, and per-quality resolution/extension.
+	// Free-text filter over title, format-kind labels, and per-quality resolution/extension.
 	let filterQuery = $state('');
 
 	let filteredResults = $derived.by(() => {
@@ -240,13 +324,14 @@
 		}
 
 		return orderedResults.filter((v) => {
+			const allQ = v.formatGroups.flatMap((g) => g.qualities);
 			const haystack = [
 				v.title ?? '',
-				v.type,
-				shortType(v.type),
+				...v.formatGroups.map((g) => g.type),
+				...v.formatGroups.map((g) => mediaKindLabel(g.type, t('player.audioLabel'))),
 				v.webpage_url ?? '',
-				...v.qualities.map((qq) => (qq.resolution ? `${qq.resolution}p` : '')),
-				...v.qualities.map((qq) => qq.ext ?? '')
+				...allQ.map((qq) => (qq.resolution ? `${qq.resolution}p` : '')),
+				...allQ.map((qq) => qq.ext ?? '')
 			]
 				.join(' ')
 				.toLowerCase();
@@ -272,7 +357,7 @@
 
 		for (const v of filteredResults) {
 			// Skip cards left with nothing to show once video-only is hidden.
-			if (visibleQualities(v).length === 0) {
+			if (visibleFormatGroups(v).length === 0) {
 				continue;
 			}
 
@@ -295,7 +380,7 @@
 </script>
 
 {#if videoExtractResults.length > 0}
-	<section class="mb-10">
+	<div class="mb-10">
 		<!-- Screen-reader-only live region: announces the result count as it changes
 		     (e.g. "5 links extracted") without moving sighted-user focus. -->
 		<p class="sr-only" aria-live="polite" role="status">
@@ -309,21 +394,11 @@
 				{t('extract.heading')}
 				<span class="text-muted-foreground font-normal">({videoExtractResults.length})</span>
 			</h2>
-			<!-- Copy/export now live per source-group; the header just clears everything. -->
-			<button
-				type="button"
-				onclick={clearVideoExtractResults}
-				class="text-muted-foreground hover:bg-destructive/10 hover:text-destructive flex h-9 w-9 items-center justify-center rounded-full transition-colors"
-				title={t('extract.clear')}
-				aria-label={t('extract.clear')}
-			>
-				<Trash2 class="h-5 w-5" />
-			</button>
 		</div>
 
 		<!-- Filter — only worth showing once there's more than one card. -->
 		{#if videoExtractResults.length > 1}
-			<div class="relative mb-4 max-w-sm">
+			<div class="relative mb-5 w-full">
 				<Search
 					class="text-muted-foreground pointer-events-none absolute top-1/2 inset-s-3 h-4 w-4 -translate-y-1/2"
 				/>
@@ -341,116 +416,129 @@
 			<p class="text-muted-foreground py-8 text-center text-sm">{t('extract.noMatches')}</p>
 		{/if}
 
-		<!-- Source groups: everything pulled from one page sits in one panel. On
-		     mobile the panel chrome (border/padding/round) is dropped so each video
-		     card uses the full screen width — nested "card-in-card" padding made the
-		     player needlessly small on phones. The rich panel returns at sm+. -->
-		{#each groups as group (group.key)}
-			<div
-				class="mb-6 sm:p-4 sm:border sm:rounded-4xl sm:border-border/60 sm:bg-card/30 sm:shadow-soft"
-			>
-				<!-- Group header: the origin page + group-wide actions -->
-				<div class="border-border/50 mb-3 flex items-center gap-2 border-b pb-2 sm:mb-4 sm:pb-3">
-					<Link class="text-aurora-1 h-4 w-4 shrink-0" />
-					<!-- Count + URL are one cluster so the badge always hugs the URL: in
-					     front of it in LTR, behind it in RTL. `me-auto` on the cluster eats
-					     the free space and pushes the menu to the far end, so the badge never
-					     drifts over next to the kebab. -->
-					<div class="me-auto flex min-w-0 items-center gap-2">
-						{#if group.sourceUrl}
-							<!-- External origin page, not in-app navigation, so resolve() doesn't apply. -->
-							<!-- eslint-disable svelte/no-navigation-without-resolve -->
-							<!-- No dir="ltr" here: that pinned text-start to the left in every
-							     locale. Letting it inherit the page dir makes the URL align to the
-							     start edge (right in RTL/Farsi); <bdi> keeps the URL itself readable
-							     left-to-right regardless of surrounding direction. -->
-							<a
-								href={group.sourceUrl}
-								target="_blank"
-								rel="noreferrer noopener"
-								title={group.sourceUrl}
-								class="text-foreground/80 hover:text-foreground min-w-0 truncate text-start text-sm font-medium underline-offset-2 hover:underline"
-							>
-								<bdi>{group.sourceUrl}</bdi>
-							</a>
-							<!-- eslint-enable svelte/no-navigation-without-resolve -->
-						{:else}
-							<span class="text-muted-foreground min-w-0 truncate text-sm"
-								>{t('extract.sourceUnknown')}</span
-							>
-						{/if}
-						<span
-							class="bg-muted text-muted-foreground shrink-0 rounded-full px-2 py-0.5 text-xs font-medium"
-							>{group.items.length}</span
-						>
-					</div>
-					<DropdownMenu.Root>
-						<DropdownMenu.Trigger>
-							{#snippet child({ props })}
-								<button
-									{...props}
-									type="button"
-									class="text-muted-foreground hover:bg-muted hover:text-foreground flex h-8 w-8 shrink-0 items-center justify-center rounded-full transition-colors"
-									title={t('extract.groupMenu')}
-									aria-label={t('extract.groupMenu')}
-								>
-									<MoreVertical class="h-4 w-4" />
-								</button>
-							{/snippet}
-						</DropdownMenu.Trigger>
-						<DropdownMenu.Content align="end" class="min-w-48">
-							<DropdownMenu.Item onclick={() => copyLinks(group.items)}>
-								<Copy class="h-4 w-4" />
-								{t('extract.copyAll')}
-							</DropdownMenu.Item>
-							<DropdownMenu.Item
-								onclick={() => exportTxtFor(group.items, sourceHost(group.sourceUrl) || 'group')}
-							>
-								<FileText class="h-4 w-4" />
-								{t('extract.exportTxt')}
-							</DropdownMenu.Item>
-							<DropdownMenu.Item
-								onclick={() => exportM3uFor(group.items, sourceHost(group.sourceUrl) || 'group')}
-							>
-								<ListMusic class="h-4 w-4" />
-								{t('extract.exportM3u')}
-							</DropdownMenu.Item>
-							<DropdownMenu.Separator />
-							<DropdownMenu.Item variant="destructive" onclick={() => removeGroup(group.items)}>
-								<Trash2 class="h-4 w-4" />
-								{t('extract.removeGroup')}
-							</DropdownMenu.Item>
-						</DropdownMenu.Content>
-					</DropdownMenu.Root>
-				</div>
-
-				<!-- Cards in this group -->
+		<!-- The group is the card -- the one bordered, backed container in the
+		     whole hierarchy. Groups sit in the same responsive grid so they line
+		     up together; a group with several videos just stacks them inside,
+		     separated by a hairline instead of each getting its own box. -->
+		<div
+			class="grid gap-4 sm:gap-5 {preferences.layoutList === 'grid'
+				? 'grid-cols-1 lg:grid-cols-2'
+				: 'grid-cols-1'}"
+		>
+			{#each groups as group (group.key)}
 				<div
-					class="grid gap-3 sm:gap-5 {preferences.layoutList === 'grid'
-						? 'grid-cols-1 lg:grid-cols-2'
-						: 'grid-cols-1'}"
+					class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
 				>
-					{#each group.items as video, i (video)}
-						<article
-							class="ds-glow-ring bg-card/60 shadow-soft group relative overflow-hidden border transition-shadow duration-300 {i %
-								2 ===
-							0
-								? 'rounded-[1.75rem]'
-								: 'rounded-[2.1rem]'}"
-						>
-							<VideoPlayer
-								poster={video.thumbnail}
-								qualities={visibleQualities(video)}
-								type={video.type}
-								useProxy={cardUsesProxy(video)}
-							/>
+					<!-- Group label: origin link + group-wide actions. -->
+					<div
+						class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
+					>
+						<Link class="text-muted-foreground h-3.5 w-3.5 shrink-0" />
+						<div class="flex min-w-0 flex-1 items-center gap-2">
+							{#if group.sourceUrl}
+								<!-- External origin page, not in-app navigation, so resolve() doesn't apply. -->
+								<!-- eslint-disable svelte/no-navigation-without-resolve -->
+								<a
+									href={group.sourceUrl}
+									target="_blank"
+									rel="noreferrer noopener"
+									title={group.sourceUrl}
+									class="text-muted-foreground hover:text-foreground min-w-0 truncate text-start text-xs font-medium underline-offset-2 hover:underline"
+								>
+									<bdi>{group.sourceUrl}</bdi>
+								</a>
+								<!-- eslint-enable svelte/no-navigation-without-resolve -->
+							{:else}
+								<span class="text-muted-foreground min-w-0 truncate text-xs"
+									>{t('extract.sourceUnknown')}</span
+								>
+							{/if}
+							{#if group.items.length > 1}
+								<span
+									class="bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 py-0.5 text-[0.65rem] font-semibold"
+								>
+									{group.items.length}
+								</span>
+							{/if}
+						</div>
+						<div class="ms-auto flex shrink-0 items-center gap-0.5">
+							<Button
+								variant="ghost"
+								size="icon"
+								onclick={() => copyLinks(group.items)}
+								class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+								title={t('extract.copyAll')}
+							>
+								<Copy class="h-3.5 w-3.5" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								onclick={() => exportTxtFor(group.items, sourceHost(group.sourceUrl) || 'group')}
+								class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+								title={t('extract.exportTxt')}
+							>
+								<FileText class="h-3.5 w-3.5" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								onclick={() => exportM3uFor(group.items, sourceHost(group.sourceUrl) || 'group')}
+								class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+								title={t('extract.exportM3u')}
+							>
+								<ListMusic class="h-3.5 w-3.5" />
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								onclick={() => refreshGroup(group)}
+								disabled={refreshingGroups.get(group.key)}
+								class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+								title={t('extract.refreshGroup')}
+							>
+								<RefreshCw
+									class="h-3.5 w-3.5 {refreshingGroups.get(group.key) ? 'animate-spin' : ''}"
+								/>
+							</Button>
+							<Button
+								variant="ghost"
+								size="icon"
+								onclick={() => removeGroup(group.items)}
+								class="text-muted-foreground hover:text-destructive h-7 w-7 rounded-full"
+								title={t('extract.removeGroup')}
+							>
+								<Trash2 class="h-3.5 w-3.5" />
+							</Button>
+						</div>
+					</div>
 
-							<div class="space-y-3 p-3 sm:p-4">
-								<!-- Title + meta -->
-								<div>
+					<!-- Videos in this group -- plain content, no per-video card. A
+					     hairline border-top separates the 2nd+ video from the one
+					     above it; the first video needs no divider. -->
+					<div class="divide-border/50 divide-y">
+						{#each group.items as video, i (video)}
+							<div class={i === 0 ? '' : 'pt-4'}>
+								<div class="overflow-hidden rounded-none sm:rounded-xl">
+									<VideoPlayer
+										poster={video.thumbnail}
+										formatGroups={visibleFormatGroups(video)}
+										useProxy={cardUsesProxy(video)}
+										webpageUrl={video.webpage_url}
+										initialSubtitleTrack={video.subtitleTrack}
+										onReady={(handle) => registerPlayer(video, handle)}
+										onSubtitleState={(s) => subtitleState.set(video, s)}
+										onActiveGroupChange={(i) => activeGroupByCard.set(video, i)}
+										onSubtitleTrackChange={(track) =>
+											appStore.setSubtitleTrackForVideo(video, track)}
+									/>
+								</div>
+
+								<div class="space-y-3 px-3.5 pt-3 sm:px-0">
+									<!-- Title -->
 									<h3
 										dir="auto"
-										class="mx-2 line-clamp-2 font-semibold tracking-tight {preferences.enableCompact
+										class="line-clamp-2 font-semibold tracking-tight {preferences.enableCompact
 											? 'text-sm'
 											: 'text-base'}"
 										title={video.title}
@@ -458,201 +546,217 @@
 										{video.title || t('extract.untitled')}
 									</h3>
 
-									<!-- Meta row + card menu. The ⋮ menu lives at the end of this row
-							     (not beside the title) so it never sits "behind" an RTL/LTR
-							     title; the meta text wraps and the menu stays pinned to the end. -->
-									<div class="mt-1.5 flex items-start justify-between gap-2">
-										<div
-											class="text-muted-foreground flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-xs"
-										>
-											<span class="bg-muted rounded px-1.5 py-0.5 font-medium"
-												>{shortType(video.type)}</span
-											>
-											{#if video.duration}
-												<span class="inline-flex items-center gap-1">
-													<Clock class="h-3 w-3" />{formatSecondsToTime(video.duration)}
-												</span>
+									<!-- Duration on the left, subtitle + proxy as a small
+									     labeled tab-style pair on the right. -->
+									<div class="flex items-center justify-between gap-2">
+										{#if video.duration}
+											<span class="text-muted-foreground inline-flex items-center gap-1 text-xs">
+												<Clock class="h-3 w-3" />{formatSecondsToTime(video.duration)}
+											</span>
+										{:else}
+											<span></span>
+										{/if}
+
+										<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+											{#if subtitleState.get(video)?.isRunning}
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled
+													class="gap-1 rounded-full px-2.5 py-1 text-xs"
+												>
+													<Loader2 class="h-3 w-3 animate-spin" />
+													<span>{Math.round((subtitleState.get(video)?.progress ?? 0) * 100)}%</span
+													>
+												</Button>
+											{:else if subtitleState.get(video)?.isResolvingExisting}
+												<Button
+													variant="ghost"
+													size="sm"
+													disabled
+													class="gap-1 rounded-full px-2.5 py-1 text-xs"
+												>
+													<Loader2 class="h-3 w-3 animate-spin" />
+													<span>{t('subtitles.open')}</span>
+												</Button>
+											{:else if hasCaptionSource(video)}
+												<Button
+													variant="default"
+													size="sm"
+													onclick={() => subtitleAction(video)}
+													class="gap-1 rounded-full px-2.5 py-1 text-xs"
+												>
+													<Captions class="h-3 w-3" />
+													<span>{t('subtitles.open')}</span>
+												</Button>
+											{:else}
+												<Button
+													variant="ghost"
+													size="sm"
+													onclick={() => subtitleAction(video)}
+													class="gap-1 rounded-full px-2.5 py-1 text-xs"
+												>
+													<Captions class="h-3 w-3" />
+													<span>{t('subtitles.generate')}</span>
+												</Button>
 											{/if}
-											{#if video.upload_date}
-												<span>{formatYYYYMMDDToDate(video.upload_date)}</span>
-											{/if}
-											<span
-												>{visibleQualities(video).length}
-												{visibleQualities(video).length === 1
-													? t('extract.qualityOne')
-													: t('extract.qualityMany')}</span
+
+											<Button
+												variant={cardUsesProxy(video) ? 'default' : 'ghost'}
+												size="sm"
+												onclick={() => toggleCardProxy(video)}
+												class="gap-1 rounded-full px-2.5 py-1 text-xs"
+												title={t('extract.proxyMode')}
 											>
+												<Waypoints class="h-3 w-3" />
+												<span>{t('extract.proxyMode')}</span>
+											</Button>
 										</div>
-
-										<!-- Kebab: proxy toggle + copy/export this card + remove. Two steps
-								     to delete, so a stray tap can't wipe a card. -->
-										<DropdownMenu.Root>
-											<DropdownMenu.Trigger>
-												{#snippet child({ props })}
-													<button
-														{...props}
-														type="button"
-														class="text-muted-foreground hover:bg-muted hover:text-foreground -me-1 -mt-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors"
-														title={t('extract.cardMenu')}
-														aria-label={t('extract.cardMenu')}
-													>
-														<MoreVertical class="h-4 w-4" />
-													</button>
-												{/snippet}
-											</DropdownMenu.Trigger>
-											<DropdownMenu.Content align="end" class="min-w-48">
-												<!-- Proxy toggle: leading icon matches the other items; the tick
-										     sits at the trailing edge (right in LTR / start in RTL) so it
-										     lines up cleanly instead of in a left gutter. Stays open. -->
-												<DropdownMenu.Item
-													closeOnSelect={false}
-													onclick={() => toggleCardProxy(video)}
-												>
-													<Waypoints class="h-4 w-4" />
-													{t('extract.proxyMode')}
-													{#if cardUsesProxy(video)}
-														<Check class="ms-auto h-4 w-4" />
-													{/if}
-												</DropdownMenu.Item>
-												<DropdownMenu.Separator />
-												<DropdownMenu.Item onclick={() => copyLinks([video])}>
-													<Copy class="h-4 w-4" />
-													{t('extract.copyAll')}
-												</DropdownMenu.Item>
-												<DropdownMenu.Item
-													onclick={() => exportTxtFor([video], video.title ?? 'video')}
-												>
-													<FileText class="h-4 w-4" />
-													{t('extract.exportTxt')}
-												</DropdownMenu.Item>
-												<DropdownMenu.Item
-													onclick={() => exportM3uFor([video], video.title ?? 'video')}
-												>
-													<ListMusic class="h-4 w-4" />
-													{t('extract.exportM3u')}
-												</DropdownMenu.Item>
-												<DropdownMenu.Separator />
-												<DropdownMenu.Item
-													variant="destructive"
-													onclick={() => removeVideoExtractResult(video)}
-												>
-													<Trash2 class="h-4 w-4" />
-													{t('extract.remove')}
-												</DropdownMenu.Item>
-											</DropdownMenu.Content>
-										</DropdownMenu.Root>
 									</div>
-								</div>
 
-								<!-- Quality rail — capped height with scroll so many qualities
-						     don't make the card tall. -->
-								<div class="ds-quality-rail max-h-52 space-y-1.5 overflow-y-auto pr-1">
-									{#each visibleQualities(video) as quality, index (index)}
-										<div
-											class="bg-muted/50 hover:bg-muted flex items-center justify-between gap-2 rounded-xl px-2.5 py-1.5 transition-colors"
-										>
-											<div class="flex min-w-0 items-center gap-2">
-												<span
-													class="bg-primary text-primary-foreground rounded-lg px-2 py-0.5 text-xs font-bold"
-												>
-													{quality.resolution
-														? `${quality.resolution}p`
-														: quality.ext.toUpperCase()}
-												</span>
-												<span class="text-muted-foreground truncate text-xs">
-													{(quality.filesize ?? 0) > 0
-														? formatBytesToMB(quality.filesize ?? 0)
-														: '—'}
-												</span>
-												{#if quality.videoOnly}
+									<!-- Quality list -- a single bordered list with divider lines
+									     between rows, instead of a stack of separately-boxed rows.
+									     Reads like a compact table: badge + size on the left,
+									     tight action icons on the right, row highlights on hover. -->
+									<div
+										class="border-border/50 divide-border/50 max-h-56 divide-y overflow-y-auto rounded-xl border"
+									>
+										{#each visibleQualities(video) as quality, index (index)}
+											<div
+												class="bg-muted/50 hover:bg-muted flex flex-wrap items-center gap-2 px-3 py-2 transition-colors"
+											>
+												<div class="flex min-w-0 flex-1 items-center gap-2">
 													<span
-														class="bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-medium"
-														title={t('extract.videoOnlyHint')}
+														class="bg-primary/10 text-primary min-w-11 shrink-0 rounded-md px-1.5 py-0.5 text-center text-xs font-bold"
 													>
-														{t('extract.videoOnly')}
+														{quality.resolution
+															? `${quality.resolution}p`
+															: quality.ext.toUpperCase()}
 													</span>
-												{/if}
-											</div>
+													<span class="text-muted-foreground shrink-0 text-xs">
+														{(quality.filesize ?? 0) > 0
+															? formatBytesToMB(quality.filesize ?? 0)
+															: '—'}
+													</span>
+													{#if quality.videoOnly}
+														<span
+															class="bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-medium"
+															title={t('extract.videoOnlyHint')}
+														>
+															{t('extract.videoOnly')}
+														</span>
+													{/if}
+												</div>
 
-											<div class="flex items-center gap-0.5">
-												<Button
-													variant="ghost"
-													size="icon"
-													onclick={() =>
-														copyToClipboard(urlForQuality(quality, cardUsesProxy(video)) ?? '')}
-													class="h-8 w-8 rounded-md"
-													title={t('extract.copyUrl')}
-												>
-													<Copy class="h-3.5 w-3.5" />
-												</Button>
-												<!-- QR is a desktop->phone handoff, so it's hidden on small screens. -->
-												<Button
-													variant="ghost"
-													size="icon"
-													onclick={() => showQr(urlForQuality(quality, cardUsesProxy(video)))}
-													class="hidden h-8 w-8 rounded-full sm:inline-flex"
-													title={t('extract.showQr')}
-												>
-													<QrCode class="h-3.5 w-3.5" />
-												</Button>
-												{#if !(video.type === 'application/x-mpegURL') || preferences.showHlsTypeDownloadButton}
+												<div class="ms-auto flex shrink-0 items-center">
 													<Button
 														variant="ghost"
 														size="icon"
-														onclick={() => downloadQuality(video, quality)}
-														class="h-8 w-8 rounded-full"
-														title={t('extract.download')}
+														onclick={() =>
+															copyToClipboard(urlForQuality(quality, cardUsesProxy(video)) ?? '')}
+														class="h-7 w-7 rounded-md"
+														title={t('extract.copyUrl')}
 													>
-														<Download class="h-3.5 w-3.5" />
+														<Copy class="h-3.5 w-3.5" />
 													</Button>
-												{/if}
+													<!-- QR is a desktop->phone handoff, so it's hidden on small screens. -->
+													<Button
+														variant="ghost"
+														size="icon"
+														onclick={() => showQr(urlForQuality(quality, cardUsesProxy(video)))}
+														class="hidden h-7 w-7 rounded-md sm:inline-flex"
+														title={t('extract.showQr')}
+													>
+														<QrCode class="h-3.5 w-3.5" />
+													</Button>
+													{#if !(activeGroup(video).type === 'application/x-mpegURL') || preferences.showHlsTypeDownloadButton}
+														<Button
+															variant="ghost"
+															size="icon"
+															onclick={() => downloadQuality(video, quality)}
+															class="h-7 w-7 rounded-md"
+															title={t('extract.download')}
+														>
+															<Download class="h-3.5 w-3.5" />
+														</Button>
+													{/if}
+												</div>
 											</div>
-										</div>
-									{/each}
+										{/each}
+									</div>
 								</div>
 							</div>
-						</article>
-					{/each}
+						{/each}
+					</div>
 				</div>
-			</div>
-		{/each}
-	</section>
+			{/each}
+		</div>
+	</div>
 {/if}
 
 <!-- Loading skeleton: shown while extracting (including across a whole batch).
      Sits below any existing results so a batch shows "more loading" beneath what
-     already landed; on a first extraction it's the only thing on screen. -->
+     already landed; on a first extraction it's the only thing on screen. Mirrors
+     the single-card shell used above (no outer boxed panel). -->
 {#if isExtractBusy}
 	<section class="mb-10" role="status" aria-busy="true" aria-label={t('extract.loading')}>
 		<span class="sr-only">{t('extract.loading')}</span>
-		<div class="mb-6 sm:p-4 sm:border sm:rounded-4xl sm:border-border/60 sm:bg-card/30 sm:shadow-soft">
-			<div class="border-border/50 mb-3 flex items-center gap-2 border-b pb-2 sm:mb-4 sm:pb-3">
-				<div class="bg-muted h-4 w-4 shrink-0 animate-pulse rounded"></div>
-				<div class="bg-muted h-4 w-48 max-w-full animate-pulse rounded"></div>
-			</div>
-			<div
-				class="grid gap-3 sm:gap-5 {preferences.layoutList === 'grid'
-					? 'grid-cols-1 lg:grid-cols-2'
-					: 'grid-cols-1'}"
-			>
-				{#each [0, 1] as i (i)}
-					<article
-						class="bg-card/60 shadow-soft overflow-hidden border {i % 2 === 0
-							? 'rounded-[1.75rem]'
-							: 'rounded-[2.1rem]'}"
+
+		<div
+			class="grid gap-4 sm:gap-5 {preferences.layoutList === 'grid'
+				? 'grid-cols-1 lg:grid-cols-2'
+				: 'grid-cols-1'}"
+		>
+			{#each [0, 1] as i (i)}
+				<div
+					class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
+				>
+					<!-- Group label skeleton: icon + source url + action-icon cluster -->
+					<div
+						class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
 					>
-						<div class="bg-muted aspect-video w-full animate-pulse"></div>
-						<div class="space-y-3 p-4">
-							<div class="bg-muted h-4 w-3/4 animate-pulse rounded"></div>
-							<div class="bg-muted/70 h-3 w-1/2 animate-pulse rounded"></div>
-							<div class="space-y-1.5 pt-1">
-								<div class="bg-muted/50 h-9 animate-pulse rounded-xl"></div>
-								<div class="bg-muted/50 h-9 animate-pulse rounded-xl"></div>
-							</div>
+						<div class="bg-muted h-3.5 w-3.5 shrink-0 animate-pulse rounded-full"></div>
+						<div class="bg-muted h-3.5 w-40 max-w-full animate-pulse rounded"></div>
+						<div class="ms-auto flex shrink-0 items-center gap-1.5">
+							{#each [0, 1, 2, 3, 4] as j (j)}
+								<div class="bg-muted h-7 w-7 animate-pulse rounded-full"></div>
+							{/each}
 						</div>
-					</article>
-				{/each}
-			</div>
+					</div>
+
+					<!-- Single video-item skeleton -->
+					<div class="overflow-hidden rounded-none sm:rounded-xl">
+						<div class="bg-muted aspect-video w-full animate-pulse"></div>
+					</div>
+
+					<div class="space-y-3 px-3.5 pt-3 sm:px-0">
+						<!-- Title -->
+						<div class="bg-muted h-4 w-3/4 animate-pulse rounded"></div>
+
+						<!-- Duration + subtitle/proxy pill row -->
+						<div class="flex items-center justify-between gap-2">
+							<div class="bg-muted/70 h-3 w-16 animate-pulse rounded"></div>
+							<div class="bg-muted/70 h-6 w-28 animate-pulse rounded-full"></div>
+						</div>
+
+						<!-- Quality list rows -->
+						<div
+							class="border-border/50 divide-border/50 divide-y overflow-hidden rounded-xl border"
+						>
+							{#each [0, 1, 2] as k (k)}
+								<div class="bg-muted/50 flex items-center gap-2 px-3 py-2">
+									<div class="bg-muted h-5 w-11 animate-pulse rounded-md"></div>
+									<div class="bg-muted/70 h-3 w-10 animate-pulse rounded"></div>
+									<div class="ms-auto flex gap-1">
+										<div class="bg-muted h-7 w-7 animate-pulse rounded-md"></div>
+										<div class="bg-muted h-7 w-7 animate-pulse rounded-md"></div>
+									</div>
+								</div>
+							{/each}
+						</div>
+					</div>
+				</div>
+			{/each}
 		</div>
 	</section>
 {/if}

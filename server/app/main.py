@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import logging
 import sys
@@ -18,6 +19,7 @@ from . import __version__
 from .cache import TTLCache
 from .config import settings
 from .extractor import ExtractionError, Extractor
+from .jobs import JobStore, run_transcription_job
 from .logging_context import (
     RequestContextFilter,
     client_ip_from_headers,
@@ -27,10 +29,15 @@ from .models import (
     ExtractRequest,
     ExtractResponse,
     HealthResponse,
+    TranscribeRequest,
+    TranscribeResult,
+    TranscribeStartResponse,
+    TranscribeStatus,
     VideoInfo,
 )
 from .proxy import ProxyService
 from .serializers import to_client_video
+from .transcribe.groq_engine import GroqTranscriber
 
 
 def _configure_logging() -> None:
@@ -72,12 +79,18 @@ async def lifespan(app: FastAPI):
     app.state.cache = TTLCache[VideoInfo](
         ttl=settings.cache_ttl, max_entries=settings.cache_max_entries
     )
+    app.state.jobs = JobStore(settings)
+    # None when unconfigured -- /transcribe responds 503 rather than the
+    # whole app failing to start over a missing optional feature's key.
+    app.state.transcriber = GroqTranscriber(settings) if settings.groq_api_key else None
     logger.info("DirectStream API %s ready", __version__)
     try:
         yield
     finally:
         await app.state.extractor.aclose()
         await app.state.proxy.aclose()
+        if app.state.transcriber is not None:
+            await app.state.transcriber.aclose()
         logger.info("DirectStream API shut down")
 
 
@@ -98,6 +111,16 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+    @app.middleware("http")
+    async def _log_context_middleware(request: Request, call_next):
+        set_request_context(
+            client_ip_from_headers(
+                request.headers, request.client.host if request.client else None
+            ),
+            request.headers.get("user-agent", "-"),
+        )
+        return await call_next(request)
 
     @app.exception_handler(ExtractionError)
     async def _extraction_error(_: Request, exc: ExtractionError) -> JSONResponse:
@@ -146,6 +169,68 @@ def create_app() -> FastAPI:
         return HealthResponse(
             version=__version__,
             timestamp=datetime.now(timezone.utc).isoformat(),
+        )
+
+    # ---- Auto-subtitles (speech-to-text via Groq Whisper) ---------------
+    # Opt-in, explicit, minutes-long job -- the only place in the app that
+    # downloads media bytes to disk. Progress is polled (GET), not pushed;
+    # see the ADR in the project plan for why SSE/WebSocket was skipped.
+
+    @app.post("/transcribe", response_model=TranscribeStartResponse)
+    async def start_transcribe(payload: TranscribeRequest) -> TranscribeStartResponse:
+        if app.state.transcriber is None:
+            raise HTTPException(
+                status_code=503, detail="Auto-subtitles are not configured on this server"
+            )
+
+        job = await app.state.jobs.create()
+        asyncio.create_task(
+            run_transcription_job(
+                job.id, payload.formats, settings, app.state.jobs, app.state.transcriber
+            )
+        )
+        return TranscribeStartResponse(job_id=job.id)
+
+    @app.get("/transcribe/{job_id}", response_model=TranscribeStatus)
+    async def get_transcribe_status(job_id: str) -> TranscribeStatus:
+        job = await app.state.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown or expired job")
+
+        result = None
+        if job.status == "done":
+            result = TranscribeResult(
+                language=job.language or "en",
+                vtt_url=f"/transcribe/{job_id}/subtitle.vtt",
+                srt_url=f"/transcribe/{job_id}/subtitle.srt",
+                waveform=job.waveform,
+            )
+
+        return TranscribeStatus(
+            job_id=job.id,
+            status=job.status,
+            progress=job.progress,
+            step_label=job.step_label,
+            error=job.error,
+            result=result,
+        )
+
+    @app.get("/transcribe/{job_id}/subtitle.vtt", include_in_schema=False)
+    async def get_transcribe_vtt(job_id: str) -> Response:
+        job = await app.state.jobs.get(job_id)
+        if job is None or job.vtt_text is None:
+            raise HTTPException(status_code=404, detail="Subtitle not ready")
+        return Response(content=job.vtt_text, media_type="text/vtt")
+
+    @app.get("/transcribe/{job_id}/subtitle.srt", include_in_schema=False)
+    async def get_transcribe_srt(job_id: str) -> Response:
+        job = await app.state.jobs.get(job_id)
+        if job is None or job.srt_text is None:
+            raise HTTPException(status_code=404, detail="Subtitle not ready")
+        return Response(
+            content=job.srt_text,
+            media_type="application/x-subrip",
+            headers={"Content-Disposition": 'attachment; filename="subtitles.srt"'},
         )
 
     # ---- Static SPA (single-process deploy) ----------------------------

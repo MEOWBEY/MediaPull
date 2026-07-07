@@ -2,37 +2,94 @@
 	import Check from '@lucide/svelte/icons/check';
 	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
-	import { onMount, tick } from 'svelte';
+	import { onMount, tick, untrack } from 'svelte';
+	import { toast } from 'svelte-sonner';
 
+	import SubtitlePanel from '$lib/components/SubtitlePanel.svelte';
+	import { isAudioType, mediaKindLabel } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
-	import type { VideoFormat } from '$lib/types';
+	import { fetchAndParseVtt } from '$lib/subtitle-utils';
+	import { TranscriptionController, type SubtitleTrackResult } from '$lib/transcribe.svelte';
+	import type { FormatGroup, SubtitleSegment, SubtitleTrack, VideoFormat } from '$lib/types';
 
 	const { t } = i18n;
 
+	/** Imperative handle the parent card uses to drive subtitles from its own
+	 *  toolbar's Subtitles button, instead of a `bind:this` ref which doesn't
+	 *  fit cleanly inside a keyed `{#each}`. */
+	export interface VideoPlayerHandle {
+		requestSubtitles: () => Promise<void>;
+		openSubtitlePanel: () => void;
+		useExistingTrack: (track: SubtitleTrack) => void;
+	}
+
+	/** Pushed to the parent whenever subtitle state changes, so the card
+	 *  header can reactively show the CC button / spinner / percentage. */
+	export interface SubtitleState {
+		hasTrack: boolean;
+		isRunning: boolean;
+		progress: number;
+		/** True while an existing source caption is being fetched/parsed --
+		 *  distinct from `isRunning` (the Groq job) since it never has a
+		 *  meaningful progress percentage. */
+		isResolvingExisting: boolean;
+	}
+
 	let {
 		poster = '',
-		qualities = [],
-		type = '',
-		useProxy = true
+		formatGroups = [],
+		useProxy = true,
+		webpageUrl = '',
+		initialSubtitleTrack = null,
+		onReady,
+		onSubtitleState,
+		onActiveGroupChange,
+		onSubtitleTrackChange
 	}: {
 		poster?: string;
-		qualities?: Partial<VideoFormat>[];
-		type?: string;
+		formatGroups?: FormatGroup[];
 		useProxy?: boolean;
+		webpageUrl?: string;
+		/** Restores a previously generated/reused track (see `onSubtitleTrackChange`)
+		 *  so a page refresh doesn't lose it or force re-transcribing. */
+		initialSubtitleTrack?: SubtitleTrackResult | null;
+		onReady?: (handle: VideoPlayerHandle) => void;
+		onSubtitleState?: (state: SubtitleState) => void;
+		onActiveGroupChange?: (index: number) => void;
+		/** Fired whenever the resolved subtitle track changes, so the parent can
+		 *  persist it alongside the card (survives refresh, removed with the video). */
+		onSubtitleTrackChange?: (track: SubtitleTrackResult | null) => void;
 	} = $props();
+
+	// Which format-group "tab" is active (progressive MP4 / HLS / a separate
+	// audio-only stream, ...) -- several tabs share this one player instance,
+	// since they're all the same source and one subtitle track covers all of them.
+	let activeGroupIndex = $state(0);
+	const activeGroup = $derived(formatGroups[activeGroupIndex] ?? formatGroups[0]);
+	const qualities = $derived(activeGroup?.qualities ?? []);
 
 	// Audio-only media gets a compact native <audio> player (no video frame),
 	// instead of the aspect-video skin used for visual formats.
-	const isAudio = $derived(typeof type === 'string' && type.startsWith('audio/'));
+	const isAudio = $derived(isAudioType(activeGroup?.type ?? ''));
 
 	const { preferences } = appStore;
 
 	// Both <video> and <hls-video> expose the media subset we drive (currentTime,
 	// paused, play, load) but aren't the same DOM type — narrow to that.
 	type MediaEl = HTMLElement &
-		Pick<HTMLMediaElement, 'currentTime' | 'paused' | 'play' | 'load' | 'muted' | 'volume'>;
+		Pick<
+			HTMLMediaElement,
+			'currentTime' | 'paused' | 'play' | 'load' | 'muted' | 'volume' | 'duration'
+		>;
 	type HlsEl = MediaEl & { config?: Record<string, unknown> };
+	// The <video-player>/<audio-player> host element -- exposes the player's
+	// reactive store (`.store.state`), which is what its own captions button
+	// drives via `toggleSubtitles()`. Typed loosely since it's a third-party
+	// custom element with no published TS types for this property.
+	type PlayerRootEl = HTMLElement & {
+		store?: { state: { toggleSubtitles?: (forceShow?: boolean) => boolean } };
+	};
 
 	// Passed through to hls.js. The engine already caps the level to the player
 	// size and on FPS drops; these trim memory, recover faster on flaky
@@ -46,7 +103,13 @@
 		manifestLoadingMaxRetry: 4
 	};
 
-	let videoEl: MediaEl | null = null;
+	// $state (not a plain variable) so effects correctly re-run when the
+	// element itself is swapped out -- e.g. switching format-group tabs
+	// remounts it, and the "now playing" / caption-mode effects below need to
+	// pick up the new element rather than keep driving the torn-down one.
+	let videoEl = $state<MediaEl | null>(null);
+	// The <video-player>/<audio-player> host -- see `PlayerRootEl` above.
+	let playerRootEl: PlayerRootEl | null = $state(null);
 	let qualityRoot: HTMLElement | null = $state(null);
 	let ready = $state(false);
 	let hasError = $state(false);
@@ -55,6 +118,189 @@
 	// Mirrors the skin's own control-bar visibility so the quality button fades
 	// in and out together with the controls.
 	let controlsVisible = $state(true);
+
+	// ----- Auto-subtitles (speech-to-text, no translation) -----------------
+	const transcription = new TranscriptionController();
+	// Restore a track persisted from a previous session -- whether it came
+	// from Groq or an existing caption doesn't matter once resolved, so it
+	// slots into the same place a freshly-generated one would.
+	untrack(() => {
+		if (initialSubtitleTrack) {
+			transcription.track = initialSubtitleTrack;
+		}
+	});
+	// Set directly when the user picks a track the source already provides (no
+	// pipeline needed); otherwise mirrors transcription.track once the Groq job
+	// finishes. Existing-track pick wins if both are set.
+	let existingTrack = $state<SubtitleTrackResult | null>(null);
+	let resolvingExisting = $state(false);
+	let subtitlePanelOpen = $state(false);
+	let playerCurrentTime = $state(0);
+	let playerDuration = $state(0);
+	let hadTrack = false;
+
+	const activeSubtitleTrack = $derived(existingTrack ?? transcription.track);
+
+	// Report resolved-track changes up so the parent can persist them
+	// alongside the card (survives refresh; removed automatically when the
+	// video itself is removed, since it lives on the same object). Tracked
+	// against the last-reported value (not just "did it change from null") so
+	// restoring `initialSubtitleTrack` on mount doesn't immediately re-report
+	// the exact value the parent just handed in.
+	let lastReportedTrack: SubtitleTrackResult | null = untrack(() => initialSubtitleTrack ?? null);
+
+	$effect(() => {
+		if (activeSubtitleTrack === lastReportedTrack) {return;}
+
+		lastReportedTrack = activeSubtitleTrack;
+		onSubtitleTrackChange?.(activeSubtitleTrack);
+	});
+
+	// Auto-open the subtitle panel the moment a track first becomes available
+	// (existing or generated), per the user's preference.
+	$effect(() => {
+		const has = Boolean(activeSubtitleTrack);
+
+		if (has && !hadTrack && preferences.autoOpenSubtitlePanel) {
+			subtitlePanelOpen = true;
+		}
+		hadTrack = has;
+	});
+
+	// Keep the parent card's header controls in sync (CC button visibility,
+	// spinner + percentage while a job runs).
+	$effect(() => {
+		onSubtitleState?.({
+			hasTrack: Boolean(activeSubtitleTrack),
+			isRunning: transcription.isRunning,
+			progress: transcription.progress,
+			isResolvingExisting: resolvingExisting
+		});
+	});
+
+	// Drive the subtitle panel's "now playing" position. Only runs once a
+	// track exists — no cost for videos nobody has subtitled. Re-runs
+	// whenever `videoEl` itself changes (e.g. a format-group tab switch
+	// remounts the element), since it's `$state` -- otherwise this would keep
+	// driving a torn-down element after switching tabs.
+	$effect(() => {
+		if (!activeSubtitleTrack || !videoEl) {return;}
+
+		const el = videoEl;
+		let raf = 0;
+
+		const tick = () => {
+			playerCurrentTime = el.currentTime;
+			playerDuration = el.duration || playerDuration;
+			raf = requestAnimationFrame(tick);
+		};
+
+		raf = requestAnimationFrame(tick);
+
+		return () => cancelAnimationFrame(raf);
+	});
+
+	// Browsers don't reliably honor a <track default> added dynamically after
+	// the media element already exists (our case: the track only appears once
+	// transcription/existing-caption lookup resolves, well after mount). Just
+	// poking `textTrack.mode = 'showing'` isn't enough either: the packaged
+	// skin (@videojs/html) has its own captions button/state that only
+	// auto-shows native tracks of kind "chapters"/"metadata", not
+	// "subtitles"/"captions" -- setting the mode directly leaves the skin's
+	// own captions UI unaware, so its (invisible, never-toggled) internal
+	// state fights the browser's rendering. Driving it through the skin's own
+	// `toggleSubtitles()` (the exact same call its CC button makes) keeps the
+	// native cue rendering AND the CC button's own "on" state in sync.
+	$effect(() => {
+		if (!activeSubtitleTrack?.vttUrl || !videoEl) {return;}
+
+		const el = videoEl as unknown as HTMLMediaElement;
+		const tracks = el.textTracks;
+
+		if (!tracks) {return;}
+
+		const apply = () => {
+			(playerRootEl as PlayerRootEl | null)?.store?.state.toggleSubtitles?.(true);
+		};
+
+		apply();
+		tracks.addEventListener('addtrack', apply);
+
+		return () => tracks.removeEventListener('addtrack', apply);
+	});
+
+	async function generateSubtitles() {
+		// Every format-group's qualities, not just the active tab's -- a
+		// dedicated audio-only stream may live in a different tab than the one
+		// currently playing, and the backend already knows how to pick the
+		// best audio-bearing source out of a mixed bag.
+		await transcription.generate({ webpageUrl, qualities: formatGroups.flatMap((g) => g.qualities) });
+	}
+
+	// Handed to the parent once, via onReady.
+	onMount(() => {
+		onReady?.({
+			requestSubtitles: () => generateSubtitles(),
+			openSubtitlePanel: () => (subtitlePanelOpen = true),
+			useExistingTrack
+		});
+	});
+
+	async function useExistingTrack(track: SubtitleTrack) {
+		// Guards against the card's Subtitles button feeling unresponsive: the
+		// fetch below can take a moment, and without this a second click before
+		// it resolves would fire a redundant parallel fetch instead of just
+		// waiting on the first one.
+		if (resolvingExisting) {return;}
+
+		let segments: SubtitleSegment[] = [];
+
+		resolvingExisting = true;
+		try {
+			// Native <track>/our own parser both need WebVTT; a non-vtt existing
+			// track (e.g. YouTube's srv3/ttml formats) still isn't usable here.
+			if (track.ext === 'vtt') {
+				try {
+					segments = await fetchAndParseVtt(track.url);
+				} catch {
+					// Surfaced rather than silently left empty -- otherwise a fetch
+					// failure (network blip, an upstream URL that expired between
+					// extraction and click) looks identical to "no captions" once the
+					// panel opens, with nothing telling the user what happened.
+					segments = [];
+					toast.error(t('subtitles.error.fetchFailed'));
+				}
+			}
+		} finally {
+			resolvingExisting = false;
+		}
+
+		existingTrack = {
+			language: track.lang,
+			segments,
+			vttUrl: track.ext === 'vtt' ? track.url : undefined
+		};
+	}
+
+	function seekTo(time: number) {
+		if (videoEl) {videoEl.currentTime = time;}
+	}
+
+	function downloadSrt() {
+		const url = activeSubtitleTrack?.srtUrl;
+
+		if (!url) {return;}
+
+		try {
+			const link = document.createElement('a');
+
+			link.href = url;
+			link.download = 'subtitles.srt';
+			link.click();
+		} catch {
+			toast.error(t('toast.downloadFailed'));
+		}
+	}
 
 	// Drop sources with no playable URL, then collapse duplicate qualities
 	// (same resolution + extension) that some extractors return more than once.
@@ -102,69 +348,124 @@
 	// Our proxy adds `Access-Control-Allow-Origin: *`, so CORS mode is safe there.
 	// Raw source URLs usually send no CORS headers — forcing crossorigin on them
 	// makes the browser reject the media ("MEDIA_ELEMENT_ERROR: Format error").
-	const usingProxy = $derived(activeSrc.includes('/api/proxy-video'));
+	// (Backend route is `/proxy-video`, no `/api` prefix -- see proxy-url.ts.)
+	const usingProxy = $derived(activeSrc.includes('/proxy-video'));
 	// One unified menu for every format (mp4 / mp3 / avi / hls / …): switch by
 	// swapping the source URL. Shown whenever the extractor gave more than one.
 	const showQualityMenu = $derived(usable.length > 1);
 
-	async function switchQuality(index: number) {
-		if (index === activeIndex || !videoEl) {
-			return;
+	// Shared by switchQuality/switchGroup: capture the live runtime state
+	// before `mutate()` swaps activeIndex/activeGroupIndex (and therefore the
+	// rendered element -- possibly even crossing the audio/video skin
+	// boundary), then reapply it to whichever element ends up mounted. Doing
+	// the capture synchronously, before the state mutation, is what makes this
+	// work: an `$effect` reacting to the change would only see the *new*
+	// element, since Svelte re-renders before effects flush.
+	// Serializes switches: without this, rapidly switching tab A -> B -> A
+	// lets the calls race (the B->A capture can read B's element before its
+	// own resume from A->B settled, e.g. `.paused` still true because `play()`
+	// hadn't actually started yet), leaving the final element stuck paused.
+	let switching = false;
+
+	async function resumePlaybackAcross(mutate: () => void): Promise<boolean> {
+		if (switching) {
+			return false;
 		}
+		switching = true;
 
-		// Capture the live runtime state before the element is torn down — the fresh
-		// element would otherwise reset everything to its initial attributes (so the
-		// user's mute/volume/position/play state would be lost on every switch).
-		const resumeTime = videoEl.currentTime;
-		const wasPlaying = !videoEl.paused;
-		const wasMuted = videoEl.muted;
-		const prevVolume = videoEl.volume;
+		try {
+			const prevEl = videoEl;
+			const resumeTime = prevEl?.currentTime ?? 0;
+			const wasPlaying = prevEl ? !prevEl.paused : false;
+			const wasMuted = prevEl?.muted ?? preferences.enableVideoMute;
+			const prevVolume = prevEl?.volume ?? 1;
 
-		activeIndex = index;
-		menuOpen = false;
+			mutate();
 
-		// The {#key activeSrc} block tears down the old element and mounts a fresh
-		// one, so wait for that to bind before driving the new element.
-		await tick();
-		const el = videoEl;
+			// Tears down the old element and mounts the new one (same element only
+			// when just the `src` changes), so wait for that to bind before driving it.
+			await tick();
+			const el = videoEl;
 
-		if (!el) {
-			return;
-		}
-
-		// Mute/volume can be applied immediately (no metadata needed), so the user's
-		// sound choice survives the swap regardless of play state.
-		el.muted = wasMuted;
-		el.volume = prevVolume;
-
-		// We changed `src` on the same element (no remount). A native <video> only
-		// picks up a new src after an explicit load(); <hls-video> reloads itself
-		// when its src attribute changes, so don't double-load it.
-		if (!isHls(activeSrc)) {
-			try {
-				el.load();
-			} catch {
-				/* element may not be ready; play()/events below still recover */
+			if (!el) {
+				return true;
 			}
+
+			// Mute/volume can be applied immediately (no metadata needed), so the user's
+			// sound choice survives the swap regardless of play state.
+			el.muted = wasMuted;
+			el.volume = prevVolume;
+
+			// A native <audio> only picks up a new src after an explicit load();
+			// <hls-video> (used for every non-audio source, HLS or not -- see
+			// `mediaEl` above) reloads itself whenever its src/type attributes
+			// change, so don't double-load it.
+			if (isAudio) {
+				try {
+					el.load();
+				} catch {
+					/* element may not be ready; the code below still recovers */
+				}
+			}
+
+			// Seek and play immediately rather than waiting for a `loadedmetadata`
+			// event: per the media element spec, setting `currentTime`/calling
+			// `play()` before metadata has loaded is well-defined and queued
+			// internally by the browser. Waiting on the event here was unreliable
+			// (the `hls-video` custom element doesn't reliably forward it) and,
+			// worse, meant `play()` ran from inside an async gap or a `setTimeout`
+			// fallback -- detached from the click's user-activation context, which
+			// some browsers' autoplay policy silently rejects. Calling `play()`
+			// straight away keeps it in the same call chain as the user's click.
+			if (resumeTime > 0) {
+				el.currentTime = resumeTime;
+			}
+
+			// Only force the new source to load when we were already playing — never
+			// preload after a paused switch (keeps "no load before play" intact).
+			// Awaiting it (rather than firing and forgetting) means `.paused` is
+			// settled by the time the NEXT switch reads it.
+			if (wasPlaying) {
+				try {
+					await el.play();
+				} catch {
+					/* autoplay blocked or aborted by a subsequent switch -- stays paused */
+				}
+			}
+
+			return true;
+		} finally {
+			switching = false;
+		}
+	}
+
+	async function switchQuality(index: number) {
+		if (index === activeIndex) {
+			return;
 		}
 
-		// Restore the playhead as soon as the new source reports its duration.
-		// With preload="none" the metadata only loads once play() is called, so
-		// for a paused switch this still fires on the user's next play.
-		el.addEventListener(
-			'loadedmetadata',
-			() => {
-				if (resumeTime > 0) {
-					el.currentTime = resumeTime;
-				}
-			},
-			{ once: true }
-		);
+		await resumePlaybackAcross(() => {
+			activeIndex = index;
+			menuOpen = false;
+		});
+	}
 
-		// Only force the new source to load when we were already playing — never
-		// preload after a paused switch (keeps "no load before play" intact).
-		if (wasPlaying) {
-			void el.play().catch(() => {});
+	async function switchGroup(index: number) {
+		if (index === activeGroupIndex) {
+			return;
+		}
+
+		const switched = await resumePlaybackAcross(() => {
+			activeGroupIndex = index;
+			activeIndex = 0;
+			menuOpen = false;
+		});
+
+		// Only tell the parent (which drives the quality rail below the card)
+		// once the switch actually ran -- a switch dropped by the `switching`
+		// lock must not report an index the player didn't actually land on.
+		if (switched) {
+			onActiveGroupChange?.(index);
 		}
 	}
 
@@ -194,6 +495,20 @@
 			destroy() {
 				if (videoEl === node) {
 					videoEl = null;
+				}
+			}
+		};
+	}
+
+	// Captures the <video-player>/<audio-player> host so the caption effect
+	// can reach its store's `toggleSubtitles()` -- see `PlayerRootEl` above.
+	function bindPlayerRoot(node: PlayerRootEl) {
+		playerRootEl = node;
+
+		return {
+			destroy() {
+				if (playerRootEl === node) {
+					playerRootEl = null;
 				}
 			}
 		};
@@ -250,13 +565,14 @@
 		let cancelled = false;
 
 		// v10 custom elements are browser-only — load them after mount (SSR-safe).
-		// Audio gets the dedicated audio skin (same control styling, no video frame).
+		// Both skins are loaded regardless of the initial tab: switching
+		// format-group tabs can flip between the audio and video skin after
+		// mount, so whichever one is needed first must already be registered.
 		(async () => {
-			if (isAudio) {
-				await import('@videojs/html/audio/minimal-skin');
-			} else {
-				await import('@videojs/html/video/minimal-skin');
-			}
+			await Promise.all([
+				import('@videojs/html/audio/minimal-skin'),
+				import('@videojs/html/video/minimal-skin')
+			]);
 			await import('@videojs/html/media/hls-video');
 			await import('@videojs/html/global.css');
 			if (!cancelled) {
@@ -277,20 +593,26 @@
 <!-- Shared media element. No {#key} on purpose: keying on the src would tear down
      and rebuild the element on every quality switch, severing the skin's controller
      binding (play/pause/mute stop working). We keep the same element and only change
-     its `src`; it's swapped only when the engine type changes (HLS <-> native/audio),
-     driven by the {#if} below. switchQuality() reloads + restores state in place. -->
+     its `src`; switchQuality() reloads + restores state in place.
+
+     For the video (non-audio) case we always mount <hls-video>, even for a
+     plain progressive MP4 -- never a plain <video>. Reason: @videojs/html's
+     <video-player> only discovers a bare <video>'s media target once, via a
+     one-time fallback query run at mount; a *custom* element like <hls-video>
+     re-registers itself with the player on every (re)connect instead. Since
+     switchGroup() can flip between HLS and progressive formats, swapping
+     between <hls-video> and a plain <video> tag left the player's control
+     store pointing at a torn-down element after switching HLS -> MP4 --
+     fullscreen/other buttons silently stopped working. Mounting <hls-video>
+     unconditionally means only one custom element type ever exists for video,
+     so it's always properly (re)registered. `type` is passed explicitly
+     (rather than left to the element's own URL-extension guess, which
+     assumes anything not ending in ".mp4" is HLS -- wrong for our proxied
+     URLs/other containers) so it only spins up the hls.js engine for actual
+     HLS sources; everything else runs through its plain native-<video>
+     delegate, identical to what a bare <video> tag would do. -->
 {#snippet mediaEl()}
-	{#if isHls(activeSrc)}
-		<hls-video
-			use:bindHls
-			src={activeSrc}
-			poster={!isAudio && preferences.showVideoThumbnail ? poster : ''}
-			crossorigin={usingProxy ? 'anonymous' : undefined}
-			playsinline
-			muted={preferences.enableVideoMute}
-			preload={preferences.enableVideoPreloadMetadata ? 'metadata' : 'none'}
-		></hls-video>
-	{:else if isAudio}
+	{#if isAudio}
 		<audio
 			use:bindVideo
 			src={activeSrc}
@@ -299,15 +621,26 @@
 			preload={preferences.enableVideoPreloadMetadata ? 'metadata' : 'none'}
 		></audio>
 	{:else}
-		<video
-			use:bindVideo
+		<hls-video
+			use:bindHls
 			src={activeSrc}
+			type={isHls(activeSrc) ? 'application/vnd.apple.mpegurl' : 'video/mp4'}
 			poster={preferences.showVideoThumbnail ? poster : ''}
 			crossorigin={usingProxy ? 'anonymous' : undefined}
 			playsinline
 			muted={preferences.enableVideoMute}
 			preload={preferences.enableVideoPreloadMetadata ? 'metadata' : 'none'}
-		></video>
+		>
+			{#if activeSubtitleTrack?.vttUrl}
+				<track
+					kind="subtitles"
+					src={activeSubtitleTrack.vttUrl}
+					srclang={activeSubtitleTrack.language}
+					label={activeSubtitleTrack.language}
+					default
+				/>
+			{/if}
+		</hls-video>
 	{/if}
 {/snippet}
 
@@ -332,7 +665,7 @@
 		</div>
 
 		{#if ready && usable.length}
-			<audio-player class="block w-full">
+			<audio-player class="block w-full" use:bindPlayerRoot>
 				<audio-minimal-skin use:bindSkin>
 					{@render mediaEl()}
 				</audio-minimal-skin>
@@ -354,7 +687,7 @@
 		class="ds-player group relative aspect-video w-full overflow-hidden rounded-xl bg-black"
 	>
 		{#if ready && usable.length}
-			<video-player class="block h-full w-full">
+			<video-player class="block h-full w-full" use:bindPlayerRoot>
 				<video-minimal-skin use:bindSkin>
 					{@render mediaEl()}
 
@@ -414,3 +747,44 @@
 		{/if}
 	</div>
 {/if}
+
+{#if formatGroups.length > 1}
+	<!-- Format-kind tabs: one card, several tabs (progressive/HLS/audio-only/...)
+	     -- they're all the same source, so switching tabs stays in this one
+	     player instance (see switchGroup) rather than swapping components.
+	     Underline style: no pill background, just the label in the accent
+	     color with a thin colored bar under the active tab. -->
+	<div
+		class="border-border/60 mt-2 flex w-full items-stretch gap-5 border-b px-1"
+		role="tablist"
+		aria-label={t('player.formatTabs')}
+	>
+		{#each formatGroups as group, i (i)}
+			<button
+				type="button"
+				role="tab"
+				aria-selected={i === activeGroupIndex}
+				class="relative -mb-px pt-1 pb-2 text-sm font-semibold transition-colors {i === activeGroupIndex
+					? 'text-primary'
+					: 'text-muted-foreground hover:text-foreground'}"
+				onclick={() => switchGroup(i)}
+			>
+				{mediaKindLabel(group.type, t('player.audioLabel'))}
+				{#if i === activeGroupIndex}
+					<span class="bg-primary absolute inset-x-0 -bottom-px h-0.5 rounded-full"></span>
+				{/if}
+			</button>
+		{/each}
+	</div>
+{/if}
+
+<SubtitlePanel
+	bind:open={subtitlePanelOpen}
+	segments={activeSubtitleTrack?.segments ?? []}
+	currentTime={playerCurrentTime}
+	onSeek={seekTo}
+	canDownload={Boolean(activeSubtitleTrack?.srtUrl)}
+	onDownload={downloadSrt}
+	onGenerate={generateSubtitles}
+	generating={transcription.isRunning}
+/>

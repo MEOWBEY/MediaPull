@@ -42,18 +42,39 @@ export interface VideoMetadata {
 	webpage_url: string;
 }
 
+/** An existing caption track the source already provides (yt-dlp's own
+ *  subtitles/automatic_captions metadata) — free to use, no transcription
+ *  pipeline needed when one of these already matches. */
+export interface SubtitleTrack {
+	lang: string;
+	label: string;
+	url: string;
+	ext: string;
+	isAuto: boolean;
+}
+
+/** One format "kind" of a video (progressive MP4, HLS, a separate audio-only
+ *  stream, ...) -- a `GroupedVideo` can have several, rendered as tabs since
+ *  they're all the same underlying source. */
+export interface FormatGroup {
+	type: MediaType;
+	qualities: VideoFormat[];
+}
+
 export interface GroupedVideo {
 	id?: string;
 	title?: string;
 	thumbnail?: string;
 	duration?: number;
-	type: MediaType;
-	qualities: VideoFormat[];
+	formatGroups: FormatGroup[];
 	height?: number;
 	width?: number;
 	upload_date?: string;
 	aspect_ratio?: number;
 	webpage_url?: string;
+	subtitleTracks?: SubtitleTrack[];
+	/** Generated/reused subtitle track, persisted so a refresh doesn't lose it. */
+	subtitleTrack?: SubtitleTrackResult;
 }
 
 /** Raw shapes as they arrive from the backend (pre-grouping). The client builds
@@ -73,6 +94,7 @@ export interface IncomingFormat {
 export interface IncomingVideo {
 	formats?: IncomingFormat[];
 	metadata?: Partial<VideoMetadata>;
+	subtitleTracks?: SubtitleTrack[];
 }
 
 export interface Preferences {
@@ -89,6 +111,43 @@ export interface Preferences {
 	showHlsTypeDownloadButton: boolean;
 	/** Show adaptive video-only (no-audio) qualities, e.g. YouTube >720p. Off by default. */
 	showVideoOnlyFormats: boolean;
+	/** Open the subtitle search panel automatically once a track is ready. */
+	autoOpenSubtitlePanel: boolean;
+}
+
+/** One subtitle line with its timing. */
+export interface SubtitleSegment {
+	start: number;
+	end: number;
+	text: string;
+}
+
+/** A resolved subtitle track for a video -- either transcribed via Groq or
+ *  reused from the source's own captions. Persisted on the `GroupedVideo`
+ *  itself (see `GroupedVideo.subtitleTrack`) so it survives a page refresh
+ *  instead of re-fetching/re-transcribing, and disappears automatically
+ *  when the video is removed (same lifecycle, same object). */
+export interface SubtitleTrackResult {
+	language: string;
+	segments: SubtitleSegment[];
+	vttUrl?: string;
+	srtUrl?: string;
+}
+
+/** Wire shape of `GET /transcribe/{jobId}` (NOT wrapped in `ApiEnvelope` —
+ *  see `postJson`/`getJson` in `api/client.ts`). */
+export interface TranscribeStatus {
+	jobId: string;
+	status: 'queued' | 'downloading' | 'chunking' | 'transcribing' | 'finalizing' | 'done' | 'error';
+	progress: number;
+	stepLabel: string;
+	error?: string | null;
+	result?: {
+		language: string;
+		vttUrl: string;
+		srtUrl: string;
+		waveform: number[] | null;
+	} | null;
 }
 
 /** Envelope returned by the backend. `error`/`details` are our own fields; FastAPI

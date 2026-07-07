@@ -14,7 +14,7 @@
 	import { normalizeDomain } from '$lib/stores/cookies.svelte';
 
 	const { t } = i18n;
-	const cookies = appStore.cookies;
+	const {cookies} = appStore;
 
 	// Famous sites shown by default; any custom domain the user saved is appended.
 	const PRESET_DOMAINS = [
@@ -38,6 +38,8 @@
 
 	const rows = $derived.by(() => {
 		const saved = cookies.entries().map(([d]) => d);
+		// Transient dedupe set rebuilt each derivation — not reactive state.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const seen = new Set<string>(PRESET_DOMAINS);
 		const out: string[] = [...PRESET_DOMAINS];
 
@@ -50,6 +52,10 @@
 
 		return out;
 	});
+
+	function isPreset(domain: string): boolean {
+		return PRESET_DOMAINS.includes(domain);
+	}
 
 	function startEdit(domain: string) {
 		editing = domain;
@@ -69,6 +75,12 @@
 
 	function clearOne(domain: string) {
 		cookies.clear(domain);
+		// A custom (non-preset) row only exists to hold a value -- once cleared,
+		// drop it from the transient list too, or it lingers as an empty row
+		// with no other way to remove it.
+		if (!isPreset(domain)) {
+			extraDomains = extraDomains.filter((d) => d !== domain);
+		}
 		toast.success(t('cookies.clearedToast', { site: domain }));
 		if (editing === domain) {cancelEdit();}
 	}
@@ -165,7 +177,7 @@
 							>
 								{cookies.has(domain) ? t('cookies.edit') : t('cookies.add')}
 							</Button>
-							{#if cookies.has(domain)}
+							{#if cookies.has(domain) || !isPreset(domain)}
 								<Button
 									variant="outline"
 									size="sm"

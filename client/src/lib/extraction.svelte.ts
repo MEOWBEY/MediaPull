@@ -124,9 +124,14 @@ export class ExtractionController {
 	/**
 	 * Extract links for one URL. Returns true on success. `silent` suppresses the
 	 * per-item toast + error-alert state so a batch can report a single summary
-	 * instead of one toast (and a lingering alert) per URL.
+	 * instead of one toast (and a lingering alert) per URL. `forceRefresh` skips
+	 * (and evicts) any cached result -- for re-pulling a source whose direct
+	 * links may have expired, where serving the stale cache would defeat the point.
 	 */
-	async extractLinks(rawUrl: string, opts: { silent?: boolean } = {}): Promise<boolean> {
+	async extractLinks(
+		rawUrl: string,
+		opts: { silent?: boolean; forceRefresh?: boolean } = {}
+	): Promise<boolean> {
 		const url = normalizeUrl(rawUrl);
 
 		if (!url) {return false;}
@@ -136,7 +141,11 @@ export class ExtractionController {
 		const cookies = appStore.cookies.matchFor(url);
 		const cacheKey = cookies ? `${url}#auth` : url;
 
-		const cached = extractCache.get(cacheKey);
+		if (opts.forceRefresh) {
+			extractCache.delete(cacheKey);
+		}
+
+		const cached = opts.forceRefresh ? null : extractCache.get(cacheKey);
 
 		if (cached) {
 			appStore.addVideoExtractResultsToStore(cached);

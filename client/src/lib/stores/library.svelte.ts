@@ -1,6 +1,6 @@
 import { browser } from '$app/environment';
 import { groupVideosByQuality, maxFilesize, maxResolution } from '$lib/transform';
-import type { GroupedVideo, IncomingVideo, Preferences } from '$lib/types';
+import type { GroupedVideo, IncomingVideo, Preferences, SubtitleTrackResult } from '$lib/types';
 
 import type { PreferencesStore } from './preferences.svelte';
 
@@ -61,6 +61,18 @@ export class LibraryStore {
 		this.persist(KEY_EXTRACT, this.extractResults);
 	}
 
+	/** Persists a resolved subtitle track directly on the stored card so it
+	 *  survives a refresh -- mutating the object in place (rather than
+	 *  replacing the array) keeps every other view's reference to it valid. */
+	setSubtitleTrack(target: GroupedVideo, track: SubtitleTrackResult | null): void {
+		const item = this.extractResults.find((v) => v === target);
+
+		if (!item) {return;}
+
+		item.subtitleTrack = track ?? undefined;
+		this.persist(KEY_EXTRACT, this.extractResults);
+	}
+
 	clearExtractResults(): void {
 		this.extractResults = [];
 		this.remove(KEY_EXTRACT);
@@ -79,7 +91,11 @@ export class LibraryStore {
 			const extract = localStorage.getItem(KEY_EXTRACT);
 			const parsedExtract = extract ? JSON.parse(extract) : null;
 
-			if (Array.isArray(parsedExtract)) {this.extractResults = parsedExtract;}
+			if (Array.isArray(parsedExtract)) {
+				// Drop pre-refactor cached entries (old shape had flat `type`/
+				// `qualities` instead of `formatGroups`) rather than rendering them broken.
+				this.extractResults = parsedExtract.filter((v) => Array.isArray(v?.formatGroups));
+			}
 		} catch (error) {
 			console.warn('Failed to load library:', error);
 		}

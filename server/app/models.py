@@ -38,6 +38,19 @@ class VideoFormat(BaseModel):
     video_only: bool = False
 
 
+class SubtitleTrack(BaseModel):
+    """An existing caption track the source already provides (from yt-dlp's
+    ``subtitles``/``automatic_captions`` metadata) -- free to surface, no
+    transcription needed. The transcription pipeline is a fallback for videos
+    that have none of these, or none in the language the user wants."""
+
+    lang: str
+    label: str
+    url: str
+    ext: str = "vtt"
+    is_auto: bool = False
+
+
 class VideoInfo(BaseModel):
     id: str | None = None
     title: str | None = None
@@ -49,6 +62,7 @@ class VideoInfo(BaseModel):
     height: int | None = None
     aspect_ratio: float | None = None
     formats: list[VideoFormat] = Field(default_factory=list)
+    subtitle_tracks: list[SubtitleTrack] = Field(default_factory=list)
     method: str = "unknown"
 
 
@@ -68,6 +82,16 @@ class ClientFormat(BaseModel):
     video_only: bool = Field(default=False, alias="videoOnly")
 
 
+class ClientSubtitleTrack(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    lang: str
+    label: str
+    url: str
+    ext: str = "vtt"
+    is_auto: bool = Field(default=False, alias="isAuto")
+
+
 class ClientMetadata(BaseModel):
     id: str | None = None
     title: str | None = None
@@ -83,6 +107,11 @@ class ClientMetadata(BaseModel):
 class ClientVideo(BaseModel):
     metadata: ClientMetadata
     formats: list[ClientFormat] = Field(default_factory=list)
+    subtitle_tracks: list[ClientSubtitleTrack] = Field(
+        default_factory=list, alias="subtitleTracks"
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ExtractResponse(BaseModel):
@@ -97,3 +126,43 @@ class HealthResponse(BaseModel):
     service: str = "directstream"
     version: str
     timestamp: str
+
+
+# ----- transcription (auto-subtitles) ---------------------------------------------
+
+
+class TranscribeRequest(BaseModel):
+    """Kicks off auto-subtitle generation: speech becomes text in whatever
+    language it was spoken -- no translation direction. If the video already
+    has a usable caption track (``VideoInfo.subtitle_tracks``), the client
+    should use that directly instead of calling this at all."""
+
+    webpage_url: str
+    formats: list[VideoFormat]
+    cookies: str | None = Field(default=None, max_length=262_144)
+
+
+class TranscribeStartResponse(BaseModel):
+    job_id: str = Field(alias="jobId")
+
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class TranscribeResult(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    language: str
+    vtt_url: str = Field(alias="vttUrl")
+    srt_url: str = Field(alias="srtUrl")
+    waveform: list[float] | None = None
+
+
+class TranscribeStatus(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    job_id: str = Field(alias="jobId")
+    status: str
+    progress: float
+    step_label: str = Field(alias="stepLabel")
+    error: str | None = None
+    result: TranscribeResult | None = None

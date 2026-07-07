@@ -80,6 +80,33 @@ class Settings(BaseSettings):
     cache_ttl: int = Field(default=300, ge=0)
     cache_max_entries: int = Field(default=512, ge=0)
 
+    # ----- Auto-generated subtitles (Groq Whisper speech-to-text) ---------
+    # Transcription only -- speech becomes text in whatever language it was
+    # spoken, no translation direction involved. Free at console.groq.com,
+    # no card required. Empty key disables /transcribe (503 instead of
+    # failing mid-pipeline).
+    groq_api_key: str = Field(default="", alias="GROQ_API_KEY")
+    transcribe_enabled: bool = Field(default=True)
+    # Concurrent transcription jobs across all clients — each one pins a
+    # Groq-rate-limited pipeline plus local ffmpeg CPU work.
+    transcribe_max_concurrent_jobs: int = Field(default=2, ge=1, le=10)
+    # Hard cap on the one audio/video stream a job downloads to disk (the
+    # only place in the app that writes media bytes to disk).
+    transcribe_max_download_bytes: int = Field(default=300_000_000, ge=1_000_000)
+    # Only chunk the audio when it would exceed Groq's per-request limits.
+    transcribe_chunk_seconds: int = Field(default=600, ge=60)
+    # How long a finished/errored job's result stays available for polling
+    # and subtitle-file downloads before it's swept from memory.
+    transcribe_job_ttl: int = Field(default=1800, ge=60)
+    # Thread/subprocess pool size for ffmpeg extraction/chunking.
+    transcribe_workers: int = Field(default=2, ge=1, le=8)
+    groq_whisper_model: str = Field(default="whisper-large-v3-turbo")
+
+    # ----- Image/gallery extraction (gallery-dl) ---------------------------
+    gallery_dl_timeout: int = Field(default=45, ge=5)
+    gallery_dl_workers: int = Field(default=3, ge=1, le=20)
+    gallery_dl_binary: str = Field(default="gallery-dl")
+
     user_agent: str = Field(
         default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

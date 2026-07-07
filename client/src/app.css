@@ -450,6 +450,80 @@
 	background-color: oklch(1 0 0 / 0.08);
 }
 
+/* ---- Waveform / dialogue-map bar ----
+   A separate row, not a pixel-perfect overlay on the skin's own (shadow-DOM)
+   seek bar -- see the project plan's ADR for why. Sits just above the
+   control bar; the offset is an approximation since the skin's exact
+   control-bar height isn't reachable from light DOM without reaching into
+   its shadow root (accepted trade-off, same spirit as the seek-bar decision). */
+.ds-waveform {
+	position: absolute;
+	left: 0.6rem;
+	right: 0.6rem;
+	bottom: 2.75rem;
+	z-index: 30;
+	display: flex;
+	align-items: flex-end;
+	gap: 0.4rem;
+	opacity: 0;
+	transform: translateY(0.25rem);
+	pointer-events: none;
+	transition:
+		opacity 0.2s ease,
+		transform 0.2s ease;
+}
+.ds-waveform[data-visible='true'] {
+	opacity: 1;
+	transform: translateY(0);
+	pointer-events: auto;
+}
+.ds-waveform__nav {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 1.75rem;
+	height: 1.75rem;
+	flex-shrink: 0;
+	margin-bottom: 0.4rem;
+	color: #fff;
+	border-radius: calc(infinity * 1px);
+	background-color: oklch(0 0 0 / 0.35);
+	backdrop-filter: blur(12px) saturate(1.5);
+	cursor: pointer;
+	transition: background-color 0.15s ease;
+}
+.ds-waveform__nav:hover {
+	background-color: oklch(0 0 0 / 0.55);
+}
+.ds-waveform__track {
+	position: relative;
+	flex: 1;
+	height: 4.5rem;
+	cursor: pointer;
+	overflow: hidden;
+	/* No boxed background -- the silhouette itself (drawn in the canvas)
+	   is the only visual, floating directly over the video like a
+	   dialogue-density mountain range rather than a filled control. */
+}
+.ds-waveform__canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+}
+.ds-waveform__tooltip {
+	position: absolute;
+	bottom: calc(100% + 0.4rem);
+	max-width: 14rem;
+	padding: 0.3rem 0.55rem;
+	font-size: 0.75rem;
+	color: #fff;
+	white-space: normal;
+	border-radius: 0.5rem;
+	background-color: oklch(0 0 0 / 0.85);
+	transform: translateX(-50%);
+	pointer-events: none;
+}
+
 /* ---- Mobile: shrink quality control + native v10 controls ---- */
 @media (max-width: 640px) {
 	.ds-player {
@@ -486,6 +560,18 @@
 		min-height: 1.65rem;
 		padding: 0 0.5rem;
 		font-size: 0.6875rem;
+	}
+
+	.ds-waveform {
+		bottom: 2.4rem;
+	}
+	.ds-waveform__track {
+		height: 3rem;
+	}
+	.ds-waveform__nav {
+		width: 1.5rem;
+		height: 1.5rem;
+		margin-bottom: 0.3rem;
 	}
 }
 

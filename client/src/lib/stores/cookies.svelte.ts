@@ -73,6 +73,8 @@ export class CookieStore {
 		let host: string;
 
 		try {
+			// Local parse for hostname only — not stored, not reactive.
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
 			host = new URL(url).hostname.toLowerCase();
 		} catch {
 			return null;

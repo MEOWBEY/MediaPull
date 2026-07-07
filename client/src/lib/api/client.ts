@@ -6,6 +6,11 @@
  *  - normalized errors (`ApiError`) with a stable `.aborted` flag
  *  - per-call timeout + caller-supplied AbortSignal (linked)
  *  - in-flight de-duplication so double-clicks share one request
+ *
+ * `post()` is specific to the `/extract-videos`-style `{success, video}`
+ * envelope. `postJson()`/`getJson()` are for endpoints with their own
+ * purpose-built response shape (e.g. `/transcribe`'s job status) — they
+ * return the parsed body as-is instead of unwrapping `.video`.
  */
 
 import { API_BASE_URL } from '$lib/config';
@@ -33,7 +38,7 @@ const DEFAULT_TIMEOUT = 3 * 60 * 1000; // extraction + link validation can take 
 const inFlight = new Map<string, Promise<unknown>>();
 
 /**
- * Pull the most descriptive message out of an error envelope. Our handlers send
+ * Pull the most descriptive message out of an error body. Our handlers send
  * `{success:false, error}`, but raw FastAPI failures (`HTTPException`, 422
  * validation) send `detail` — a string, or an array of `{msg}`. Reading only
  * `error`/`details` collapsed those to "Request failed (500)"; this surfaces the
@@ -75,18 +80,17 @@ function linkSignals(timeoutMs: number, external?: AbortSignal): { signal: Abort
 	};
 }
 
-async function rawPost<T>(endpoint: string, body: unknown, options: PostOptions): Promise<T> {
+async function doFetch(
+	endpoint: string,
+	init: RequestInit,
+	options: PostOptions
+): Promise<{ data: unknown; status: number; ok: boolean }> {
 	const { signal, cancel } = linkSignals(options.timeoutMs ?? DEFAULT_TIMEOUT, options.signal);
 
 	try {
-		const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(body),
-			signal
-		});
+		const response = await fetch(`${API_BASE_URL}${endpoint}`, { ...init, signal });
 
-		let data: ApiEnvelope<T>;
+		let data: unknown;
 
 		try {
 			data = await response.json();
@@ -96,11 +100,7 @@ async function rawPost<T>(endpoint: string, body: unknown, options: PostOptions)
 			});
 		}
 
-		if (!response.ok || !data.success) {
-			throw new ApiError(errorMessage(data, response.status), { status: response.status });
-		}
-
-		return data.video;
+		return { data, status: response.status, ok: response.ok };
 	} catch (error) {
 		if (error instanceof ApiError) {throw error;}
 
@@ -114,9 +114,24 @@ async function rawPost<T>(endpoint: string, body: unknown, options: PostOptions)
 	}
 }
 
+async function rawPost<T>(endpoint: string, body: unknown, options: PostOptions): Promise<T> {
+	const { data, status, ok } = await doFetch(
+		endpoint,
+		{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+		options
+	);
+	const envelope = data as Partial<ApiEnvelope<T>>;
+
+	if (!ok || !envelope.success) {
+		throw new ApiError(errorMessage(envelope, status), { status });
+	}
+
+	return envelope.video as T;
+}
+
 /** POST with in-flight de-duplication keyed by endpoint+body. */
 export function post<T>(endpoint: string, body: unknown, options: PostOptions = {}): Promise<T> {
-	const key = `${endpoint}:${JSON.stringify(body)}`;
+	const key = `POST ${endpoint}:${JSON.stringify(body)}`;
 	const existing = inFlight.get(key);
 
 	if (existing) {return existing as Promise<T>;}
@@ -126,4 +141,43 @@ export function post<T>(endpoint: string, body: unknown, options: PostOptions = 
 	inFlight.set(key, promise);
 
 	return promise;
+}
+
+async function rawJson<T>(
+	endpoint: string,
+	init: RequestInit,
+	options: PostOptions
+): Promise<T> {
+	const { data, status, ok } = await doFetch(endpoint, init, options);
+
+	if (!ok) {
+		throw new ApiError(errorMessage(data as Partial<ApiEnvelope<unknown>>, status), { status });
+	}
+
+	return data as T;
+}
+
+/** POST returning the raw JSON body (no `{success, video}` envelope). */
+export function postJson<T>(endpoint: string, body: unknown, options: PostOptions = {}): Promise<T> {
+	const key = `POST ${endpoint}:${JSON.stringify(body)}`;
+	const existing = inFlight.get(key);
+
+	if (existing) {return existing as Promise<T>;}
+
+	const promise = rawJson<T>(
+		endpoint,
+		{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+		options
+	).finally(() => inFlight.delete(key));
+
+	inFlight.set(key, promise);
+
+	return promise;
+}
+
+/** GET returning the raw JSON body. Not de-duplicated — each call (e.g. a
+ *  poll tick) is its own independent request; a poll loop already awaits
+ *  each one before firing the next, so there's nothing to collapse. */
+export function getJson<T>(endpoint: string, options: PostOptions = {}): Promise<T> {
+	return rawJson<T>(endpoint, { method: 'GET' }, options);
 }

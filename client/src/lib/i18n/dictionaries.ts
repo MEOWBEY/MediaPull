@@ -44,13 +44,10 @@ export const en = {
 
 	// Extract list
 	'extract.heading': 'Extracted',
-	'extract.proxyMode': 'Proxy mode',
-	'extract.clear': 'Clear',
-	'extract.cardMenu': 'More options',
-	'extract.listMenu': 'List actions',
-	'extract.groupMenu': 'Source actions',
+	'extract.proxyMode': 'Proxy',
 	'extract.sourceUnknown': 'Unknown source',
 	'extract.removeGroup': 'Remove all from source',
+	'extract.refreshGroup': 'Refresh',
 	'extract.remove': 'Remove',
 	'extract.copyAll': 'Copy all',
 	'extract.searchPlaceholder': 'Filter by title, source, type, or quality…',
@@ -78,8 +75,23 @@ export const en = {
 
 	// Player
 	'player.audioLabel': 'Audio',
+	'player.formatTabs': 'Format',
 	'player.error':
 		"This link couldn't be played here. Try another quality, switch proxy mode, or open the link in an external player.",
+
+	// Auto-subtitles (speech-to-text, no translation)
+	'subtitles.generate': 'Generate subtitles',
+	'subtitles.generating': 'Generating subtitles…',
+	'subtitles.open': 'subtitles',
+	'subtitles.download': 'Download .srt',
+	'subtitles.panel.title': 'Subtitles',
+	'subtitles.panel.search': 'Search text or time…',
+	'subtitles.panel.empty': 'No subtitle lines match your search.',
+	'subtitles.panel.noTrack': 'No subtitles yet — generate them from the Subtitles button on the card.',
+	'subtitles.existingTrack': 'Use existing “{label}” subtitles',
+	'subtitles.error.notConfigured': 'Auto-subtitles are not configured on this server.',
+	'subtitles.error.generic': 'Could not generate subtitles for this video.',
+	'subtitles.error.fetchFailed': 'Could not load this subtitle track. Try again.',
 
 	// Error alert
 	'error.extractTitle': "Couldn't extract links",
@@ -122,7 +134,6 @@ export const en = {
 	'toast.exported': 'File downloaded',
 	'toast.nothingToExport': 'Nothing to export',
 	'toast.downloadFailed': 'Failed to start download',
-	'toast.extractCleared': 'Extracted results cleared',
 	'toast.itemRemoved': 'Item removed',
 	'toast.prefsReset': 'Preferences reset to defaults',
 	'toast.dataCleared': 'All data cleared',
@@ -182,6 +193,11 @@ export const en = {
 	'prefs.resetSection': 'Reset & defaults',
 	'prefs.resetDefaults': 'Reset to defaults',
 
+	// Subtitles / captions
+	'prefs.section.captions': 'Subtitles',
+	'prefs.autoOpenSubs.label': 'Auto-open subtitle panel',
+	'prefs.autoOpenSubs.desc': 'Open the searchable subtitle list automatically once generation finishes',
+
 	// Cookies / sign-in
 	'cookies.section': 'Cookies & sign-in',
 	'cookies.desc':
@@ -238,13 +254,10 @@ export const fa: Record<MessageKey, string> = {
 	'empty.body': 'یک آدرس صفحه را در نوار بالا وارد کن تا ویدیوهای مستقیم همین‌جا نمایش داده شوند.',
 
 	'extract.heading': 'استخراج‌شده',
-	'extract.proxyMode': 'حالت پروکسی',
-	'extract.clear': 'پاک کردن',
-	'extract.cardMenu': 'گزینه‌های بیشتر',
-	'extract.listMenu': 'کارهای فهرست',
-	'extract.groupMenu': 'کارهای منبع',
+	'extract.proxyMode': 'پروکسی',
 	'extract.sourceUnknown': 'منبع نامشخص',
 	'extract.removeGroup': 'حذف همه از این منبع',
+	'extract.refreshGroup': 'تازه‌سازی',
 	'extract.remove': 'حذف',
 	'extract.copyAll': 'کپی همه',
 	'extract.searchPlaceholder': 'فیلتر بر اساس عنوان، منبع، نوع یا کیفیت…',
@@ -271,8 +284,22 @@ export const fa: Record<MessageKey, string> = {
 	'qr.error': 'ساخت کد QR برای این لینک ممکن نشد.',
 
 	'player.audioLabel': 'صوت',
+	'player.formatTabs': 'فرمت',
 	'player.error':
 		'این لینک اینجا قابل پخش نبود. کیفیت دیگری را امتحان کنید، حالت پروکسی را عوض کنید یا لینک را در پخش‌کننده بیرونی باز کنید.',
+
+	'subtitles.generate': 'تولید زیرنویس',
+	'subtitles.generating': 'در حال تولید زیرنویس…',
+	'subtitles.open': 'زیرنویس',
+	'subtitles.download': 'دانلود .srt',
+	'subtitles.panel.title': 'زیرنویس‌ها',
+	'subtitles.panel.search': 'جستجوی متن یا زمان…',
+	'subtitles.panel.empty': 'هیچ خطی با جستجوی شما مطابقت ندارد.',
+	'subtitles.panel.noTrack': 'هنوز زیرنویسی نیست — از دکمه زیرنویس روی کارت تولید کنید.',
+	'subtitles.existingTrack': 'استفاده از زیرنویس موجود «{label}»',
+	'subtitles.error.notConfigured': 'زیرنویس خودکار روی این سرور تنظیم نشده است.',
+	'subtitles.error.generic': 'تولید زیرنویس برای این ویدیو ممکن نشد.',
+	'subtitles.error.fetchFailed': 'بارگذاری این زیرنویس ممکن نشد. دوباره تلاش کنید.',
 
 	'error.extractTitle': 'استخراج لینک‌ها ممکن نشد',
 	'error.advice':
@@ -312,7 +339,6 @@ export const fa: Record<MessageKey, string> = {
 	'toast.exported': 'فایل دانلود شد',
 	'toast.nothingToExport': 'چیزی برای خروجی نیست',
 	'toast.downloadFailed': 'شروع دانلود ناموفق بود',
-	'toast.extractCleared': 'نتایج استخراج پاک شد',
 	'toast.itemRemoved': 'مورد حذف شد',
 	'toast.prefsReset': 'تنظیمات به پیش‌فرض بازنشانی شد',
 	'toast.dataCleared': 'همه داده‌ها پاک شد',
@@ -369,6 +395,10 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.clearData': 'پاک کردن همه داده‌ها',
 	'prefs.resetSection': 'بازنشانی و پیش‌فرض‌ها',
 	'prefs.resetDefaults': 'بازنشانی به پیش‌فرض‌ها',
+
+	'prefs.section.captions': 'زیرنویس',
+	'prefs.autoOpenSubs.label': 'باز شدن خودکار پنل زیرنویس',
+	'prefs.autoOpenSubs.desc': 'پنل جستجوی زیرنویس پس از پایان تولید به‌طور خودکار باز شود',
 
 	// Cookies / sign-in
 	'cookies.section': 'کوکی‌ها و ورود',

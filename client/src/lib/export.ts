@@ -1,5 +1,6 @@
 /** Pure helpers for copying/exporting extracted links as text / .m3u playlists. */
 
+import { allQualities } from '$lib/transform';
 import type { GroupedVideo } from '$lib/types';
 
 /** Resolves whether a given card should use its proxied URL (per-card setting). */
@@ -15,9 +16,9 @@ function qualityUrl(
 		: q.sourceVideoUrl || q.proxiedVideoUrl || '';
 }
 
-/** Every quality URL of one card (empty ones dropped). */
+/** Every quality URL of one card, across all its format-group tabs (empty ones dropped). */
 export function qualityLinks(video: GroupedVideo, useProxy: boolean): string[] {
-	return (video.qualities ?? []).map((q) => qualityUrl(q, useProxy)).filter(Boolean);
+	return allQualities(video).map((q) => qualityUrl(q, useProxy)).filter(Boolean);
 }
 
 /** Every quality URL across many cards. */
@@ -34,7 +35,7 @@ export function buildVideosM3u(videos: GroupedVideo[], useProxyFor: ProxyResolve
 		const dur = Math.round(Number(v.duration) || 0) || -1;
 		const base = (v.title || 'Untitled').replace(/[\r\n]+/g, ' ').trim();
 
-		for (const q of v.qualities ?? []) {
+		for (const q of allQualities(v)) {
 			const url = qualityUrl(q, useProxy);
 
 			if (!url) {continue;}

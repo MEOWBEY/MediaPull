@@ -35,3 +35,48 @@ export function formatYYYYMMDDToDate(yyyyMMdd: string): string {
 
 	return new Date(y, m, d).toLocaleDateString();
 }
+
+export function isAudioType(type: string): boolean {
+	return typeof type === 'string' && type.startsWith('audio/');
+}
+
+// Friendly, organized labels: streaming protocols, then audio "<codec> Audio",
+// then video "<container> Video". Falls back to the raw subtype. Shared by
+// the extract-list card meta row and the player's format-kind tab strip.
+const AUDIO_LABELS: Record<string, string> = {
+	'audio/mpeg': 'MP3',
+	'audio/aac': 'AAC',
+	'audio/ogg': 'OGG',
+	'audio/wav': 'WAV',
+	'audio/flac': 'FLAC',
+	'audio/mp4': 'M4A',
+	'audio/opus': 'Opus'
+};
+const VIDEO_LABELS: Record<string, string> = {
+	'video/mp4': 'MP4',
+	'video/webm': 'WebM',
+	'video/x-matroska': 'MKV',
+	'video/quicktime': 'MOV',
+	'video/x-msvideo': 'AVI'
+};
+
+/** Short human label for a media-kind (e.g. "HLS", "MP4 Video", "AAC Audio"). */
+export function mediaKindLabel(type: string, audioWord: string): string {
+	if (type === 'application/x-mpegURL') {
+		return 'HLS';
+	}
+	if (type === 'application/dash+xml') {
+		return 'DASH';
+	}
+	if (AUDIO_LABELS[type]) {
+		return `${AUDIO_LABELS[type]} ${audioWord}`;
+	}
+	if (VIDEO_LABELS[type]) {
+		return `${VIDEO_LABELS[type]} Video`;
+	}
+	if (isAudioType(type)) {
+		return `${type.split('/')[1]?.toUpperCase()} ${audioWord}`;
+	}
+
+	return type.split('/')[1]?.toUpperCase() ?? type;
+}

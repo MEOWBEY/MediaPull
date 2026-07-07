@@ -8,3 +8,16 @@
  */
 
 export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? '').replace(/\/+$/, '');
+
+/**
+ * Resolve a backend-relative path (e.g. `/transcribe/{id}/subtitle.vtt`) to
+ * an absolute URL. Needed anywhere the URL leaves a same-origin `fetch()`
+ * context — a native `<track src>` element fetching the file directly —
+ * since a bare relative path only resolves correctly when the request
+ * itself originates from this page.
+ */
+export function resolveApiUrl(path: string): string {
+	if (API_BASE_URL) {return `${API_BASE_URL}${path}`;}
+
+	return typeof window === 'undefined' ? path : `${window.location.origin}${path}`;
+}

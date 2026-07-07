@@ -15,7 +15,8 @@ export const DEFAULT_PREFERENCES: Preferences = {
 	enableVideoPreloadMetadata: false,
 	showVideoThumbnail: true,
 	showHlsTypeDownloadButton: false,
-	showVideoOnlyFormats: false
+	showVideoOnlyFormats: false,
+	autoOpenSubtitlePanel: false
 };
 
 export class PreferencesStore {

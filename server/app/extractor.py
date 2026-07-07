@@ -27,7 +27,7 @@ import yt_dlp
 from curl_cffi.requests import AsyncSession
 
 from .config import Settings
-from .models import VideoFormat, VideoInfo
+from .models import SubtitleTrack, VideoFormat, VideoInfo
 
 logger = logging.getLogger("directstream.extractor")
 
@@ -518,8 +518,65 @@ class Extractor:
             height=info.get("height"),
             aspect_ratio=info.get("aspect_ratio"),
             formats=formats,
+            subtitle_tracks=self._select_subtitle_tracks(info),
             method="generic_ydl" if generic else "ydl",
         )
+
+    @staticmethod
+    def _select_subtitle_tracks(info: dict) -> list[SubtitleTrack]:
+        """Existing caption tracks the source already provides.
+
+        yt-dlp returns these as metadata (``subtitles``/``automatic_captions``,
+        lang -> list of {ext, url, name}) at zero extra cost, regardless of
+        download flags. Surfacing them lets the client skip the whole
+        transcription pipeline whenever the source already has captions --
+        human-authored tracks are listed before auto-generated ones for the
+        same language.
+        """
+        tracks: list[SubtitleTrack] = []
+        seen_langs: set[str] = set()
+
+        def add_from(container: dict | None, *, is_auto: bool) -> None:
+            for lang, fmts in (container or {}).items():
+                if lang in seen_langs or not fmts:
+                    continue
+                fmt = next((f for f in fmts if f.get("ext") == "vtt"), fmts[0])
+                fmt_url = fmt.get("url")
+                if not fmt_url:
+                    continue
+                seen_langs.add(lang)
+                label = fmt.get("name") or lang
+                tracks.append(
+                    SubtitleTrack(
+                        lang=lang,
+                        label=f"{label} (auto)" if is_auto else label,
+                        url=fmt_url,
+                        ext=fmt.get("ext") or "vtt",
+                        is_auto=is_auto,
+                    )
+                )
+
+        add_from(info.get("subtitles"), is_auto=False)
+        add_from(info.get("automatic_captions"), is_auto=True)
+
+        # yt-dlp/YouTube list languages in roughly alphabetical order, which has
+        # nothing to do with what the video is actually spoken in -- e.g. "ab"
+        # (Abkhaz) sorts ahead of "en" and can win by pure accident on videos
+        # with only auto-captions. Stable-sort so the video's own declared
+        # language (if known) comes first, then English, then everything else
+        # keeps its original relative order (so manual-before-auto is intact).
+        video_lang = (info.get("language") or "").lower()
+
+        def rank(track: SubtitleTrack) -> int:
+            lang = track.lang.lower()
+            if video_lang and (lang == video_lang or lang.startswith(f"{video_lang}-")):
+                return 0
+            if lang == "en" or lang.startswith("en-"):
+                return 1
+            return 2
+
+        tracks.sort(key=rank)
+        return tracks
 
     @classmethod
     def _select_formats(cls, raw_formats: list[dict], limit: int) -> list[VideoFormat]:
