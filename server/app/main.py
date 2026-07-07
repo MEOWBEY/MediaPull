@@ -19,6 +19,7 @@ from . import __version__
 from .cache import TTLCache
 from .config import settings
 from .extractor import ExtractionError, Extractor
+from .gallery import GalleryExtractor
 from .jobs import JobStore, run_transcription_job
 from .logging_context import (
     RequestContextFilter,
@@ -28,6 +29,8 @@ from .logging_context import (
 from .models import (
     ExtractRequest,
     ExtractResponse,
+    GalleryInfo,
+    GalleryResponse,
     HealthResponse,
     TranscribeRequest,
     TranscribeResult,
@@ -36,7 +39,7 @@ from .models import (
     VideoInfo,
 )
 from .proxy import ProxyService
-from .serializers import to_client_video
+from .serializers import to_client_gallery, to_client_video
 from .transcribe.groq_engine import GroqTranscriber
 
 
@@ -75,8 +78,12 @@ def _resolve_client_dir() -> Path | None:
 async def lifespan(app: FastAPI):
     _configure_logging()
     app.state.extractor = Extractor(settings)
+    app.state.gallery_extractor = GalleryExtractor(settings)
     app.state.proxy = ProxyService(settings)
     app.state.cache = TTLCache[VideoInfo](
+        ttl=settings.cache_ttl, max_entries=settings.cache_max_entries
+    )
+    app.state.gallery_cache = TTLCache[GalleryInfo](
         ttl=settings.cache_ttl, max_entries=settings.cache_max_entries
     )
     app.state.jobs = JobStore(settings)
@@ -88,6 +95,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await app.state.extractor.aclose()
+        await app.state.gallery_extractor.aclose()
         await app.state.proxy.aclose()
         if app.state.transcriber is not None:
             await app.state.transcriber.aclose()
@@ -158,6 +166,35 @@ def create_app() -> FastAPI:
         await cache.set(cache_key, video)
         return ExtractResponse(
             video=to_client_video(video), method=video.method, cached=False
+        )
+
+    @app.post("/extract-gallery", response_model=GalleryResponse)
+    async def extract_gallery(payload: ExtractRequest) -> GalleryResponse:
+        url = payload.url.strip()
+        cookies = payload.cookies
+        cache: TTLCache[GalleryInfo] = app.state.gallery_cache
+
+        cache_key = url
+        if cookies:
+            digest = hashlib.sha256(cookies.encode("utf-8", "ignore")).hexdigest()[:16]
+            cache_key = f"{url}#c={digest}"
+
+        cached = await cache.get(cache_key)
+        if cached is not None:
+            logger.info("gallery cache hit: %s", url)
+            return GalleryResponse(
+                gallery=to_client_gallery(cached), method=cached.method, cached=True
+            )
+
+        logger.info("extracting gallery: %s (cookies=%s)", url, "yes" if cookies else "no")
+        try:
+            gallery = await app.state.gallery_extractor.extract(url, cookies=cookies)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+        await cache.set(cache_key, gallery)
+        return GalleryResponse(
+            gallery=to_client_gallery(gallery), method=gallery.method, cached=False
         )
 
     @app.get("/proxy-video")

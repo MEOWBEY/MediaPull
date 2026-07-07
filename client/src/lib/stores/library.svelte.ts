@@ -1,11 +1,19 @@
 import { browser } from '$app/environment';
-import { groupVideosByQuality, maxFilesize, maxResolution } from '$lib/transform';
-import type { GroupedVideo, IncomingVideo, Preferences, SubtitleTrackResult } from '$lib/types';
+import { groupGalleriesBySource, groupVideosByQuality, maxFilesize, maxResolution } from '$lib/transform';
+import type {
+	GroupedGallery,
+	GroupedVideo,
+	IncomingGallery,
+	IncomingVideo,
+	Preferences,
+	SubtitleTrackResult
+} from '$lib/types';
 
 import type { PreferencesStore } from './preferences.svelte';
 
 const MAX_ENTRIES = 50;
 const KEY_EXTRACT = 'videoExtractResults';
+const KEY_GALLERIES = 'galleryExtractResults';
 
 function sortVideos(items: GroupedVideo[], preferences: Preferences): GroupedVideo[] {
 	const sorted = [...items].sort((a, b) => {
@@ -31,6 +39,7 @@ function sortVideos(items: GroupedVideo[], preferences: Preferences): GroupedVid
 
 export class LibraryStore {
 	extractResults = $state<GroupedVideo[]>([]);
+	galleryResults = $state<GroupedGallery[]>([]);
 
 	constructor(private readonly preferences: PreferencesStore) {
 		if (browser) {this.load();}
@@ -78,12 +87,32 @@ export class LibraryStore {
 		this.remove(KEY_EXTRACT);
 	}
 
-	clearAll(): void {
-		this.clearExtractResults();
+	addGalleryResult(gallery: IncomingGallery): void {
+		this.galleryResults.push(...groupGalleriesBySource([gallery]));
+		this.evictOldest(this.galleryResults);
+		this.persist(KEY_GALLERIES, this.galleryResults);
 	}
 
-	get stats(): { extracted: number } {
-		return { extracted: this.extractResults.length };
+	removeGalleryResult(target: GroupedGallery): void {
+		const index = this.galleryResults.indexOf(target);
+
+		if (index === -1) {return;}
+		this.galleryResults.splice(index, 1);
+		this.persist(KEY_GALLERIES, this.galleryResults);
+	}
+
+	clearGalleryResults(): void {
+		this.galleryResults = [];
+		this.remove(KEY_GALLERIES);
+	}
+
+	clearAll(): void {
+		this.clearExtractResults();
+		this.clearGalleryResults();
+	}
+
+	get stats(): { extracted: number; galleries: number } {
+		return { extracted: this.extractResults.length, galleries: this.galleryResults.length };
 	}
 
 	private load(): void {
@@ -95,6 +124,13 @@ export class LibraryStore {
 				// Drop pre-refactor cached entries (old shape had flat `type`/
 				// `qualities` instead of `formatGroups`) rather than rendering them broken.
 				this.extractResults = parsedExtract.filter((v) => Array.isArray(v?.formatGroups));
+			}
+
+			const galleries = localStorage.getItem(KEY_GALLERIES);
+			const parsedGalleries = galleries ? JSON.parse(galleries) : null;
+
+			if (Array.isArray(parsedGalleries)) {
+				this.galleryResults = parsedGalleries.filter((g) => Array.isArray(g?.images));
 			}
 		} catch (error) {
 			console.warn('Failed to load library:', error);

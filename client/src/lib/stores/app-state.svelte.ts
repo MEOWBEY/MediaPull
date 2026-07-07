@@ -6,14 +6,23 @@
  * it is cross-cutting UI session state.
  */
 
-import type { GroupedVideo, IncomingVideo, Preferences, SubtitleTrackResult } from '$lib/types';
+import type {
+	GroupedGallery,
+	GroupedVideo,
+	IncomingGallery,
+	IncomingVideo,
+	Preferences,
+	SubtitleTrackResult
+} from '$lib/types';
 
 import { CookieStore } from './cookies.svelte';
 import { LibraryStore } from './library.svelte';
 import { PreferencesStore } from './preferences.svelte';
 
 export type {
+	GroupedGallery,
 	GroupedVideo,
+	IncomingGallery,
 	IncomingVideo,
 	Preferences,
 	VideoFormat,
@@ -52,6 +61,18 @@ class AppStore {
 
 	removeVideoExtractResultFromStore(target: GroupedVideo): void {
 		this.library.removeExtractResult(target);
+	}
+
+	get galleries(): GroupedGallery[] {
+		return this.library.galleryResults;
+	}
+
+	addGalleryExtractResultsToStore(data: IncomingGallery): void {
+		this.library.addGalleryResult(data);
+	}
+
+	removeGalleryExtractResultFromStore(target: GroupedGallery): void {
+		this.library.removeGalleryResult(target);
 	}
 
 	/** Persists a generated/reused subtitle track on the card itself, so a page

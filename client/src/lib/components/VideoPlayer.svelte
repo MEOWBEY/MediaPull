@@ -1,17 +1,15 @@
 <script lang="ts">
-	import Check from '@lucide/svelte/icons/check';
-	import SlidersHorizontal from '@lucide/svelte/icons/sliders-horizontal';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
+	import QualityMenu from '$lib/components/QualityMenu.svelte';
 	import SubtitlePanel from '$lib/components/SubtitlePanel.svelte';
-	import { isAudioType, mediaKindLabel } from '$lib/format';
+	import { isAudioType, mediaKindLabel, qualityLabel } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
-	import { fetchAndParseVtt } from '$lib/subtitle-utils';
-	import { TranscriptionController, type SubtitleTrackResult } from '$lib/transcribe.svelte';
-	import type { FormatGroup, SubtitleSegment, SubtitleTrack, VideoFormat } from '$lib/types';
+	import { SubtitleResolver } from '$lib/subtitle-resolver.svelte';
+	import type { FormatGroup, SubtitleTrack, SubtitleTrackResult, VideoFormat } from '$lib/types';
 
 	const { t } = i18n;
 
@@ -110,36 +108,25 @@
 	let videoEl = $state<MediaEl | null>(null);
 	// The <video-player>/<audio-player> host -- see `PlayerRootEl` above.
 	let playerRootEl: PlayerRootEl | null = $state(null);
-	let qualityRoot: HTMLElement | null = $state(null);
 	let ready = $state(false);
 	let hasError = $state(false);
 	let activeIndex = $state(0);
-	let menuOpen = $state(false);
 	// Mirrors the skin's own control-bar visibility so the quality button fades
 	// in and out together with the controls.
 	let controlsVisible = $state(true);
 
-	// ----- Auto-subtitles (speech-to-text, no translation) -----------------
-	const transcription = new TranscriptionController();
-	// Restore a track persisted from a previous session -- whether it came
-	// from Groq or an existing caption doesn't matter once resolved, so it
-	// slots into the same place a freshly-generated one would.
-	untrack(() => {
-		if (initialSubtitleTrack) {
-			transcription.track = initialSubtitleTrack;
-		}
-	});
-	// Set directly when the user picks a track the source already provides (no
-	// pipeline needed); otherwise mirrors transcription.track once the Groq job
-	// finishes. Existing-track pick wins if both are set.
-	let existingTrack = $state<SubtitleTrackResult | null>(null);
-	let resolvingExisting = $state(false);
+	// ----- Auto-subtitles (speech-to-text, no translation, or a caption the
+	// source already provides) -- see subtitle-resolver.svelte.ts. -----------
+	const subtitles = new SubtitleResolver();
+
+	untrack(() => subtitles.restore(initialSubtitleTrack));
+
 	let subtitlePanelOpen = $state(false);
 	let playerCurrentTime = $state(0);
 	let playerDuration = $state(0);
 	let hadTrack = false;
 
-	const activeSubtitleTrack = $derived(existingTrack ?? transcription.track);
+	const activeSubtitleTrack = $derived(subtitles.track);
 
 	// Report resolved-track changes up so the parent can persist them
 	// alongside the card (survives refresh; removed automatically when the
@@ -172,9 +159,9 @@
 	$effect(() => {
 		onSubtitleState?.({
 			hasTrack: Boolean(activeSubtitleTrack),
-			isRunning: transcription.isRunning,
-			progress: transcription.progress,
-			isResolvingExisting: resolvingExisting
+			isRunning: subtitles.isRunning,
+			progress: subtitles.progress,
+			isResolvingExisting: subtitles.resolvingExisting
 		});
 	});
 
@@ -234,7 +221,7 @@
 		// dedicated audio-only stream may live in a different tab than the one
 		// currently playing, and the backend already knows how to pick the
 		// best audio-bearing source out of a mixed bag.
-		await transcription.generate({ webpageUrl, qualities: formatGroups.flatMap((g) => g.qualities) });
+		await subtitles.generate({ webpageUrl, qualities: formatGroups.flatMap((g) => g.qualities) });
 	}
 
 	// Handed to the parent once, via onReady.
@@ -242,45 +229,9 @@
 		onReady?.({
 			requestSubtitles: () => generateSubtitles(),
 			openSubtitlePanel: () => (subtitlePanelOpen = true),
-			useExistingTrack
+			useExistingTrack: (track: SubtitleTrack) => subtitles.useExisting(track)
 		});
 	});
-
-	async function useExistingTrack(track: SubtitleTrack) {
-		// Guards against the card's Subtitles button feeling unresponsive: the
-		// fetch below can take a moment, and without this a second click before
-		// it resolves would fire a redundant parallel fetch instead of just
-		// waiting on the first one.
-		if (resolvingExisting) {return;}
-
-		let segments: SubtitleSegment[] = [];
-
-		resolvingExisting = true;
-		try {
-			// Native <track>/our own parser both need WebVTT; a non-vtt existing
-			// track (e.g. YouTube's srv3/ttml formats) still isn't usable here.
-			if (track.ext === 'vtt') {
-				try {
-					segments = await fetchAndParseVtt(track.url);
-				} catch {
-					// Surfaced rather than silently left empty -- otherwise a fetch
-					// failure (network blip, an upstream URL that expired between
-					// extraction and click) looks identical to "no captions" once the
-					// panel opens, with nothing telling the user what happened.
-					segments = [];
-					toast.error(t('subtitles.error.fetchFailed'));
-				}
-			}
-		} finally {
-			resolvingExisting = false;
-		}
-
-		existingTrack = {
-			language: track.lang,
-			segments,
-			vttUrl: track.ext === 'vtt' ? track.url : undefined
-		};
-	}
 
 	function seekTo(time: number) {
 		if (videoEl) {videoEl.currentTime = time;}
@@ -333,17 +284,6 @@
 		return src.includes('.m3u8');
 	}
 
-	function labelFor(q: Partial<VideoFormat> | undefined, i: number): string {
-		if (q?.resolution) {
-			return `${q.resolution}p`;
-		}
-		if (q?.ext) {
-			return q.ext.toUpperCase();
-		}
-
-		return `Source ${i + 1}`;
-	}
-
 	const activeSrc = $derived(urlFor(usable[activeIndex]));
 	// Our proxy adds `Access-Control-Allow-Origin: *`, so CORS mode is safe there.
 	// Raw source URLs usually send no CORS headers — forcing crossorigin on them
@@ -365,7 +305,7 @@
 	// lets the calls race (the B->A capture can read B's element before its
 	// own resume from A->B settled, e.g. `.paused` still true because `play()`
 	// hadn't actually started yet), leaving the final element stuck paused.
-	let switching = false;
+	let switching = $state(false);
 
 	async function resumePlaybackAcross(mutate: () => void): Promise<boolean> {
 		if (switching) {
@@ -446,7 +386,6 @@
 
 		await resumePlaybackAcross(() => {
 			activeIndex = index;
-			menuOpen = false;
 		});
 	}
 
@@ -458,7 +397,6 @@
 		const switched = await resumePlaybackAcross(() => {
 			activeGroupIndex = index;
 			activeIndex = 0;
-			menuOpen = false;
 		});
 
 		// Only tell the parent (which drives the quality rail below the card)
@@ -468,25 +406,6 @@
 			onActiveGroupChange?.(index);
 		}
 	}
-
-	// Close the quality menu when clicking anywhere outside it (the trigger itself
-	// still toggles via its own onclick — it lives inside qualityRoot, so this
-	// outside-handler ignores it).
-	$effect(() => {
-		if (!menuOpen) {
-			return;
-		}
-
-		const onDocPointerDown = (event: Event) => {
-			if (qualityRoot && !qualityRoot.contains(event.target as Node)) {
-				menuOpen = false;
-			}
-		};
-
-		document.addEventListener('pointerdown', onDocPointerDown);
-
-		return () => document.removeEventListener('pointerdown', onDocPointerDown);
-	});
 
 	function bindVideo(node: MediaEl) {
 		videoEl = node;
@@ -658,7 +577,7 @@
 					aria-label={t('player.audioLabel')}
 				>
 					{#each usable as q, i (i)}
-						<option value={i}>{labelFor(q, i)}</option>
+						<option value={i}>{qualityLabel(q, i)}</option>
 					{/each}
 				</select>
 			{/if}
@@ -694,44 +613,12 @@
 					{#if showQualityMenu}
 						<!-- Slotted into the skin so it overlays correctly, even in fullscreen.
 						     Light DOM, so the app's own theme tokens style it directly.
-						     Visibility tracks the control bar (see bindSkin). -->
-						<div
-							bind:this={qualityRoot}
-							class="ds-quality"
-							data-open={menuOpen}
-							data-visible={controlsVisible || menuOpen}
-						>
-							<button
-								type="button"
-								class="ds-quality__trigger"
-								aria-haspopup="menu"
-								aria-expanded={menuOpen}
-								onclick={() => (menuOpen = !menuOpen)}
-							>
-								<SlidersHorizontal class="h-3.5 w-3.5" />
-								<span>{labelFor(usable[activeIndex], activeIndex)}</span>
-							</button>
-
-							{#if menuOpen}
-								<div class="ds-quality__menu" role="menu">
-									{#each usable as q, i (i)}
-										<button
-											type="button"
-											role="menuitemradio"
-											aria-checked={i === activeIndex}
-											class="ds-quality__item"
-											data-active={i === activeIndex}
-											onclick={() => switchQuality(i)}
-										>
-											<span>{labelFor(q, i)}</span>
-											{#if i === activeIndex}
-												<Check class="h-3.5 w-3.5" />
-											{/if}
-										</button>
-									{/each}
-								</div>
-							{/if}
-						</div>
+						     Visibility tracks the control bar (see bindSkin). Keyed on the
+						     active group so switching format-group tabs remounts it -- closing
+						     any open menu, same as the old inline menuOpen reset used to. -->
+						{#key activeGroupIndex}
+							<QualityMenu qualities={usable} {activeIndex} {switching} onSwitch={switchQuality} {controlsVisible} />
+						{/key}
 					{/if}
 				</video-minimal-skin>
 			</video-player>
@@ -758,13 +645,16 @@
 		class="border-border/60 mt-2 flex w-full items-stretch gap-5 border-b px-1"
 		role="tablist"
 		aria-label={t('player.formatTabs')}
+		aria-busy={switching}
 	>
 		{#each formatGroups as group, i (i)}
 			<button
 				type="button"
 				role="tab"
 				aria-selected={i === activeGroupIndex}
-				class="relative -mb-px pt-1 pb-2 text-sm font-semibold transition-colors {i === activeGroupIndex
+				disabled={switching}
+				class="relative -mb-px pt-1 pb-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60 {i ===
+				activeGroupIndex
 					? 'text-primary'
 					: 'text-muted-foreground hover:text-foreground'}"
 				onclick={() => switchGroup(i)}
@@ -786,5 +676,5 @@
 	canDownload={Boolean(activeSubtitleTrack?.srtUrl)}
 	onDownload={downloadSrt}
 	onGenerate={generateSubtitles}
-	generating={transcription.isRunning}
+	generating={subtitles.isRunning}
 />

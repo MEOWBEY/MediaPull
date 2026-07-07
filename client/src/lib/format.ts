@@ -60,6 +60,22 @@ const VIDEO_LABELS: Record<string, string> = {
 	'video/x-msvideo': 'AVI'
 };
 
+/** Short label for one quality option in a format picker (e.g. "1080p", "MP3",
+ *  falling back to "Source N" when a format has neither resolution nor ext). */
+export function qualityLabel(
+	q: { resolution?: number; ext?: string } | undefined,
+	index: number
+): string {
+	if (q?.resolution) {
+		return `${q.resolution}p`;
+	}
+	if (q?.ext) {
+		return q.ext.toUpperCase();
+	}
+
+	return `Source ${index + 1}`;
+}
+
 /** Short human label for a media-kind (e.g. "HLS", "MP4 Video", "AAC Audio"). */
 export function mediaKindLabel(type: string, audioWord: string): string {
 	if (type === 'application/x-mpegURL') {

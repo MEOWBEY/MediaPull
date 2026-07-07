@@ -4,8 +4,12 @@ import { isAudioType } from '$lib/format';
 import { buildProxiedUrl } from '$lib/proxy-url';
 import type {
 	FormatGroup,
+	GroupedGallery,
 	GroupedVideo,
 	IncomingFormat,
+	IncomingGallery,
+	IncomingGalleryImage,
+	ImageAsset,
 	IncomingVideo,
 	MediaType,
 	SubtitleTrack,
@@ -152,6 +156,37 @@ export function groupVideosByQuality(videos: IncomingVideo[] = []): GroupedVideo
 				});
 			}
 		}
+	}
+
+	return results;
+}
+
+function normalizeImage(image: IncomingGalleryImage): ImageAsset {
+	return {
+		url: image.url ?? '',
+		width: Number(image.width) || 0,
+		height: Number(image.height) || 0,
+		filesize: Number(image.filesize) || 0,
+		ext: image.ext ?? 'jpg'
+	};
+}
+
+/** Group incoming gallery images by source page -- much simpler than video's
+ *  format-group tabs, since images have no "kind" to bucket by. One
+ *  `IncomingGallery` (already one source page) becomes one `GroupedGallery`. */
+export function groupGalleriesBySource(galleries: IncomingGallery[] = []): GroupedGallery[] {
+	const results: GroupedGallery[] = [];
+
+	for (const item of galleries) {
+		const images = (item.images ?? []).filter((img) => img?.url);
+
+		if (!images.length) {continue;}
+
+		results.push({
+			title: item.title,
+			webpage_url: item.webpageUrl,
+			images: images.map(normalizeImage)
+		});
 	}
 
 	return results;

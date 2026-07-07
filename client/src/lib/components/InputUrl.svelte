@@ -1,13 +1,16 @@
 <script lang="ts">
 	import Clock from '@lucide/svelte/icons/clock';
 	import Globe from '@lucide/svelte/icons/globe';
+	import ImageIcon from '@lucide/svelte/icons/image';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
+	import VideoIcon from '@lucide/svelte/icons/video';
 	import X from '@lucide/svelte/icons/x';
 
 	import { Button } from '$lib/components/ui/button';
 	import { i18n } from '$lib/i18n/index.svelte';
+	import { appStore } from '$lib/stores/app-state.svelte';
 
 	const {t} = i18n;
 
@@ -26,6 +29,16 @@
 	// between individual items (keeps the input disabled + cancel button visible).
 	let isBatchRunning = $derived(batchTotal > 0);
 	let isOperationRunning = $derived(isVideoExtractRunning || isBatchRunning);
+
+	// Which endpoint the input routes to -- surfaced here (not just buried in
+	// Preferences) since it's the single most consequential choice before
+	// hitting Extract. No server-side auto-detection, so this toggle IS the
+	// routing decision.
+	let contentTypeMode = $derived(appStore.preferences.contentTypeMode);
+
+	function setContentTypeMode(mode: 'video' | 'gallery') {
+		appStore.updatePreferences({ contentTypeMode: mode });
+	}
 
 	// How many URLs the field currently holds (pasted multi-line collapses to
 	// spaces in a single-line input, so whitespace-splitting catches a batch).
@@ -60,7 +73,9 @@
 					id="video-url"
 					bind:value={inputUrl}
 					onkeydown={onKeydown}
-					placeholder={t('input.placeholder')}
+					placeholder={contentTypeMode === 'gallery'
+						? t('input.placeholderGallery')
+						: t('input.placeholder')}
 					disabled={isOperationRunning}
 					autocomplete="off"
 					autocapitalize="off"
@@ -97,6 +112,31 @@
 
 		<!-- Action row -->
 		<div class="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
+			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+				<Button
+					variant={contentTypeMode === 'video' ? 'default' : 'ghost'}
+					size="sm"
+					disabled={isOperationRunning}
+					onclick={() => setContentTypeMode('video')}
+					class="gap-1 rounded-full px-2.5 py-1 text-xs"
+					title={t('prefs.contentType.video')}
+				>
+					<VideoIcon class="h-3 w-3" />
+					<span>{t('prefs.contentType.video')}</span>
+				</Button>
+				<Button
+					variant={contentTypeMode === 'gallery' ? 'default' : 'ghost'}
+					size="sm"
+					disabled={isOperationRunning}
+					onclick={() => setContentTypeMode('gallery')}
+					class="gap-1 rounded-full px-2.5 py-1 text-xs"
+					title={t('prefs.contentType.gallery')}
+				>
+					<ImageIcon class="h-3 w-3" />
+					<span>{t('prefs.contentType.gallery')}</span>
+				</Button>
+			</div>
+
 			<Button
 				onclick={() => runVideoExtractFromServer(inputUrl)}
 				disabled={!inputUrl.trim() || isOperationRunning}

@@ -124,16 +124,19 @@ def pick_audio_format(formats: list[VideoFormat]) -> VideoFormat:
 
 
 async def _run_ffmpeg(args: list[str]) -> None:
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg",
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise AudioError(f"ffmpeg is not installed or not on PATH: {exc}") from exc
     try:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFMPEG_TIMEOUT)
     except asyncio.TimeoutError as exc:
@@ -144,18 +147,21 @@ async def _run_ffmpeg(args: list[str]) -> None:
 
 
 async def probe_duration(path: Path) -> float:
-    proc = await asyncio.create_subprocess_exec(
-        "ffprobe",
-        "-v",
-        "error",
-        "-show_entries",
-        "format=duration",
-        "-of",
-        "default=noprint_wrappers=1:nokey=1",
-        str(path),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        raise AudioError(f"ffprobe is not installed or not on PATH: {exc}") from exc
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise AudioError(f"ffprobe failed: {stderr.decode(errors='ignore')[-500:].strip()}")
@@ -202,6 +208,10 @@ async def _download_stream(
                             "Source media exceeds the server's transcription download size limit"
                         )
                     fh.write(chunk)
+        except AudioError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - surface as a clean AudioError
+            raise AudioError(f"Failed while downloading source media: {exc}") from exc
         finally:
             await resp.aclose()
 

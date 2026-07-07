@@ -113,6 +113,42 @@ export interface Preferences {
 	showVideoOnlyFormats: boolean;
 	/** Open the subtitle search panel automatically once a track is ready. */
 	autoOpenSubtitlePanel: boolean;
+	/** Which extraction endpoint the URL input routes to. No server-side
+	 *  auto-detection -- this is the single source of truth for routing. */
+	contentTypeMode: 'video' | 'gallery';
+}
+
+// ----- Image galleries (gallery-dl) --------------------------------------
+
+/** One image as it arrives from the backend (pre-normalization). */
+export interface IncomingGalleryImage {
+	url?: string;
+	width?: number;
+	height?: number;
+	filesize?: number;
+	ext?: string;
+}
+
+export interface IncomingGallery {
+	title?: string;
+	webpageUrl?: string;
+	images?: IncomingGalleryImage[];
+}
+
+/** A normalized image ready for rendering/download. */
+export interface ImageAsset {
+	url: string;
+	width: number;
+	height: number;
+	filesize: number;
+	ext: string;
+}
+
+export interface GroupedGallery {
+	id?: string;
+	title?: string;
+	webpage_url?: string;
+	images: ImageAsset[];
 }
 
 /** One subtitle line with its timing. */
@@ -159,4 +195,14 @@ export interface ApiEnvelope<T> {
 	details?: string;
 	detail?: string | Array<{ msg?: string }>;
 	video: T;
+}
+
+/** Same envelope shape as `ApiEnvelope`, but `/extract-gallery` wraps its
+ *  payload under `gallery` instead of `video`. */
+export interface GalleryApiEnvelope<T> {
+	success: boolean;
+	error?: string;
+	details?: string;
+	detail?: string | Array<{ msg?: string }>;
+	gallery: T;
 }

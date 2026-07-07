@@ -4,6 +4,7 @@
 	import { onMount } from 'svelte';
 
 	import ErrorAlert from '$lib/components/ErrorAlert.svelte';
+	import GalleryExtractList from '$lib/components/GalleryExtractList.svelte';
 	import InputUrl from '$lib/components/InputUrl.svelte';
 	import Instructions from '$lib/components/Instructions.svelte';
 	import PreferencesDialog from '$lib/components/PreferencesDialog.svelte';
@@ -22,7 +23,9 @@
 	let preferences = $derived(appStore.preferences);
 	let videoExtractError = $derived(appStore.videoExtractError);
 
-	let hasResults = $derived(appStore.videoExtractResults.length > 0);
+	let hasResults = $derived(
+		appStore.videoExtractResults.length > 0 || appStore.galleries.length > 0
+	);
 	let showEmptyState = $derived(
 		!hasResults && !isVideoExtractRunning && !videoExtractError
 	);
@@ -122,6 +125,11 @@
 		{/if}
 
 		<VideoExtractList
+			{isExtractBusy}
+			{preferences}
+		/>
+
+		<GalleryExtractList
 			{isExtractBusy}
 			{preferences}
 		/>

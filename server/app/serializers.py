@@ -7,7 +7,16 @@ mapping in one place lets the extractor stay UI-agnostic.
 
 from __future__ import annotations
 
-from .models import ClientFormat, ClientMetadata, ClientSubtitleTrack, ClientVideo, VideoInfo
+from .models import (
+    ClientFormat,
+    ClientGallery,
+    ClientGalleryImage,
+    ClientMetadata,
+    ClientSubtitleTrack,
+    ClientVideo,
+    GalleryInfo,
+    VideoInfo,
+)
 
 
 def to_client_video(info: VideoInfo) -> ClientVideo:
@@ -45,5 +54,22 @@ def to_client_video(info: VideoInfo) -> ClientVideo:
                 is_auto=track.is_auto,
             )
             for track in info.subtitle_tracks
+        ],
+    )
+
+
+def to_client_gallery(info: GalleryInfo) -> ClientGallery:
+    return ClientGallery(
+        title=info.title,
+        webpage_url=info.webpage_url,
+        images=[
+            ClientGalleryImage(
+                url=img.url,
+                width=img.width,
+                height=img.height,
+                filesize=img.filesize,
+                ext=img.ext,
+            )
+            for img in info.images
         ],
     )

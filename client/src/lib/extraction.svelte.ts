@@ -6,11 +6,11 @@
 
 import { toast } from 'svelte-sonner';
 
-import { ApiError, post } from '$lib/api/client';
+import { ApiError, post, postGallery } from '$lib/api/client';
 import { TTLCache } from '$lib/cache';
 import { i18n } from '$lib/i18n/index.svelte';
 import { appStore } from '$lib/stores/app-state.svelte';
-import type { IncomingVideo } from '$lib/types';
+import type { IncomingGallery, IncomingVideo } from '$lib/types';
 
 const { t } = i18n;
 
@@ -18,6 +18,12 @@ const extractCache = new TTLCache<IncomingVideo>({
 	ttl: 5 * 60 * 1000,
 	maxEntries: 50,
 	persistKey: 'cache:extract'
+});
+
+const galleryExtractCache = new TTLCache<IncomingGallery>({
+	ttl: 5 * 60 * 1000,
+	maxEntries: 50,
+	persistKey: 'cache:extract-gallery'
 });
 
 function normalizeUrl(raw: string): string | null {
@@ -127,8 +133,19 @@ export class ExtractionController {
 	 * instead of one toast (and a lingering alert) per URL. `forceRefresh` skips
 	 * (and evicts) any cached result -- for re-pulling a source whose direct
 	 * links may have expired, where serving the stale cache would defeat the point.
+	 * `mode` overrides the persisted content-type preference for this one call
+	 * -- used by `retryAsOtherType` when auto-routing guessed wrong.
 	 */
 	async extractLinks(
+		rawUrl: string,
+		opts: { silent?: boolean; forceRefresh?: boolean; mode?: 'video' | 'gallery' } = {}
+	): Promise<boolean> {
+		const mode = opts.mode ?? appStore.preferences.contentTypeMode;
+
+		return mode === 'gallery' ? this.extractGalleryLinks(rawUrl, opts) : this.extractVideoLinks(rawUrl, opts);
+	}
+
+	private async extractVideoLinks(
 		rawUrl: string,
 		opts: { silent?: boolean; forceRefresh?: boolean } = {}
 	): Promise<boolean> {
@@ -175,6 +192,65 @@ export class ExtractionController {
 				}
 			}
 		});
+	}
+
+	private async extractGalleryLinks(
+		rawUrl: string,
+		opts: { silent?: boolean; forceRefresh?: boolean } = {}
+	): Promise<boolean> {
+		const url = normalizeUrl(rawUrl);
+
+		if (!url) {return false;}
+
+		const cookies = appStore.cookies.matchFor(url);
+		const cacheKey = cookies ? `${url}#auth` : url;
+
+		if (opts.forceRefresh) {
+			galleryExtractCache.delete(cacheKey);
+		}
+
+		const cached = opts.forceRefresh ? null : galleryExtractCache.get(cacheKey);
+
+		if (cached) {
+			appStore.addGalleryExtractResultsToStore(cached);
+			if (!opts.silent) {
+				toast.success(t('toast.loadedCacheImages', { n: cached.images?.length ?? 0 }));
+			}
+
+			return true;
+		}
+
+		return this.run({
+			silent: opts.silent,
+			task: (signal) =>
+				postGallery<IncomingGallery>(
+					'/extract-gallery',
+					cookies ? { url, cookies } : { url },
+					{ signal }
+				),
+			onSuccess: (gallery) => {
+				galleryExtractCache.set(cacheKey, gallery);
+				appStore.addGalleryExtractResultsToStore(gallery);
+
+				if (!opts.silent) {
+					const count = gallery?.images?.length ?? 0;
+
+					toast.success(
+						count === 1 ? t('toast.foundOneImage') : t('toast.foundManyImages', { n: count })
+					);
+				}
+			}
+		});
+	}
+
+	/** Escape hatch for the "wrong type" case: re-extracts the same URL through
+	 *  the other endpoint, bypassing the persisted content-type preference for
+	 *  this one card. Used by the inline retry button on an empty/mismatched
+	 *  result card. */
+	async retryAsOtherType(rawUrl: string, currentMode: 'video' | 'gallery'): Promise<boolean> {
+		const otherMode = currentMode === 'video' ? 'gallery' : 'video';
+
+		return this.extractLinks(rawUrl, { mode: otherMode, forceRefresh: true });
 	}
 
 	cancel(): void {

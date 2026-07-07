@@ -3,7 +3,9 @@
 	import Captions from '@lucide/svelte/icons/captions';
 	import Grid3X3 from '@lucide/svelte/icons/grid-3x3';
 	import HardDrive from '@lucide/svelte/icons/hard-drive';
+	import Image from '@lucide/svelte/icons/image';
 	import Info from '@lucide/svelte/icons/info';
+	import Languages from '@lucide/svelte/icons/languages';
 	import LayoutList from '@lucide/svelte/icons/layout-list';
 	import Monitor from '@lucide/svelte/icons/monitor';
 	import Palette from '@lucide/svelte/icons/palette';
@@ -18,7 +20,7 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Switch } from '$lib/components/ui/switch';
-	import { i18n } from '$lib/i18n/index.svelte';
+	import { i18n, LOCALES } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
 	import { MediaQuery } from '$lib/viewport.svelte';
 
@@ -292,6 +294,33 @@
 				</div>
 			</section>
 
+			<!-- Content Type Section -->
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
+				<div class="border-b p-3 dark:border-zinc-700">
+					<h4 class="flex items-center gap-2 text-base font-semibold">
+						<Image class="h-4 w-4 text-teal-600" />
+						{t('prefs.contentTypeSection')}
+					</h4>
+				</div>
+				<div class="p-3 sm:p-4">
+					<div class="space-y-2">
+						<Label class="text-sm font-medium">{t('prefs.contentTypeLabel')}</Label>
+						<div class="flex flex-col gap-2 sm:flex-row">
+							{#each ['video', 'gallery'] as const as mode (mode)}
+								<Button
+									variant={preferences.contentTypeMode === mode ? 'default' : 'outline'}
+									size="sm"
+									onclick={() => appStore.updatePreferences({ contentTypeMode: mode })}
+									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+								>
+									{t(`prefs.contentType.${mode}`)}
+								</Button>
+							{/each}
+						</div>
+					</div>
+				</div>
+			</section>
+
 			<!-- Theme Selection -->
 			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
 				<div class="border-b p-3 dark:border-zinc-700">
@@ -312,6 +341,33 @@
 									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
 								>
 									{t(`prefs.theme.${theme}`)}
+								</Button>
+							{/each}
+						</div>
+					</div>
+				</div>
+			</section>
+
+			<!-- Language Section -->
+			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
+				<div class="border-b p-3 dark:border-zinc-700">
+					<h4 class="flex items-center gap-2 text-base font-semibold">
+						<Languages class="h-4 w-4 text-indigo-600" />
+						{t('prefs.languageSection')}
+					</h4>
+				</div>
+				<div class="p-3 sm:p-4">
+					<div class="space-y-2">
+						<Label class="text-sm font-medium">{t('prefs.languageLabel')}</Label>
+						<div class="flex flex-col gap-2 sm:flex-row">
+							{#each LOCALES as loc (loc.code)}
+								<Button
+									variant={i18n.locale === loc.code ? 'default' : 'outline'}
+									size="sm"
+									onclick={() => i18n.setLocale(loc.code)}
+									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+								>
+									{loc.label}
 								</Button>
 							{/each}
 						</div>

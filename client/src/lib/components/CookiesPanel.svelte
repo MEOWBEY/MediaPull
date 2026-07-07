@@ -25,7 +25,10 @@
 		'x.com',
 		'reddit.com',
 		'vimeo.com',
-		'twitch.tv'
+		'twitch.tv',
+		'twitter.com',
+		'pixiv.net',
+		'deviantart.com'
 	];
 
 	let showGuide = $state(false);

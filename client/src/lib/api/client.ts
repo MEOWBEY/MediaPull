@@ -14,7 +14,7 @@
  */
 
 import { API_BASE_URL } from '$lib/config';
-import type { ApiEnvelope } from '$lib/types';
+import type { ApiEnvelope, GalleryApiEnvelope } from '$lib/types';
 
 export class ApiError extends Error {
 	readonly aborted: boolean;
@@ -137,6 +137,37 @@ export function post<T>(endpoint: string, body: unknown, options: PostOptions = 
 	if (existing) {return existing as Promise<T>;}
 
 	const promise = rawPost<T>(endpoint, body, options).finally(() => inFlight.delete(key));
+
+	inFlight.set(key, promise);
+
+	return promise;
+}
+
+async function rawPostGallery<T>(endpoint: string, body: unknown, options: PostOptions): Promise<T> {
+	const { data, status, ok } = await doFetch(
+		endpoint,
+		{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+		options
+	);
+	const envelope = data as Partial<GalleryApiEnvelope<T>>;
+
+	if (!ok || !envelope.success) {
+		throw new ApiError(errorMessage(envelope as Partial<ApiEnvelope<unknown>>, status), { status });
+	}
+
+	return envelope.gallery as T;
+}
+
+/** Same contract as `post()` (in-flight dedup, timeout, envelope unwrapping)
+ *  but for `/extract-gallery`-style responses, which wrap their payload
+ *  under `gallery` instead of `video`. */
+export function postGallery<T>(endpoint: string, body: unknown, options: PostOptions = {}): Promise<T> {
+	const key = `POST ${endpoint}:${JSON.stringify(body)}`;
+	const existing = inFlight.get(key);
+
+	if (existing) {return existing as Promise<T>;}
+
+	const promise = rawPostGallery<T>(endpoint, body, options).finally(() => inFlight.delete(key));
 
 	inFlight.set(key, promise);
 

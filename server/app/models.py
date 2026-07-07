@@ -121,6 +121,49 @@ class ExtractResponse(BaseModel):
     cached: bool = False
 
 
+# ----- gallery/image extraction (gallery-dl) -----------------------------
+
+
+class GalleryImage(BaseModel):
+    url: str
+    width: int | None = None
+    height: int | None = None
+    filesize: int | None = None
+    ext: str = "jpg"
+
+
+class GalleryInfo(BaseModel):
+    title: str | None = None
+    webpage_url: str | None = None
+    images: list[GalleryImage] = Field(default_factory=list)
+    method: str = "gallery-dl"
+
+
+class ClientGalleryImage(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    url: str
+    width: int | None = None
+    height: int | None = None
+    filesize: int | None = None
+    ext: str = "jpg"
+
+
+class ClientGallery(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: str | None = None
+    webpage_url: str | None = Field(default=None, alias="webpageUrl")
+    images: list[ClientGalleryImage] = Field(default_factory=list)
+
+
+class GalleryResponse(BaseModel):
+    success: bool = True
+    gallery: ClientGallery
+    method: str
+    cached: bool = False
+
+
 class HealthResponse(BaseModel):
     status: str = "healthy"
     service: str = "directstream"
