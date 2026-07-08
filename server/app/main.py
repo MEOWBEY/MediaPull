@@ -8,6 +8,7 @@ import importlib.util
 import logging
 import shutil
 import sys
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,14 +16,14 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse, Response
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from . import __version__
 from .cache import TTLCache
 from .config import settings
 from .extractor import ExtractionError, Extractor
 from .gallery import GalleryExtractor
-from .jobs import JobStore, run_transcription_job
+from .jobs import JobStore, TranscriptionJob, run_transcription_job
 from .logging_context import (
     RequestContextFilter,
     client_ip_from_headers,
@@ -146,7 +147,7 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["GET", "POST"],
+        allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
@@ -246,36 +247,20 @@ def create_app() -> FastAPI:
 
     # ---- Auto-subtitles (speech-to-text via Groq Whisper) ---------------
     # Opt-in, explicit, minutes-long job -- the only place in the app that
-    # downloads media bytes to disk. Progress is polled (GET), not pushed;
-    # see the ADR in the project plan for why SSE/WebSocket was skipped.
+    # downloads media bytes to disk. Progress is pushed over SSE
+    # (/transcribe/{id}/events); GET below still exists as a plain one-shot
+    # status check (and a fallback for any client that can't hold an SSE
+    # connection open). Only viable single-worker (already required -- see
+    # the comment in directstream.service -- so there's no cross-worker
+    # fan-out to worry about for the in-memory subscriber queues below).
 
-    @app.post("/transcribe", response_model=TranscribeStartResponse)
-    async def start_transcribe(payload: TranscribeRequest) -> TranscribeStartResponse:
-        if app.state.transcriber is None:
-            raise HTTPException(
-                status_code=503, detail="Auto-subtitles are not configured on this server"
-            )
-
-        job = await app.state.jobs.create()
-        asyncio.create_task(
-            run_transcription_job(
-                job.id, payload.formats, settings, app.state.jobs, app.state.transcriber
-            )
-        )
-        return TranscribeStartResponse(job_id=job.id)
-
-    @app.get("/transcribe/{job_id}", response_model=TranscribeStatus)
-    async def get_transcribe_status(job_id: str) -> TranscribeStatus:
-        job = await app.state.jobs.get(job_id)
-        if job is None:
-            raise HTTPException(status_code=404, detail="Unknown or expired job")
-
+    def _build_status(job: TranscriptionJob) -> TranscribeStatus:
         result = None
         if job.status == "done":
             result = TranscribeResult(
                 language=job.language or "en",
-                vtt_url=f"/transcribe/{job_id}/subtitle.vtt",
-                srt_url=f"/transcribe/{job_id}/subtitle.srt",
+                vtt_url=f"/transcribe/{job.id}/subtitle.vtt",
+                srt_url=f"/transcribe/{job.id}/subtitle.srt",
                 waveform=job.waveform,
             )
 
@@ -287,6 +272,90 @@ def create_app() -> FastAPI:
             error=job.error,
             result=result,
         )
+
+    @app.post("/transcribe", response_model=TranscribeStartResponse)
+    async def start_transcribe(payload: TranscribeRequest) -> TranscribeStartResponse:
+        if app.state.transcriber is None:
+            raise HTTPException(
+                status_code=503, detail="Auto-subtitles are not configured on this server"
+            )
+
+        job = await app.state.jobs.create()
+        task = asyncio.create_task(
+            run_transcription_job(
+                job.id, payload.formats, settings, app.state.jobs, app.state.transcriber
+            )
+        )
+        await app.state.jobs.set_task(job.id, task)
+        return TranscribeStartResponse(job_id=job.id)
+
+    @app.get("/transcribe/{job_id}", response_model=TranscribeStatus)
+    async def get_transcribe_status(job_id: str) -> TranscribeStatus:
+        job = await app.state.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown or expired job")
+
+        return _build_status(job)
+
+    @app.get("/transcribe/{job_id}/events", include_in_schema=False)
+    async def stream_transcribe_status(job_id: str, request: Request) -> StreamingResponse:
+        job = await app.state.jobs.get(job_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown or expired job")
+
+        async def event_stream() -> AsyncGenerator[str, None]:
+            queue = await app.state.jobs.subscribe(job_id)
+            try:
+                # Send the current state immediately -- otherwise a client
+                # that subscribes right as the job finishes could wait
+                # forever for a change that already happened.
+                current = await app.state.jobs.get(job_id)
+                if current is None:
+                    return
+                yield f"data: {_build_status(current).model_dump_json(by_alias=True)}\n\n"
+                if current.is_terminal:
+                    return
+
+                while True:
+                    if await request.is_disconnected():
+                        return
+                    try:
+                        updated = await asyncio.wait_for(queue.get(), timeout=15)
+                    except TimeoutError:
+                        # SSE comment line -- keeps intermediate proxies from
+                        # deciding an idle connection is dead and closing it.
+                        yield ": keep-alive\n\n"
+                        continue
+                    yield f"data: {_build_status(updated).model_dump_json(by_alias=True)}\n\n"
+                    if updated.is_terminal:
+                        return
+            finally:
+                await app.state.jobs.unsubscribe(job_id, queue)
+
+        return StreamingResponse(
+            event_stream(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                # Tells nginx specifically not to buffer this response --
+                # without it, a default nginx reverse proxy would hold the
+                # whole stream until it closes instead of forwarding each
+                # event as it arrives, defeating the point of SSE. Caddy
+                # doesn't buffer streaming responses by default, so this is
+                # a no-op (and harmless) there.
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    @app.delete("/transcribe/{job_id}", status_code=204, include_in_schema=False)
+    async def cancel_transcribe(job_id: str) -> Response:
+        # Best-effort: requests cancellation of the background task via
+        # JobStore.cancel -- the task's own except-CancelledError clause
+        # (jobs.py) does the actual status flip + cleanup, not this handler.
+        ok = await app.state.jobs.cancel(job_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Unknown or expired job")
+        return Response(status_code=204)
 
     @app.get("/transcribe/{job_id}/subtitle.vtt", include_in_schema=False)
     async def get_transcribe_vtt(job_id: str) -> Response:

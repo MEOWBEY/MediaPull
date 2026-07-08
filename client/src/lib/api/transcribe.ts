@@ -4,11 +4,14 @@
  * no translation.
  *
  *  - `startTranscription()` kicks off `POST /transcribe`.
- *  - `pollJobStatus()` polls `GET /transcribe/{jobId}` until done/error.
+ *  - Progress is then read via an `EventSource` on `/transcribe/{jobId}/events`
+ *    directly in `transcribe.svelte.ts` (native browser API, no wrapper
+ *    needed here).
+ *  - `cancelTranscription()` sends `DELETE /transcribe/{jobId}`.
  */
 
-import { getJson, postJson } from '$lib/api/client';
-import type { TranscribeStatus, VideoFormat } from '$lib/types';
+import { del, postJson } from '$lib/api/client';
+import type { VideoFormat } from '$lib/types';
 
 /** The bits of a `GroupedVideo` the transcription job needs -- accepted as
  *  its own shape so `VideoPlayer.svelte` can pass its flat props through. */
@@ -59,6 +62,17 @@ export function startTranscription(
 	);
 }
 
-export function pollJobStatus(jobId: string, opts: { signal?: AbortSignal } = {}): Promise<TranscribeStatus> {
-	return getJson<TranscribeStatus>(`/transcribe/${jobId}`, opts);
+/**
+ * `DELETE /transcribe/{jobId}` -- best-effort courtesy call so the backend
+ * frees the job's slot instead of running it to completion for nobody. A 404
+ * means the job is already gone or finished, which is exactly what cancelling
+ * it would have achieved anyway, so it's treated as success rather than
+ * thrown as an error.
+ */
+export async function cancelTranscription(jobId: string, opts: { signal?: AbortSignal } = {}): Promise<void> {
+	const { status, ok } = await del(`/transcribe/${jobId}`, opts);
+
+	if (!ok && status !== 404) {
+		throw new Error(`Request failed (${status})`);
+	}
 }

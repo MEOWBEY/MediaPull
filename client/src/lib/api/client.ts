@@ -212,3 +212,29 @@ export function postJson<T>(endpoint: string, body: unknown, options: PostOption
 export function getJson<T>(endpoint: string, options: PostOptions = {}): Promise<T> {
 	return rawJson<T>(endpoint, { method: 'GET' }, options);
 }
+
+/**
+ * DELETE with no response body expected (a 204 on success). Unlike
+ * `rawJson`, this never calls `response.json()` — cancel-style endpoints
+ * reply with an empty body, and `doFetch` would otherwise treat that as
+ * "invalid response". Callers get the status code back directly so they can
+ * decide what a given non-2xx (e.g. 404 = "already gone") means for them,
+ * rather than this helper guessing on their behalf.
+ */
+export async function del(endpoint: string, options: PostOptions = {}): Promise<{ status: number; ok: boolean }> {
+	const { signal, cancel } = linkSignals(options.timeoutMs ?? DEFAULT_TIMEOUT, options.signal);
+
+	try {
+		const response = await fetch(`${API_BASE_URL}${endpoint}`, { method: 'DELETE', signal });
+
+		return { status: response.status, ok: response.ok };
+	} catch (error) {
+		if (error instanceof DOMException && error.name === 'AbortError') {
+			throw new ApiError('Request cancelled', { aborted: true });
+		}
+
+		throw new ApiError(error instanceof Error ? error.message : 'Network error');
+	} finally {
+		cancel();
+	}
+}

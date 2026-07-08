@@ -9,8 +9,8 @@
 # to add the listen 443/ssl_certificate directives.
 
 server {
-    listen 80;
-    listen [::]:80;
+    listen __PUBLIC_PORT__;
+    listen [::]:__PUBLIC_PORT__;
     server_name api.example.com;
 
     client_max_body_size 25m;

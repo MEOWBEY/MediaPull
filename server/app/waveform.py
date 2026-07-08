@@ -21,6 +21,9 @@ logger = logging.getLogger("directstream.waveform")
 _SAMPLE_RATE = 16000
 _WINDOW_MS = 100
 _SAMPLES_PER_WINDOW = int(_SAMPLE_RATE * _WINDOW_MS / 1000)
+# Bounds the PCM-decode subprocess -- generous relative to _FFMPEG_TIMEOUT in
+# audio.py since this is decoding a full audio stream, not just transcoding.
+_FFMPEG_DECODE_TIMEOUT = 60
 
 
 class WaveformError(Exception):
@@ -55,7 +58,18 @@ async def extract_peaks(
         logger.error("ffmpeg binary %r is not runnable: %s", settings.ffmpeg_binary, exc)
         raise WaveformError(f"ffmpeg is not installed or not on PATH ({settings.ffmpeg_binary!r})") from exc
 
-    raw, stderr = await proc.communicate()
+    try:
+        raw, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFMPEG_DECODE_TIMEOUT)
+    except asyncio.TimeoutError as exc:
+        proc.kill()
+        await proc.wait()
+        raise WaveformError("ffmpeg PCM decode timed out") from exc
+    except asyncio.CancelledError:
+        # Don't leave the decode child running as an orphan if this job gets
+        # cancelled/times out while waiting on it.
+        proc.kill()
+        await proc.wait()
+        raise
     if proc.returncode != 0:
         raise WaveformError(
             f"ffmpeg PCM decode failed: {stderr.decode(errors='ignore')[-500:].strip()}"
@@ -69,14 +83,21 @@ async def extract_peaks(
     if not samples:
         return []
 
+    peaks = await asyncio.to_thread(_compute_peaks, samples)
+    return _downsample(peaks, max_points)
+
+
+def _compute_peaks(samples: array.array) -> list[float]:
+    """Pure-Python per-sample scan -- run off the event loop via
+    ``asyncio.to_thread`` since a long track makes this slow enough to block
+    all other request handling if run inline."""
     peaks: list[float] = []
     for i in range(0, len(samples), _SAMPLES_PER_WINDOW):
         window = samples[i : i + _SAMPLES_PER_WINDOW]
         if not window:
             continue
         peaks.append(max(abs(s) for s in window) / 32768.0)
-
-    return _downsample(peaks, max_points)
+    return peaks
 
 
 def _downsample(peaks: list[float], max_points: int) -> list[float]:

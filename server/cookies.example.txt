@@ -1,0 +1,12 @@
+# Netscape HTTP Cookie File
+#
+# This is the server-side DEFAULT cookies file (COOKIE_FILE in .env). It's
+# used for any request that doesn't bring its own cookies -- unlocks
+# YouTube age-gates, most X/Twitter content, and private Instagram posts
+# for everyone using this server.
+#
+# To use it: copy this file to server/cookies.txt, then replace this
+# placeholder content with real exported cookies (e.g. via the
+# "Get cookies.txt LOCALLY" browser extension, from a throwaway logged-in
+# account -- never your main account). server/cookies.txt is gitignored, so
+# it never gets committed.

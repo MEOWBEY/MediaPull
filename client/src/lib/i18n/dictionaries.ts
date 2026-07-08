@@ -108,6 +108,7 @@ export const en = {
 	// Auto-subtitles (speech-to-text, no translation)
 	'subtitles.generate': 'Generate subtitles',
 	'subtitles.generating': 'Generating subtitles…',
+	'subtitles.cancel': 'Cancel',
 	'subtitles.open': 'subtitles',
 	'subtitles.download': 'Download .srt',
 	'subtitles.panel.title': 'Subtitles',
@@ -360,6 +361,7 @@ export const fa: Record<MessageKey, string> = {
 
 	'subtitles.generate': 'تولید زیرنویس',
 	'subtitles.generating': 'در حال تولید زیرنویس…',
+	'subtitles.cancel': 'لغو',
 	'subtitles.open': 'زیرنویس',
 	'subtitles.download': 'دانلود .srt',
 	'subtitles.panel.title': 'زیرنویس‌ها',

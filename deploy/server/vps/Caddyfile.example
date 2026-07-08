@@ -1,6 +1,11 @@
 # Alternative to nginx-backend.conf.example — Caddy gets you automatic
 # HTTPS (Let's Encrypt) with no separate certbot step. Install at
 # /etc/caddy/Caddyfile (or import it from there) and `systemctl reload caddy`.
+#
+# Caddy defaults to serving on 80/443 (plain HTTP redirects to HTTPS
+# automatically). To use a different public port, add it to the site
+# address, e.g. "api.example.com:8443 {" — see
+# https://caddyserver.com/docs/caddyfile/concepts#addresses
 
 api.example.com {
 	reverse_proxy 127.0.0.1:__PORT__ {

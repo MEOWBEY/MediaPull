@@ -308,7 +308,7 @@ either.
 | `COOKIE_FILE` | _(empty)_ | Path to a server-side default Netscape `cookies.txt` (fallback when a request brings no cookies). Unlocks age-restricted / private / login-gated content. |
 | `PROXY_URL` | _(empty)_ | Outbound proxy (`http(s)://…` / `socks5://…`) for extraction, probing **and** media streaming. Routes around datacenter-IP blocks/rate-limits. |
 | `YOUTUBE_PLAYER_CLIENTS` | _(empty)_ | Comma list of YouTube player clients (e.g. `default,tv,web_safari`). Keep `default` to preserve the full quality ladder; add age-gate-capable clients. |
-| `YOUTUBE_PO_TOKEN` | _(empty)_ | Comma-separated PO token(s) to clear YouTube bot-detection on datacenter IPs (usually from a bgutil PO-token sidecar). |
+| `YOUTUBE_PO_TOKEN` | _(empty)_ | Comma-separated PO token(s) to clear YouTube bot-detection on datacenter IPs. Manually-copied tokens go stale almost immediately (YouTube binds them to a specific video ID) — the [VPS installer](deploy/server/vps/) sets up an automatic PO-token-provider service instead, which is what you want on a real deploy. |
 | `SLEEP_REQUESTS` | `0` | Seconds to sleep between extractor requests — `1`–`3` cuts 429/"used too much" blocks under load. |
 | `GALLERY_DL_BINARY` | `gallery-dl` | gallery-dl invocation. The default runs it via `python -m gallery_dl` (avoids PATH issues with pip-installed console scripts); point this at a custom wrapper only if you need something else. |
 | `GALLERY_DL_TIMEOUT` | `45` | Per-extraction timeout for gallery-dl (seconds). |
@@ -323,12 +323,14 @@ either.
 | `TRANSCRIBE_JOB_TTL` | `1800` | How long a finished job's result/subtitle files stay downloadable before being swept from memory. |
 | `TRANSCRIBE_WORKERS` | `2` | Thread/subprocess pool size for the ffmpeg extraction/chunking step. |
 
-> **Authentication & blocks.** Age-restricted, private, and most Instagram
+> **Authentication & blocks.** Age-restricted, private, and most Instagram/X
 > content require cookies. Set a server-side default with `COOKIE_FILE`, and/or
 > let each user paste their own per-site cookies in the app's **Settings →
-> Cookies** panel (stored only in their browser, sent per-request). For YouTube
-> on a server, also install a JS runtime (Deno/Node) so yt-dlp can solve the
-> n-challenge — see [`deploy/`](deploy/).
+> Cookies** panel (stored only in their browser, sent per-request). YouTube
+> also frequently blocks datacenter/VPS IPs outright ("Sign in to confirm
+> you're not a bot") regardless of cookies — that needs a PO token, which the
+> [VPS installer](deploy/server/vps/) sets up an automatic provider service
+> for; see its **YouTube PO tokens** section for what that is and why.
 
 ### Client (`client/.env`)
 

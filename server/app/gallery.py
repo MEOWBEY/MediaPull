@@ -86,10 +86,17 @@ class GalleryExtractor:
             "--no-input",
         ]
 
+        # Authentication cookies: per-request blob (from the user's Settings)
+        # wins; otherwise the server-side default file, same fallback order
+        # extractor.py uses for yt-dlp. Instagram/X mostly refuse to list
+        # content at all without a logged-in session, so this matters more
+        # here than for video sites.
         cookie_text = normalize_cookies(cookies, url) if cookies else None
         with cookie_tempfile(cookie_text) as cookie_tmp:
             if cookie_tmp:
                 cmd += ["--cookies", cookie_tmp]
+            elif s.cookie_file:
+                cmd += ["--cookies", s.cookie_file]
 
             cmd.append(url)  # URL must be last -- a positional arg, not a flag value
 

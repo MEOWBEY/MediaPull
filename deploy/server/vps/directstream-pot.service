@@ -1,0 +1,24 @@
+[Unit]
+Description=bgutil PO token provider for yt-dlp (YouTube)
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_USER__
+WorkingDirectory=__REPO_DIR__/pot-provider/server
+ExecStart=/usr/bin/node build/main.js
+Restart=on-failure
+RestartSec=5
+
+# Lightweight sidecar -- fixed cap, no per-box detection needed.
+MemoryMax=512M
+CPUQuota=50%
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__REPO_DIR__/pot-provider
+
+[Install]
+WantedBy=multi-user.target

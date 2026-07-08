@@ -6,6 +6,7 @@
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import QrCode from '@lucide/svelte/icons/qr-code';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
+	import X from '@lucide/svelte/icons/x';
 	import { toast } from 'svelte-sonner';
 
 	import { writeClipboard } from '$lib/clipboard';
@@ -177,9 +178,17 @@
 
 			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
 				{#if subtitleState?.isRunning}
-					<Button variant="ghost" size="sm" disabled class="gap-1 rounded-full px-2.5 py-1 text-xs">
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={() => playerHandle?.cancelSubtitles()}
+						title={t('subtitles.cancel')}
+						aria-label={t('subtitles.cancel')}
+						class="gap-1 rounded-full px-2.5 py-1 text-xs"
+					>
 						<Loader2 class="h-3 w-3 animate-spin" />
 						<span>{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
+						<X class="h-3 w-3 opacity-60" />
 					</Button>
 				{:else if subtitleState?.isResolvingExisting}
 					<Button variant="ghost" size="sm" disabled class="gap-1 rounded-full px-2.5 py-1 text-xs">

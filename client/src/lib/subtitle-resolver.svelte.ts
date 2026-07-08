@@ -42,6 +42,11 @@ export class SubtitleResolver {
 		return this.transcription.progress;
 	}
 
+	/** The in-flight Groq job's id, if any -- see `TranscriptionController.currentJobId`. */
+	get currentJobId(): string | null {
+		return this.transcription.currentJobId;
+	}
+
 	/** Restores a track persisted from a previous session -- whether it came
 	 *  from Groq or an existing caption doesn't matter once resolved, so it
 	 *  slots into the same place a freshly-generated one would. */
@@ -53,6 +58,16 @@ export class SubtitleResolver {
 
 	async generate(source: TranscribeSource): Promise<void> {
 		await this.transcription.generate(source);
+	}
+
+	/** Cancels the Groq job in flight, if any -- a no-op otherwise, mirroring
+	 *  the `resolvingExisting` guard in `useExisting()` above. */
+	cancel(): void {
+		if (!this.transcription.isRunning) {
+			return;
+		}
+
+		this.transcription.cancel();
 	}
 
 	async useExisting(track: SubtitleTrack): Promise<void> {

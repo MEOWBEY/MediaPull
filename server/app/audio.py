@@ -38,6 +38,10 @@ _FFMPEG_AUDIO_ARGS = ("-vn", "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:
 # Bound every ffmpeg/ffprobe call so a stalled network read (e.g. a dead HLS
 # segment) can't hang forever and pin a concurrency slot.
 _FFMPEG_TIMEOUT = 300
+# ffprobe is just reading a local file's metadata (no network), so it needs
+# far less slack than the ffmpeg extraction/chunking calls above -- this only
+# guards against a wedged/zombie process.
+_FFPROBE_TIMEOUT = 30
 # ffmpeg's own per-read network timeout (microseconds) -- 30s.
 _FFMPEG_RW_TIMEOUT = "30000000"
 
@@ -146,7 +150,15 @@ async def _run_ffmpeg(args: list[str], binary: str = "ffmpeg") -> None:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFMPEG_TIMEOUT)
     except asyncio.TimeoutError as exc:
         proc.kill()
+        await proc.wait()
         raise AudioError("Audio extraction timed out") from exc
+    except asyncio.CancelledError:
+        # A cancelled job's task would otherwise leave this ffmpeg child
+        # running as an orphan -- make sure it actually dies before the
+        # cancellation propagates.
+        proc.kill()
+        await proc.wait()
+        raise
     if proc.returncode != 0:
         raise AudioError(f"ffmpeg failed: {stderr.decode(errors='ignore')[-2000:].strip()}")
 
@@ -171,7 +183,16 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
             f"ffprobe is not installed or not on PATH ({binary!r}). Set FFPROBE_BINARY to its "
             "absolute path if it's installed somewhere not on this process's PATH."
         ) from exc
-    stdout, stderr = await proc.communicate()
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFPROBE_TIMEOUT)
+    except asyncio.TimeoutError as exc:
+        proc.kill()
+        await proc.wait()
+        raise AudioError("ffprobe timed out") from exc
+    except asyncio.CancelledError:
+        proc.kill()
+        await proc.wait()
+        raise
     if proc.returncode != 0:
         raise AudioError(f"ffprobe failed: {stderr.decode(errors='ignore')[-500:].strip()}")
     try:

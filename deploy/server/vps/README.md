@@ -70,7 +70,7 @@ it instead:
 ```bash
 ssh root@YOUR_SERVER_IP
 git clone https://github.com/MEOWBEY/direct-stream.git /tmp/direct-stream
-sudo /tmp/direct-stream/deploy/server/vps/install.sh
+sudo  bash /tmp/direct-stream/deploy/server/vps/install.sh
 ```
 
 (`/tmp` is Linux's throwaway-files folder — anything there is fine to
@@ -86,11 +86,29 @@ It will ask you, in plain language:
 2. **What port should the backend listen on?** (default `8000` — only
    matters if you're already using that port for something else, or want to
    run two copies on one box).
-3. **How do you want to serve the web client?**
+3. **What public port should the reverse proxy use?** (only asked if you gave
+   a domain; default `80`). This is the port *visitors* hit, separate from
+   the backend's own internal port above. If something else on the box is
+   already listening on the port you pick `install.sh` detects it up front
+   and asks you to pick a different one instead of silently overwriting that
+   other service's nginx config (which is what used to happen, and is why a
+   previous version of this installer could take an unrelated panel
+   offline). Point your browser at `http://your-domain:PORT` (or just the
+   domain if you kept the default 80).
+4. **How do you want to serve the web client?**
    - *Same domain as the API* (simplest — recommended for most people)
    - *A separate subdomain on this same server* (e.g. `app.example.com`)
    - *Don't serve it here* (you're hosting it on Vercel/Netlify/elsewhere, or
      skipping the client for now)
+5. **Install the PO token provider for YouTube?** (default: yes) — see
+   [YouTube PO tokens](#youtube-po-tokens) below for what this is and why
+   you almost always want it. Right after, you'll also get an optional
+   prompt for a **static PO token** — leave it blank unless you specifically
+   have one; the automatic provider you just installed handles this for you.
+6. **Groq API key for auto-subtitles?** — optional, leave blank to skip.
+   Get a free one (no card required) at
+   [console.groq.com](https://console.groq.com); paste it here or add it to
+   `server/.env` later.
 
 Answer once — `install.sh` remembers your answers (in
 `/opt/directstream/.vps-deploy.env`) so `update.sh`/`uninstall.sh` don't ask
@@ -228,6 +246,73 @@ curl https://YOUR_DOMAIN/health
 `ffmpegAvailable`/`galleryDlAvailable` in that response should both be
 `true` — if either is `false`, see the **Known issues** note below.
 
+## YouTube PO tokens
+
+YouTube increasingly blocks extraction from datacenter/cloud IPs (exactly
+what a VPS is) with errors like *"Sign in to confirm you're not a bot"*, or
+refuses age-restricted videos even with cookies added. The fix is a **PO
+token** — a per-video proof-of-not-a-bot token yt-dlp needs to attach to the
+request.
+
+Manually copying a PO token out of a browser used to work but **no longer
+does** — YouTube now binds tokens to the specific video ID, so a hand-copied
+token is already stale by the time you'd paste it in. The supported fix is a
+small companion service, [`bgutil-ytdlp-pot-provider`](https://github.com/Brainicism/bgutil-ytdlp-pot-provider),
+that fetches a fresh token automatically for every extraction.
+
+`install.sh` offers to set this up for you (question 4, defaults to yes):
+it installs a pip plugin that yt-dlp auto-detects, plus a small Node.js
+server running as its own systemd service (`directstream-pot`, listening on
+`127.0.0.1:4416` — nothing further to configure). If you skipped it, or want
+to check it's running:
+
+```bash
+sudo systemctl status directstream-pot
+journalctl -u directstream-pot -n 50
+```
+
+`update.sh` keeps the plugin and the server version-matched automatically on
+every update — they speak a version-checked protocol to each other, so
+letting them drift apart will cause the plugin to stop working.
+
+## Server-wide cookies
+
+Beyond YouTube, most of X/Twitter and any private/login-only Instagram post
+refuse to serve content **at all** without a logged-in session — no PO token
+fixes that, you need real cookies. `install.sh` sets up
+`server/cookies.txt` (from the tracked `server/cookies.example.txt`
+template) and points `COOKIE_FILE` at it automatically:
+
+```bash
+sudo nano /opt/directstream/server/cookies.txt
+```
+
+Paste Netscape-format `cookies.txt` content — export it with the
+["Get cookies.txt LOCALLY"](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
+browser extension, ideally from a **throwaway logged-in account**, not your
+main one. Save, then `sudo systemctl restart directstream`. This file is
+never touched by `update.sh`/`uninstall.sh`, so it survives every future
+update.
+
+## Resource limits
+
+`install.sh` detects the box's CPU core count and total RAM and caps the
+backend service accordingly (`MemoryMax=`/`CPUQuota=` in the systemd unit) —
+roughly 70% of RAM and all-but-one CPU core, leaving headroom for nginx and
+anything else sharing the VPS (another panel, a database, …). On a small box
+(≤2 vCPU or ≤2GB RAM) it also dials back `TRANSCRIBE_MAX_CONCURRENT_JOBS` and
+`TRANSCRIBE_WORKERS` to `1` each in `server/.env`, since those two are what
+actually run ffmpeg (CPU-heavy) — this is the knob that matters if you see
+the box pegged near 100% CPU while auto-subtitle jobs are running.
+
+These caps are re-applied on every `update.sh` run (it re-templates the unit
+from the values saved in `.vps-deploy.env`, not just restarts), so a manual
+edit to the installed `/etc/systemd/system/directstream.service` file will be
+overwritten on the next update. For a permanent override, use
+`systemctl edit directstream` instead (it layers a drop-in on top rather than
+editing the generated file), then `systemctl daemon-reload && systemctl
+restart directstream`.
+
 ## Updating later
 
 Use the bundled script — it pulls, reinstalls dependencies, rebuilds the
@@ -288,6 +373,21 @@ anything.
   installs ffmpeg via `apt` automatically; if you skipped that or moved it,
   set `FFMPEG_BINARY`/`FFPROBE_BINARY` in `server/.env` to its absolute path
   (e.g. `/usr/bin/ffmpeg`) and restart.
+- **"This site or URL isn't supported by the extractor" on a link that used
+  to work**: usually means the pinned `yt-dlp`/`gallery-dl` version is
+  behind — both sites (especially YouTube) change often enough that the
+  version in `requirements.txt` can lag real fixes upstream. `update.sh`
+  always upgrades both to their latest release, on top of the pinned
+  versions — run it even if you haven't pulled new app code:
+  `sudo /opt/directstream/deploy/server/vps/update.sh`
+- **X/Twitter images: "No images found at this URL"**: most X content
+  requires a logged-in session to even list — see **Server-wide cookies**
+  above.
+- **"Unknown or expired job" when generating subtitles**: this was a real
+  bug (fixed) caused by running more than one backend worker process — the
+  in-memory job list isn't shared between workers. If you're on an older
+  install, re-run `install.sh` (or check `directstream.service`'s
+  `--workers` flag is `1`, not `2`) and restart.
 
 ## Notes
 

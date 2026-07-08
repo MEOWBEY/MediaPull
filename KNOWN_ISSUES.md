@@ -27,6 +27,25 @@ servers and walk through those flows once by hand.
   "why did this fail" messages (rate-limited, blocked, etc.) were written for
   yt-dlp's wording, which gallery-dl doesn't use. Most gallery-dl failures
   currently just say "extraction failed" instead of a specific reason.
+- ~~gallery-dl ignoring the server-wide `COOKIE_FILE`~~ — fixed. It now falls
+  back to `COOKIE_FILE` the same way video extraction always did, so X/
+  Instagram work for everyone using the server, not just people who pasted
+  their own cookies in **Settings → Cookies**.
+
+## YouTube
+
+- Most "this used to work, now it doesn't" YouTube reports trace back to one
+  of two things, both addressed by the VPS installer: a stale `yt-dlp`
+  version (YouTube changes often; `update.sh`/`install.sh` now always pull
+  the latest release on top of the pinned `requirements.txt` version), or a
+  missing PO token on a cloud/datacenter IP (see
+  `deploy/server/vps/README.md`'s **YouTube PO tokens** section — the
+  installer sets this up automatically, opt-out if you don't want it).
+- `YOUTUBE_PO_TOKEN` (manually pasting a token into `.env`) still exists as a
+  config option but is effectively unusable for real traffic — YouTube binds
+  tokens to a single video ID now, so a hand-copied one is stale for every
+  other video. Only the automatic PO-token-provider service actually works
+  going forward.
 
 ## Backend cleanup still worth doing (low priority, not urgent)
 
@@ -54,13 +73,24 @@ servers and walk through those flows once by hand.
 
 ## Deploy / VPS installer
 
-- The installer assumes a Debian/Ubuntu-family server (`apt-get`,
-  `python3.12`, `ufw`). Other distros (Fedora, Arch, Alpine, …) aren't
-  supported by the script — you'd need to follow the "Manual install, step
-  by step" section in `deploy/server/vps/README.md` and adapt the package
-  manager commands yourself.
+- The installer assumes a Debian/Ubuntu-family server (`apt-get`, `ufw`).
+  Other distros (Fedora, Arch, Alpine, …) aren't supported by the script —
+  you'd need to follow the "Manual install, step by step" section in
+  `deploy/server/vps/README.md` and adapt the package manager commands
+  yourself.
 - Piping the installer through `curl | bash` skips all the interactive
   questions (there's no keyboard attached to answer them) and silently uses
   the defaults. Download/clone the script and run it directly if you want to
   be asked about domain/port/client setup — this is explained in the deploy
   README, but easy to miss.
+- ~~"Unable to locate package python3.12" on Ubuntu 22.04~~ — fixed. The
+  installer now detects and uses whatever Python 3.10+ your distro's default
+  repos actually offer instead of hard-requiring 3.12 specifically (nothing
+  in the app needs that exact version).
+- ~~"Unknown or expired job" when generating subtitles on a VPS (but not
+  locally)~~ — fixed. The real cause was the backend running 2 worker
+  processes; the in-memory job list isn't shared between them, so a status
+  poll could land on a worker that never saw the job get created. The
+  installer now runs a single worker, which is correct for this app's
+  in-memory-only design (see the comment in `directstream.service` before
+  ever raising this back up).

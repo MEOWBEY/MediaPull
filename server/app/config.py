@@ -93,13 +93,30 @@ class Settings(BaseSettings):
     # Hard cap on the one audio/video stream a job downloads to disk (the
     # only place in the app that writes media bytes to disk).
     transcribe_max_download_bytes: int = Field(default=300_000_000, ge=1_000_000)
-    # Only chunk the audio when it would exceed Groq's per-request limits.
-    transcribe_chunk_seconds: int = Field(default=600, ge=60)
+    # Only chunk the audio when it would exceed this many seconds -- kept
+    # well under Groq's actual per-request size limit at ~32kbps opus (a
+    # chunk this long is under 2MB). 480s (8min) is sized so a ~40min video
+    # lands on 5 chunks, fully using groq_chunk_concurrency's default below
+    # instead of leaving parallelism on the table, without over-fragmenting
+    # shorter videos into needless extra requests.
+    transcribe_chunk_seconds: int = Field(default=480, ge=60)
     # How long a finished/errored job's result stays available for polling
     # and subtitle-file downloads before it's swept from memory.
     transcribe_job_ttl: int = Field(default=1800, ge=60)
-    # Thread/subprocess pool size for ffmpeg extraction/chunking.
+    # Whole-job wall-clock cap; a stuck/very slow job is killed and reported
+    # as an error rather than running forever.
+    transcribe_job_timeout: int = Field(default=900, ge=60, le=3600, alias="TRANSCRIBE_JOB_TIMEOUT")
+    # Bounds concurrent CPU-heavy pipeline steps (audio transcode + waveform
+    # extraction) separately from transcribe_max_concurrent_jobs, which only
+    # gates overall job admission -- without this a small VPS could end up
+    # running several ffmpeg transcodes at once even though it's fine to have
+    # more jobs than that merely waiting on a Groq network round-trip.
     transcribe_workers: int = Field(default=2, ge=1, le=8)
+    # Bounded parallel Groq requests per job when a video is split into
+    # multiple chunks. 5 is a reasonable default for Groq's free-tier rate
+    # limits as of this writing; raise it if your account allows more (watch
+    # the logs for 429s), lower it if you see them at 5.
+    groq_chunk_concurrency: int = Field(default=5, ge=1, le=8, alias="GROQ_CHUNK_CONCURRENCY")
     groq_whisper_model: str = Field(default="whisper-large-v3-turbo")
 
     # ----- Image/gallery extraction (gallery-dl) ---------------------------

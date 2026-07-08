@@ -6,8 +6,8 @@
 # TLS: run certbot afterwards (see README.md).
 
 server {
-    listen 80;
-    listen [::]:80;
+    listen __PUBLIC_PORT__;
+    listen [::]:__PUBLIC_PORT__;
     server_name app.example.com;
 
     root /opt/directstream/client/build;

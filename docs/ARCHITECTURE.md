@@ -103,10 +103,15 @@ in-flight jobs) and runs it as a background `asyncio` task:
    downsamples it to a small peaks array for the player's seek bar —
    non-fatal if it fails; subtitles still work without a waveform.
 
-The client polls `GET /transcribe/{jobId}` and shows a progress bar that
-blends the server's real (coarse, stage-level) progress with a client-side
-"trickle" animation so long silent gaps between real updates don't look
-frozen (see `transcribe.svelte.ts`).
+The client subscribes to `GET /transcribe/{jobId}/events` (SSE — the server
+pushes an update the instant `JobStore.update()` changes the job, via a
+per-job `asyncio.Queue` fanned out to every subscriber) and shows a progress
+bar that blends that real, pushed progress with a client-side "trickle"
+animation so the still-genuinely-flat single-step stages (e.g. audio
+download/transcode) don't look frozen between real updates (see
+`transcribe.svelte.ts`). `GET /transcribe/{jobId}` (plain, one-shot) still
+exists alongside it for a quick manual check or a client that can't hold a
+streaming connection open.
 
 ### Configuration (`config.py`)
 
@@ -138,7 +143,7 @@ component. The three main ones:
   for running extraction. Owns cancellation, the elapsed-time counter,
   client-side result caching, and the auto-mode fallback (`extractAuto()`
   tries video, then silently retries as gallery on failure/empty result).
-- `transcribe.svelte.ts` — `TranscriptionController`: the polling loop +
+- `transcribe.svelte.ts` — `TranscriptionController`: the SSE subscription +
   trickle-progress animation described above.
 - `subtitle-resolver.svelte.ts` — `SubtitleResolver`: resolves either an
   existing source caption track or a freshly-generated one into one shape

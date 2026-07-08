@@ -187,7 +187,7 @@ export interface SubtitleTrackResult {
  *  see `postJson`/`getJson` in `api/client.ts`). */
 export interface TranscribeStatus {
 	jobId: string;
-	status: 'queued' | 'downloading' | 'chunking' | 'transcribing' | 'finalizing' | 'done' | 'error';
+	status: 'queued' | 'downloading' | 'chunking' | 'transcribing' | 'finalizing' | 'done' | 'error' | 'cancelled';
 	progress: number;
 	stepLabel: string;
 	error?: string | null;

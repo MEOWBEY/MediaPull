@@ -1,12 +1,13 @@
 <script lang="ts">
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
-	import { onMount, tick, untrack } from 'svelte';
+	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	import QualityMenu from '$lib/components/QualityMenu.svelte';
 	import SubtitlePanel from '$lib/components/SubtitlePanel.svelte';
 	import { Button } from '$lib/components/ui/button';
+	import { resolveApiUrl } from '$lib/config';
 	import { isAudioType, mediaKindLabel, qualityLabel } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
@@ -22,6 +23,7 @@
 		requestSubtitles: () => Promise<void>;
 		openSubtitlePanel: () => void;
 		useExistingTrack: (track: SubtitleTrack) => void;
+		cancelSubtitles: () => void;
 	}
 
 	/** Pushed to the parent whenever subtitle state changes, so the card
@@ -238,14 +240,50 @@
 		await subtitles.generate({ webpageUrl, qualities: formatGroups.flatMap((g) => g.qualities) });
 	}
 
+	function cancelSubtitles() {
+		subtitles.cancel();
+	}
+
 	// Handed to the parent once, via onReady.
 	onMount(() => {
 		onReady?.({
 			requestSubtitles: () => generateSubtitles(),
 			openSubtitlePanel: () => (subtitlePanelOpen = true),
-			useExistingTrack: (track: SubtitleTrack) => subtitles.useExisting(track)
+			useExistingTrack: (track: SubtitleTrack) => subtitles.useExisting(track),
+			cancelSubtitles
 		});
 	});
+
+	// Removing this card (unmounts VideoPlayer) or navigating away shouldn't
+	// leave an in-flight Groq job running server-side with nobody watching
+	// it -- cancel() aborts locally and best-effort tells the server to free
+	// the job's slot.
+	onDestroy(() => {
+		subtitles.cancel();
+	});
+
+	// A full page refresh/close kills the JS runtime before onDestroy's normal
+	// fetch could reliably complete, so this needs its own `keepalive` request
+	// (survives page teardown, unlike a plain fetch) rather than reusing
+	// cancel()'s fire-and-forget call. There's no central place that tracks
+	// every active player/resolver instance (VideoExtractList only renders
+	// VideoCard per item, with no ref collection -- see its onReady handling),
+	// so this is scoped to this player's own job instead of a new global
+	// registry.
+	if (typeof window !== 'undefined') {
+		const onBeforeUnload = () => {
+			const jobId = subtitles.currentJobId;
+
+			if (!jobId) {
+				return;
+			}
+
+			fetch(resolveApiUrl(`/transcribe/${jobId}`), { method: 'DELETE', keepalive: true }).catch(() => {});
+		};
+
+		window.addEventListener('beforeunload', onBeforeUnload);
+		onDestroy(() => window.removeEventListener('beforeunload', onBeforeUnload));
+	}
 
 	function seekTo(time: number) {
 		if (videoEl) {
@@ -726,5 +764,6 @@
 	canDownload={Boolean(activeSubtitleTrack?.srtUrl)}
 	onDownload={downloadSrt}
 	onGenerate={generateSubtitles}
+	onCancel={cancelSubtitles}
 	generating={subtitles.isRunning}
 />

@@ -11,6 +11,10 @@ claude
 !.env.example
 !.env.test
 
+# ── Server-side default cookies (personal, contains login session data) ──
+server/cookies.txt
+!server/cookies.example.txt
+
 # ── OS cruft ──
 .DS_Store
 Thumbs.db

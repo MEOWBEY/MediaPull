@@ -310,7 +310,6 @@
 				? 'grid-cols-1 lg:grid-cols-2'
 				: 'grid-cols-1'}"
 		>
-			{#each [0, 1] as i (i)}
 				<div
 					class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
 				>
@@ -359,7 +358,6 @@
 						</div>
 					</div>
 				</div>
-			{/each}
 		</div>
 	</section>
 {/if}
