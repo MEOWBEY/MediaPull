@@ -7,10 +7,57 @@ diverging.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+import os
+import tempfile
 from urllib.parse import urlparse
 
+from .config import Settings
+
 logger = logging.getLogger("directstream.net_common")
+
+
+@contextlib.contextmanager
+def cookie_tempfile(cookie_text: str | None):
+    """Write ``cookie_text`` to a throwaway Netscape cookies.txt file for the
+    duration of one extractor call, and remove it afterward.
+
+    Shared by ``Extractor`` and ``GalleryExtractor`` so the write/cleanup dance
+    (and any fix to it, e.g. logging a failed unlink) only has to be made once.
+    Yields ``None`` when there's no cookie text, so callers can always use
+    ``with cookie_tempfile(text) as path:`` regardless of whether cookies were
+    supplied.
+    """
+    if not cookie_text:
+        yield None
+        return
+
+    handle = tempfile.NamedTemporaryFile("w", suffix=".txt", delete=False, encoding="utf-8")
+    try:
+        handle.write(cookie_text)
+    finally:
+        handle.close()
+    path = handle.name
+    try:
+        yield path
+    finally:
+        try:
+            os.unlink(path)
+        except OSError as exc:
+            # Leftover cookie files hold session tokens, so a failed cleanup is
+            # worth knowing about even though it isn't fatal to the request.
+            logger.warning("failed to remove cookie temp file %s: %s", path, exc)
+
+
+def impersonate_kwarg(settings: Settings) -> dict:
+    """``{"impersonate": <client>}`` when browser impersonation is enabled and
+    configured, else ``{}`` -- the curl_cffi kwarg shared by the extractor's
+    format-probe session, the media proxy, and the transcription pipeline's
+    audio download."""
+    if settings.enable_impersonation and settings.impersonate_client:
+        return {"impersonate": settings.impersonate_client}
+    return {}
 
 
 def build_impersonate(client: str):

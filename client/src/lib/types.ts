@@ -113,9 +113,11 @@ export interface Preferences {
 	showVideoOnlyFormats: boolean;
 	/** Open the subtitle search panel automatically once a track is ready. */
 	autoOpenSubtitlePanel: boolean;
-	/** Which extraction endpoint the URL input routes to. No server-side
-	 *  auto-detection -- this is the single source of truth for routing. */
-	contentTypeMode: 'video' | 'gallery';
+	/** Which extraction endpoint the URL input routes to. `'auto'` (the
+	 *  default) tries video first and silently falls back to gallery if
+	 *  nothing comes back -- see `ExtractionController.extractLinks`. Force
+	 *  `'video'`/`'gallery'` from Preferences to always use one endpoint. */
+	contentTypeMode: 'auto' | 'video' | 'gallery';
 }
 
 // ----- Image galleries (gallery-dl) --------------------------------------
@@ -127,17 +129,25 @@ export interface IncomingGalleryImage {
 	height?: number;
 	filesize?: number;
 	ext?: string;
+	httpHeaders?: Record<string, string> | null;
 }
 
 export interface IncomingGallery {
 	title?: string;
 	webpageUrl?: string;
 	images?: IncomingGalleryImage[];
+	/** Entries gallery-dl reported as errors or in an unrecognized shape --
+	 *  a partially-failed gallery (common on Instagram/X without cookies)
+	 *  looks different from a fully successful one. */
+	skippedCount?: number;
 }
 
-/** A normalized image ready for rendering/download. */
+/** A normalized image ready for rendering/download. The client builds `url`
+ *  (the proxied link, used for display/download/copy) from `sourceUrl` +
+ *  `httpHeaders` the same way video formats build `proxiedVideoUrl`. */
 export interface ImageAsset {
 	url: string;
+	sourceUrl: string;
 	width: number;
 	height: number;
 	filesize: number;
@@ -149,6 +159,9 @@ export interface GroupedGallery {
 	title?: string;
 	webpage_url?: string;
 	images: ImageAsset[];
+	/** Entries gallery-dl couldn't extract for this source (see
+	 *  `IncomingGallery.skippedCount`). */
+	skippedCount?: number;
 }
 
 /** One subtitle line with its timing. */

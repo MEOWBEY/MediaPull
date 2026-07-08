@@ -40,6 +40,16 @@ export function isAudioType(type: string): boolean {
 	return typeof type === 'string' && type.startsWith('audio/');
 }
 
+/** Hostname minus a leading "www." -- shared by the video and gallery result
+ *  lists for their export-filename and empty-title fallbacks. */
+export function sourceHost(url: string | undefined): string {
+	try {
+		return new URL(url ?? '').hostname.replace(/^www\./, '');
+	} catch {
+		return '';
+	}
+}
+
 // Friendly, organized labels: streaming protocols, then audio "<codec> Audio",
 // then video "<container> Video". Falls back to the raw subtype. Shared by
 // the extract-list card meta row and the player's format-kind tab strip.

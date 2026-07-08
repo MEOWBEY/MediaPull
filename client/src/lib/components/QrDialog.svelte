@@ -15,12 +15,18 @@
 	}: { url?: string; open?: boolean; onCopy?: (url: string) => void } = $props();
 
 	// Build a scalable SVG QR for the link. typeNumber 0 = auto-pick the smallest
-	// version that fits; 'M' error correction tolerates a bit of camera noise.
+	// version that fits; 'L' error correction is the least redundant level --
+	// fewer modules (a visibly less dense/"busy" grid) for the same URL, which
+	// is what a phone camera actually needs for a clean on-screen scan (as
+	// opposed to a printed code that might get scuffed/damaged, where 'M'+
+	// redundancy earns its keep).
 	const svg = $derived.by(() => {
-		if (!url) {return '';}
+		if (!url) {
+			return '';
+		}
 
 		try {
-			const qr = qrcode(0, 'M');
+			const qr = qrcode(0, 'L');
 
 			qr.addData(url);
 			qr.make();
@@ -33,17 +39,18 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-xs">
+	<Dialog.Content class="max-w-sm" closeLabel={t('common.close')}>
 		<Dialog.Header>
 			<Dialog.Title>{t('qr.title')}</Dialog.Title>
 			<Dialog.Description>{t('qr.desc')}</Dialog.Description>
 		</Dialog.Header>
 
 		{#if svg}
-			<!-- White backing so dark modules stay scannable in dark mode. -->
-			<div
-				class="mx-auto w-full max-w-60 rounded-xl bg-white p-3 [&_svg]:h-full [&_svg]:w-full"
-			>
+			<!-- White backing so dark modules stay scannable in dark mode. Sized up
+			     from the old 240px box -- a bigger on-screen target with fewer
+			     modules (see the 'L' error-correction note above) is what actually
+			     makes a phone camera lock on quickly. -->
+			<div class="mx-auto w-full max-w-72 rounded-xl bg-white p-4 [&_svg]:h-full [&_svg]:w-full">
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				{@html svg}
 			</div>

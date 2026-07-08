@@ -75,13 +75,15 @@ builders for the client).
   Cloudflare Pages/Vercel/Netlify, backend on Northflank or Railway (native
   Nixpacks, no Docker).
 - **Want full control and don't mind the setup:** a small VPS via
-  `deploy/server/vps/` (+ `deploy/client/vps/`) — comes with an
-  `install.sh`/`update.sh`/`uninstall.sh` that automates the whole
-  lifecycle. Oracle Cloud's Always Free Ampere shape works, though Oracle
-  quietly halved that allowance (4 OCPU/24GB → 2 OCPU/12GB) in June 2026
-  with no announcement — still enough for this app, just no longer as
-  generous. Any other free-tier or ~$5/mo VPS provider (Hetzner,
-  DigitalOcean, etc.) works identically.
+  `deploy/server/vps/` — one **interactive** `install.sh` sets up the
+  backend AND (if you want) the client together, asking a few plain-language
+  questions (domain, port, how to serve the client) instead of requiring
+  you to know which env vars to set. Comes with `update.sh`/`uninstall.sh`
+  for the rest of the lifecycle. Oracle Cloud's Always Free Ampere shape
+  works, though Oracle quietly halved that allowance (4 OCPU/24GB → 2
+  OCPU/12GB) in June 2026 with no announcement — still enough for this app,
+  just no longer as generous. Any other free-tier or ~$5/mo VPS provider
+  (Hetzner, DigitalOcean, etc.) works identically.
 - **Avoid for the backend:** Fly.io and Railway, if "free" specifically
   matters to you — both have moved to trial-credit/pay-as-you-go models.
   They're still fine choices if you're paying or already have credits.

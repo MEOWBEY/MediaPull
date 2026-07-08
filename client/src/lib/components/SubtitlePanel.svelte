@@ -47,7 +47,9 @@
 	const filteredSegments = $derived.by(() => {
 		const q = filterQuery.trim().toLowerCase();
 
-		if (!q) {return segments;}
+		if (!q) {
+			return segments;
+		}
 
 		return segments.filter(
 			(seg) => seg.text.toLowerCase().includes(q) || formatSecondsToTime(seg.start).includes(q)
@@ -60,17 +62,22 @@
 	);
 
 	$effect(() => {
-		if (!open || !activeSeg) {return;}
+		if (!open || !activeSeg) {
+			return;
+		}
 
 		const idx = filteredSegments.indexOf(activeSeg);
 
-		if (idx >= 0) {rowEls[idx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });}
+		if (idx >= 0) {
+			rowEls[idx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+		}
 	});
 </script>
 
 <Sheet.Root bind:open>
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
+		closeLabel={t('common.close')}
 		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-4 sm:max-w-md sm:p-6 {desktop.matches
 			? ''
 			: 'h-[65vh] rounded-t-3xl'}"
@@ -86,6 +93,7 @@
 					onclick={onDownload}
 					class="h-9 w-9 shrink-0"
 					title={t('subtitles.download')}
+					aria-label={t('subtitles.download')}
 				>
 					<Download class="h-4 w-4" />
 				</Button>

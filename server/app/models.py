@@ -130,6 +130,12 @@ class GalleryImage(BaseModel):
     height: int | None = None
     filesize: int | None = None
     ext: str = "jpg"
+    # Referer (and, when available, cookies) the client needs to actually load
+    # this image -- Instagram/X CDN URLs are frequently Referer- or
+    # session-gated, so an <img> tag pointed straight at them 403s. Mirrors
+    # VideoFormat.http_headers; the client proxies through the same
+    # `/proxy-video` the player already uses.
+    http_headers: dict[str, str] | None = None
 
 
 class GalleryInfo(BaseModel):
@@ -137,6 +143,11 @@ class GalleryInfo(BaseModel):
     webpage_url: str | None = None
     images: list[GalleryImage] = Field(default_factory=list)
     method: str = "gallery-dl"
+    # Entries gallery-dl reported as errors, or that came back in a shape this
+    # app doesn't recognize -- surfaced instead of silently vanishing, so a
+    # partially-failed gallery (common on Instagram/X without fresh cookies)
+    # is visible to the user rather than looking like "extraction is flaky".
+    skipped: int = 0
 
 
 class ClientGalleryImage(BaseModel):
@@ -147,6 +158,7 @@ class ClientGalleryImage(BaseModel):
     height: int | None = None
     filesize: int | None = None
     ext: str = "jpg"
+    http_headers: dict[str, str] | None = Field(default=None, alias="httpHeaders")
 
 
 class ClientGallery(BaseModel):
@@ -155,6 +167,7 @@ class ClientGallery(BaseModel):
     title: str | None = None
     webpage_url: str | None = Field(default=None, alias="webpageUrl")
     images: list[ClientGalleryImage] = Field(default_factory=list)
+    skipped: int = Field(default=0, alias="skippedCount")
 
 
 class GalleryResponse(BaseModel):
@@ -165,10 +178,18 @@ class GalleryResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     status: str = "healthy"
     service: str = "directstream"
     version: str
     timestamp: str
+    # Surfaced so deploy tooling (install.sh's verification step, uptime
+    # monitoring) can catch a broken ffmpeg/gallery-dl install at boot
+    # instead of only discovering it when a real /transcribe or
+    # /extract-gallery request fails.
+    ffmpeg_available: bool = Field(default=True, alias="ffmpegAvailable")
+    gallery_dl_available: bool = Field(default=True, alias="galleryDlAvailable")
 
 
 # ----- transcription (auto-subtitles) ---------------------------------------------

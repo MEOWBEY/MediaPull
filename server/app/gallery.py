@@ -15,19 +15,29 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import subprocess
 import sys
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from .config import Settings
 from .extractor import ExtractionError, classify_extraction_error, is_valid_url
 from .models import GalleryImage, GalleryInfo
-from .net_common import normalize_cookies
+from .net_common import cookie_tempfile, normalize_cookies
 
 logger = logging.getLogger("directstream.gallery")
+
+# classify_extraction_error's needles are tuned for yt-dlp's error vocabulary
+# ("confirm you're not a bot", etc.), which gallery-dl's stderr essentially
+# never matches -- most gallery-dl failures fall through to this generic
+# message. Overridden with gallery-appropriate wording below.
+_GENERIC_EXTRACTION_MESSAGE = (
+    "Extraction failed. The site may be unsupported or temporarily unavailable."
+)
+_GENERIC_GALLERY_MESSAGE = (
+    "Image extraction failed. The source may require cookies (Settings → Cookies), "
+    "block automated access, or be temporarily unavailable."
+)
 
 
 class GalleryExtractor:
@@ -76,55 +86,60 @@ class GalleryExtractor:
             "--no-input",
         ]
 
-        cookie_tmp: str | None = None
         cookie_text = normalize_cookies(cookies, url) if cookies else None
-        if cookie_text:
-            handle = tempfile.NamedTemporaryFile(
-                "w", suffix=".txt", delete=False, encoding="utf-8"
-            )
+        with cookie_tempfile(cookie_text) as cookie_tmp:
+            if cookie_tmp:
+                cmd += ["--cookies", cookie_tmp]
+
+            cmd.append(url)  # URL must be last -- a positional arg, not a flag value
+
             try:
-                handle.write(cookie_text)
-            finally:
-                handle.close()
-            cookie_tmp = handle.name
-            cmd += ["--cookies", cookie_tmp]
-
-        cmd.append(url)  # URL must be last -- a positional arg, not a flag value
-
-        try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=s.gallery_dl_timeout,
-                check=False,
-            )
-        except FileNotFoundError as exc:
-            raise ExtractionError(
-                f"gallery-dl is not installed or not on PATH ({s.gallery_dl_binary!r})",
-                status=500,
-            ) from exc
-        except subprocess.TimeoutExpired as exc:
-            raise ExtractionError("Gallery extraction timed out", status=504) from exc
-        finally:
-            if cookie_tmp is not None:
-                try:
-                    os.unlink(cookie_tmp)
-                except OSError:
-                    pass
+                proc = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=s.gallery_dl_timeout,
+                    check=False,
+                )
+            except FileNotFoundError as exc:
+                raise ExtractionError(
+                    f"gallery-dl is not installed or not on PATH ({s.gallery_dl_binary!r})",
+                    status=500,
+                ) from exc
+            except subprocess.TimeoutExpired as exc:
+                raise ExtractionError("Gallery extraction timed out", status=504) from exc
 
         if proc.returncode != 0 and not proc.stdout.strip():
             status, message = classify_extraction_error(RuntimeError(proc.stderr))
+            if message == _GENERIC_EXTRACTION_MESSAGE:
+                message = _GENERIC_GALLERY_MESSAGE
             raise ExtractionError(message, status=status)
 
-        images = self._parse_dump_json(proc.stdout)
+        images, skipped = self._parse_dump_json(proc.stdout)
         if not images:
             raise ExtractionError("No images found at this URL", status=422)
+
+        if skipped:
+            logger.warning(
+                "gallery-dl skipped %d unrecognized/errored entr%s for %s",
+                skipped,
+                "y" if skipped == 1 else "ies",
+                url,
+            )
+
+        # Instagram/X CDN URLs are frequently Referer- or session-gated; the
+        # webpage itself is the Referer a real browser would send. The client
+        # routes images through the same `/proxy-video` the player uses so
+        # this actually gets applied (an <img> tag can't set headers itself).
+        headers = {"Referer": url}
+        for image in images:
+            image.http_headers = headers
 
         return GalleryInfo(
             title=self._guess_title(images, url),
             webpage_url=url,
             images=images,
+            skipped=skipped,
         )
 
     @staticmethod
@@ -132,33 +147,39 @@ class GalleryExtractor:
         return urlparse(url).path.rsplit("/", 1)[-1] or urlparse(url).netloc
 
     @classmethod
-    def _parse_dump_json(cls, stdout: str) -> list[GalleryImage]:
+    def _parse_dump_json(cls, stdout: str) -> tuple[list[GalleryImage], int]:
         """Parse `gallery-dl -j` output into a flat image list.
 
         Output shape varies by gallery-dl version but is consistently a JSON
         array of `[status, url, metadata]` entries (metadata optional/last).
-        Parsing is defensive — unexpected shapes are skipped rather than
-        raising, since a partial gallery is better than none.
+        Per-item failures come back as `(-1, {"error": ..., "message": ...})`
+        (no url) -- counted in the returned ``skipped`` total and logged by
+        the caller rather than silently vanishing, since a gallery that's
+        half-failed (common on Instagram/X without fresh cookies) should look
+        different from one that fully succeeded.
         """
         text = stdout.strip()
         if not text:
-            return []
+            return [], 0
 
         try:
             data = json.loads(text)
         except json.JSONDecodeError:
             logger.warning("gallery-dl produced non-JSON output")
-            return []
+            return [], 0
 
         if not isinstance(data, list):
-            return []
+            return [], 0
 
         images: list[GalleryImage] = []
+        skipped = 0
         for entry in data:
             image = cls._entry_to_image(entry)
             if image is not None:
                 images.append(image)
-        return images
+            else:
+                skipped += 1
+        return images, skipped
 
     @staticmethod
     def _entry_to_image(entry) -> GalleryImage | None:  # noqa: ANN001
@@ -177,6 +198,16 @@ class GalleryExtractor:
 
         if not url:
             return None
+
+        # Instagram (and other extractors with `videos_dash` on) replace a
+        # video/reel's real CDN URL with a synthetic `ytdl:<url>` pseudo-URL
+        # when it has a DASH manifest. The part after the prefix is a real,
+        # directly-fetchable URL -- stripping it is enough to keep the item
+        # instead of silently dropping every video in a mixed carousel.
+        if url.startswith("ytdl:"):
+            url = url[len("ytdl:") :]
+            if not url.startswith(("http://", "https://")):
+                return None
 
         return GalleryImage(
             url=url,

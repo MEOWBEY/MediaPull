@@ -138,7 +138,7 @@ async def run_transcription_job(
             srt_text = to_srt(merged)
 
             try:
-                waveform = await extract_peaks(audio_path)
+                waveform = await extract_peaks(audio_path, settings)
             except WaveformError as exc:
                 logger.warning("waveform extraction failed for job %s: %s", job_id, exc)
                 waveform = None  # non-fatal -- subtitles still work without it

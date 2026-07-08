@@ -24,7 +24,9 @@ const KIND_PRIORITY: Record<string, number> = {
 };
 
 function kindPriority(type: MediaType): number {
-	if (isAudioType(type)) {return 3;}
+	if (isAudioType(type)) {
+		return 3;
+	}
 
 	return KIND_PRIORITY[type] ?? 0;
 }
@@ -51,8 +53,12 @@ export function determineMediaType(format: IncomingFormat | undefined): MediaTyp
 	const ext = (format?.ext ?? '').toLowerCase();
 	const protocol = (format?.protocol ?? '').toLowerCase();
 
-	if (protocol === 'm3u8_native') {return 'application/x-mpegURL';}
-	if (protocol === 'dash') {return 'application/dash+xml';}
+	if (protocol === 'm3u8_native') {
+		return 'application/x-mpegURL';
+	}
+	if (protocol === 'dash') {
+		return 'application/dash+xml';
+	}
 
 	return AUDIO_TYPES[ext] ?? VIDEO_TYPES[ext] ?? 'video/mp4';
 }
@@ -82,7 +88,10 @@ function normalizeFormat(format: IncomingFormat, durationSec: number): VideoForm
  *  through the same proxy the video/audio URLs already use so it behaves the
  *  same regardless of source. */
 function proxiedSubtitleTracks(tracks: SubtitleTrack[] | undefined): SubtitleTrack[] {
-	return (tracks ?? []).map((track) => ({ ...track, url: buildProxiedUrl(track.url, null, 'https') || track.url }));
+	return (tracks ?? []).map((track) => ({
+		...track,
+		url: buildProxiedUrl(track.url, null, 'https') || track.url
+	}));
 }
 
 /** Group an incoming video's formats by media type into renderable cards. A
@@ -97,7 +106,9 @@ export function groupVideosByQuality(videos: IncomingVideo[] = []): GroupedVideo
 	for (const item of videos) {
 		const formats = (item.formats ?? []).filter(Boolean);
 
-		if (!formats.length) {continue;}
+		if (!formats.length) {
+			continue;
+		}
 
 		const metadata = item.metadata ?? {};
 		const hasValidTitle = Boolean(metadata.title && metadata.title !== 'unknown');
@@ -162,8 +173,11 @@ export function groupVideosByQuality(videos: IncomingVideo[] = []): GroupedVideo
 }
 
 function normalizeImage(image: IncomingGalleryImage): ImageAsset {
+	const sourceUrl = image.url ?? '';
+
 	return {
-		url: image.url ?? '',
+		url: buildProxiedUrl(sourceUrl, image.httpHeaders, 'https') || sourceUrl,
+		sourceUrl,
 		width: Number(image.width) || 0,
 		height: Number(image.height) || 0,
 		filesize: Number(image.filesize) || 0,
@@ -180,12 +194,15 @@ export function groupGalleriesBySource(galleries: IncomingGallery[] = []): Group
 	for (const item of galleries) {
 		const images = (item.images ?? []).filter((img) => img?.url);
 
-		if (!images.length) {continue;}
+		if (!images.length) {
+			continue;
+		}
 
 		results.push({
 			title: item.title,
 			webpage_url: item.webpageUrl,
-			images: images.map(normalizeImage)
+			images: images.map(normalizeImage),
+			skippedCount: item.skippedCount || undefined
 		});
 	}
 

@@ -51,10 +51,6 @@ class AppStore {
 		return this.library.extractResults;
 	}
 
-	getVideoExtractResultsFromStore(): GroupedVideo[] {
-		return this.library.sortedExtractResults;
-	}
-
 	addVideoExtractResultsToStore(data: IncomingVideo): void {
 		this.library.addExtractResult(data);
 	}
@@ -99,7 +95,7 @@ class AppStore {
 		this.prefs.reset();
 	}
 
-	getStats(): { extracted: number } {
+	getStats(): { extracted: number; galleries: number } {
 		return this.library.stats;
 	}
 }

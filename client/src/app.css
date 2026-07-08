@@ -25,6 +25,12 @@
 	--accent: oklch(0.892 0.018 82); /* Sand        #E6DCCD */
 	--accent-foreground: oklch(0.395 0.009 105); /* Bark        #4A4A40 */
 	--destructive: oklch(0.515 0.105 32); /* Burnt Sienna #A85448 */
+	--warning: oklch(
+		0.62 0.13 75
+	); /* Amber -- distinct from destructive (used for
+		"heads up" states like video-only formats, playback fallbacks, cookie
+		safety notes; not errors) */
+	--warning-foreground: oklch(0.28 0.06 75);
 	--border: oklch(0.879 0.009 85); /* Raw Timber  #DED8CF */
 	--input: oklch(0.879 0.009 85);
 	--ring: oklch(0.525 0.048 135); /* Moss focus ring */
@@ -62,6 +68,8 @@
 	--accent: oklch(0.33 0.022 82);
 	--accent-foreground: oklch(0.88 0.02 82);
 	--destructive: oklch(0.62 0.13 32);
+	--warning: oklch(0.75 0.14 75);
+	--warning-foreground: oklch(0.22 0.05 75);
 	--border: oklch(1 0 0 / 12%);
 	--input: oklch(1 0 0 / 15%);
 	--ring: oklch(0.68 0.06 135);
@@ -101,6 +109,8 @@
 	--color-accent: var(--accent);
 	--color-accent-foreground: var(--accent-foreground);
 	--color-destructive: var(--destructive);
+	--color-warning: var(--warning);
+	--color-warning-foreground: var(--warning-foreground);
 	--color-border: var(--border);
 	--color-input: var(--input);
 	--color-ring: var(--ring);
@@ -305,39 +315,15 @@
    Mirrors v10's own media-surface / media-menu styling (glass surface, pill
    rows, right-aligned check) so it reads as part of the player. Its visibility
    is driven by `data-visible`, mirrored from the skin's control-bar state, so it
-   fades in/out together with the controls. */
+   fades in/out together with the controls. Lives outside .ds-player now, so
+   .ds-player's overflow-hidden can never clip it. z-index just needs to beat
+   the video element / poster / overlay — it no longer has to fight the skin's
+   popover top-layer because it doesn't visually collide with those (they
+   anchor to the bottom control bar). */
 .ds-player-wrap {
 	isolation: isolate;
 }
 
-.ds-player video-player {
-	display: block;
-	width: 100%;
-	height: 100%;
-
-	--media-border-radius: 0.75rem;
-	--media-icon-size: 18px;
-	font-family: inherit;
-}
-.ds-player video-player video-skin,
-.ds-player video-player video-minimal-skin {
-	display: block;
-	width: 100%;
-	height: 100%;
-}
-.ds-player video-player video,
-.ds-player video-player hls-video,
-.ds-player video-player [slot='poster'] {
-	width: 100%;
-	height: 100%;
-	object-fit: contain;
-}
-
-/* ---- Quality menu ----
-   Lives outside .ds-player now, so .ds-player's overflow-hidden can never clip
-   it. z-index just needs to beat the video element / poster / overlay — it no
-   longer has to fight the skin's popover top-layer because it doesn't visually
-   collide with those (they anchor to the bottom control bar). */
 .ds-quality {
 	position: absolute;
 	top: 0.6rem;

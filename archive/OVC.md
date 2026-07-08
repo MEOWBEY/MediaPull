@@ -1,5 +1,10 @@
 # OVC proxy mode (removed — design notes for a future re-implementation)
 
+> Moved here from `docs/OVC.md` — this describes a removed feature, not
+> active documentation, so it lives in `archive/` instead of alongside the
+> real project docs in `docs/`. See [`docs/ARCHITECTURE.md`](../docs/ARCHITECTURE.md)
+> for how the current system actually works.
+
 OVC ("online-video-cutter") mode was **removed** in favor of the impersonating
 media proxy, which now covers most of what OVC was needed for. These notes
 capture the goal and the working design so it can be brought back if a class of

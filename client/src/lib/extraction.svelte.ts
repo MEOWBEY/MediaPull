@@ -88,7 +88,9 @@ export class ExtractionController {
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const urls = Array.from(new Set(splitUrls(rawUrls.join(' '))));
 
-		if (!urls.length) {return;}
+		if (!urls.length) {
+			return;
+		}
 		if (urls.length === 1) {
 			await this.extractLinks(urls[0]);
 
@@ -103,13 +105,19 @@ export class ExtractionController {
 		let failed = 0;
 
 		for (const url of urls) {
-			if (this.batchAborted) {break;}
+			if (this.batchAborted) {
+				break;
+			}
 
 			// Silent per-item: a 20-URL batch shouldn't fire 20 toasts or flash the
 			// error alert for each miss. We tally the outcome and summarize at the end.
 			const success = await this.extractLinks(url, { silent: true });
 
-			if (success) {ok++;} else {failed++;}
+			if (success) {
+				ok++;
+			} else {
+				failed++;
+			}
 			this.batchDone++;
 		}
 
@@ -118,7 +126,9 @@ export class ExtractionController {
 		this.batchTotal = 0;
 		this.batchDone = 0;
 
-		if (aborted) {return;}
+		if (aborted) {
+			return;
+		}
 
 		if (failed === 0) {
 			toast.success(t('toast.batchDone', { n: ok }));
@@ -134,7 +144,10 @@ export class ExtractionController {
 	 * (and evicts) any cached result -- for re-pulling a source whose direct
 	 * links may have expired, where serving the stale cache would defeat the point.
 	 * `mode` overrides the persisted content-type preference for this one call
-	 * -- used by `retryAsOtherType` when auto-routing guessed wrong.
+	 * -- used by `retryAsOtherType` for a manual "try the other type" action.
+	 * When the preference is `'auto'` (the default) and no `mode` override is
+	 * given, tries video first and silently falls back to gallery -- see
+	 * `extractAuto`.
 	 */
 	async extractLinks(
 		rawUrl: string,
@@ -142,16 +155,41 @@ export class ExtractionController {
 	): Promise<boolean> {
 		const mode = opts.mode ?? appStore.preferences.contentTypeMode;
 
-		return mode === 'gallery' ? this.extractGalleryLinks(rawUrl, opts) : this.extractVideoLinks(rawUrl, opts);
+		if (mode === 'auto') {
+			return this.extractAuto(rawUrl, opts);
+		}
+
+		return mode === 'gallery'
+			? this.extractGalleryLinks(rawUrl, opts)
+			: this.extractVideoLinks(rawUrl, opts);
+	}
+
+	/** Auto-detect: try video first (the more common case), and only if that
+	 *  comes back empty/fails, silently retry as a gallery -- no error toast/
+	 *  alert for the first attempt, since failing over is the expected path
+	 *  for an image-only page, not a real error. */
+	private async extractAuto(
+		rawUrl: string,
+		opts: { silent?: boolean; forceRefresh?: boolean } = {}
+	): Promise<boolean> {
+		const gotVideo = await this.extractVideoLinks(rawUrl, { ...opts, silentError: true });
+
+		if (gotVideo) {
+			return true;
+		}
+
+		return this.extractGalleryLinks(rawUrl, opts);
 	}
 
 	private async extractVideoLinks(
 		rawUrl: string,
-		opts: { silent?: boolean; forceRefresh?: boolean } = {}
+		opts: { silent?: boolean; silentError?: boolean; forceRefresh?: boolean } = {}
 	): Promise<boolean> {
 		const url = normalizeUrl(rawUrl);
 
-		if (!url) {return false;}
+		if (!url) {
+			return false;
+		}
 
 		// Per-site auth cookies (if the user added any for this host). Sent only
 		// for the matching domain; bucket the cache so authed/anon results don't mix.
@@ -175,12 +213,9 @@ export class ExtractionController {
 
 		return this.run({
 			silent: opts.silent,
+			silentError: opts.silentError,
 			task: (signal) =>
-				post<IncomingVideo>(
-					'/extract-videos',
-					cookies ? { url, cookies } : { url },
-					{ signal }
-				),
+				post<IncomingVideo>('/extract-videos', cookies ? { url, cookies } : { url }, { signal }),
 			onSuccess: (video) => {
 				extractCache.set(cacheKey, video);
 				appStore.addVideoExtractResultsToStore(video);
@@ -200,7 +235,9 @@ export class ExtractionController {
 	): Promise<boolean> {
 		const url = normalizeUrl(rawUrl);
 
-		if (!url) {return false;}
+		if (!url) {
+			return false;
+		}
 
 		const cookies = appStore.cookies.matchFor(url);
 		const cacheKey = cookies ? `${url}#auth` : url;
@@ -223,11 +260,9 @@ export class ExtractionController {
 		return this.run({
 			silent: opts.silent,
 			task: (signal) =>
-				postGallery<IncomingGallery>(
-					'/extract-gallery',
-					cookies ? { url, cookies } : { url },
-					{ signal }
-				),
+				postGallery<IncomingGallery>('/extract-gallery', cookies ? { url, cookies } : { url }, {
+					signal
+				}),
 			onSuccess: (gallery) => {
 				galleryExtractCache.set(cacheKey, gallery);
 				appStore.addGalleryExtractResultsToStore(gallery);
@@ -238,15 +273,19 @@ export class ExtractionController {
 					toast.success(
 						count === 1 ? t('toast.foundOneImage') : t('toast.foundManyImages', { n: count })
 					);
+
+					if (gallery?.skippedCount) {
+						toast.warning(t('gallery.someSkipped', { n: gallery.skippedCount }));
+					}
 				}
 			}
 		});
 	}
 
-	/** Escape hatch for the "wrong type" case: re-extracts the same URL through
-	 *  the other endpoint, bypassing the persisted content-type preference for
-	 *  this one card. Used by the inline retry button on an empty/mismatched
-	 *  result card. */
+	/** Manual "wrong type" escape hatch: re-extracts the same URL through the
+	 *  other endpoint, bypassing the persisted content-type preference for this
+	 *  one call. `extractAuto` handles the common case (auto mode guessing
+	 *  wrong) on its own; this is for forcing a specific type on demand. */
 	async retryAsOtherType(rawUrl: string, currentMode: 'video' | 'gallery'): Promise<boolean> {
 		const otherMode = currentMode === 'video' ? 'gallery' : 'video';
 
@@ -262,6 +301,7 @@ export class ExtractionController {
 
 	private async run<T>(config: {
 		silent?: boolean;
+		silentError?: boolean;
 		task: (signal: AbortSignal) => Promise<T>;
 		onSuccess: (result: T) => void;
 	}): Promise<boolean> {
@@ -272,19 +312,26 @@ export class ExtractionController {
 		try {
 			const result = await config.task(this.controller!.signal);
 
-			if (this.controller?.signal.aborted) {return false;}
+			if (this.controller?.signal.aborted) {
+				return false;
+			}
 
 			config.onSuccess(result);
 
 			return true;
 		} catch (error) {
-			if (error instanceof ApiError && error.aborted) {return false;}
+			if (error instanceof ApiError && error.aborted) {
+				return false;
+			}
 
 			const message = error instanceof Error ? error.message : t('toast.unknownError');
 
 			// In silent (batch) mode, don't pin the error alert or toast per item —
-			// the caller tallies failures and shows one summary.
-			if (!config.silent) {
+			// the caller tallies failures and shows one summary. `silentError`
+			// additionally covers auto-mode's first (video) attempt, where a
+			// failure is expected/normal (it just means "try gallery next"), not
+			// something worth alarming the user about.
+			if (!config.silent && !config.silentError) {
 				appStore.videoExtractError = message;
 				toast.error(message);
 			}

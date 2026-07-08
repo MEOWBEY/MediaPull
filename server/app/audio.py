@@ -30,6 +30,7 @@ from curl_cffi.requests import AsyncSession
 
 from .config import Settings
 from .models import VideoFormat
+from .net_common import impersonate_kwarg
 
 logger = logging.getLogger("directstream.audio")
 
@@ -123,10 +124,10 @@ def pick_audio_format(formats: list[VideoFormat]) -> VideoFormat:
     return sorted(candidates, key=score)[0]
 
 
-async def _run_ffmpeg(args: list[str]) -> None:
+async def _run_ffmpeg(args: list[str], binary: str = "ffmpeg") -> None:
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg",
+            binary,
             "-y",
             "-hide_banner",
             "-loglevel",
@@ -136,7 +137,11 @@ async def _run_ffmpeg(args: list[str]) -> None:
             stderr=asyncio.subprocess.PIPE,
         )
     except OSError as exc:
-        raise AudioError(f"ffmpeg is not installed or not on PATH: {exc}") from exc
+        logger.error("ffmpeg binary %r is not runnable: %s", binary, exc)
+        raise AudioError(
+            f"ffmpeg is not installed or not on PATH ({binary!r}). Set FFMPEG_BINARY to its "
+            "absolute path if it's installed somewhere not on this process's PATH."
+        ) from exc
     try:
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFMPEG_TIMEOUT)
     except asyncio.TimeoutError as exc:
@@ -146,10 +151,10 @@ async def _run_ffmpeg(args: list[str]) -> None:
         raise AudioError(f"ffmpeg failed: {stderr.decode(errors='ignore')[-2000:].strip()}")
 
 
-async def probe_duration(path: Path) -> float:
+async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
     try:
         proc = await asyncio.create_subprocess_exec(
-            "ffprobe",
+            binary,
             "-v",
             "error",
             "-show_entries",
@@ -161,7 +166,11 @@ async def probe_duration(path: Path) -> float:
             stderr=asyncio.subprocess.PIPE,
         )
     except OSError as exc:
-        raise AudioError(f"ffprobe is not installed or not on PATH: {exc}") from exc
+        logger.error("ffprobe binary %r is not runnable: %s", binary, exc)
+        raise AudioError(
+            f"ffprobe is not installed or not on PATH ({binary!r}). Set FFPROBE_BINARY to its "
+            "absolute path if it's installed somewhere not on this process's PATH."
+        ) from exc
     stdout, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise AudioError(f"ffprobe failed: {stderr.decode(errors='ignore')[-500:].strip()}")
@@ -176,7 +185,6 @@ async def _download_stream(
 ) -> Path:
     """Stream a progressive media URL to disk (with browser impersonation),
     capped at ``transcribe_max_download_bytes``."""
-    impersonate = settings.impersonate_client if settings.enable_impersonation else None
     proxy = settings.proxy_url or None
     max_bytes = settings.transcribe_max_download_bytes
     dest = work_dir / f"source.{ext or 'bin'}"
@@ -186,8 +194,7 @@ async def _download_stream(
         proxies={"http": proxy, "https": proxy} if proxy else None,
     ) as session:
         kwargs: dict = {"headers": headers, "stream": True, "allow_redirects": True}
-        if impersonate:
-            kwargs["impersonate"] = impersonate
+        kwargs.update(impersonate_kwarg(settings))
 
         try:
             resp = await session.get(url, **kwargs)
@@ -218,13 +225,15 @@ async def _download_stream(
     return dest
 
 
-async def extract_audio_track(source: Path, work_dir: Path) -> Path:
+async def extract_audio_track(source: Path, work_dir: Path, settings: Settings) -> Path:
     out = work_dir / "audio.opus"
-    await _run_ffmpeg(["-i", str(source), *_FFMPEG_AUDIO_ARGS, str(out)])
+    await _run_ffmpeg(["-i", str(source), *_FFMPEG_AUDIO_ARGS, str(out)], settings.ffmpeg_binary)
     return out
 
 
-async def _extract_audio_from_url(url: str, headers: dict[str, str] | None, work_dir: Path) -> Path:
+async def _extract_audio_from_url(
+    url: str, headers: dict[str, str] | None, work_dir: Path, settings: Settings
+) -> Path:
     """ffmpeg reads an HLS (or any ffmpeg-readable) URL directly -- no need to
     download and manually reassemble segments first.
 
@@ -249,7 +258,8 @@ async def _extract_audio_from_url(url: str, headers: dict[str, str] | None, work
             url,
             *_FFMPEG_AUDIO_ARGS,
             str(out),
-        ]
+        ],
+        settings.ffmpeg_binary,
     )
     return out
 
@@ -268,10 +278,10 @@ async def acquire_audio(
     headers = {**(fmt.http_headers or {}), **extra_headers}
 
     if fmt.protocol == "m3u8_native":
-        return await _extract_audio_from_url(real_url, headers, work_dir)
+        return await _extract_audio_from_url(real_url, headers, work_dir, settings)
 
     downloaded = await _download_stream(real_url, headers, fmt.ext, settings, work_dir)
-    return await extract_audio_track(downloaded, work_dir)
+    return await extract_audio_track(downloaded, work_dir, settings)
 
 
 async def chunk_if_needed(audio_path: Path, work_dir: Path, settings: Settings) -> list[AudioChunk]:
@@ -280,7 +290,7 @@ async def chunk_if_needed(audio_path: Path, work_dir: Path, settings: Settings) 
     Re-cuts with ``-c copy`` (no re-encode) since the source is already the
     low-bitrate opus track ``acquire_audio`` produced.
     """
-    duration = await probe_duration(audio_path)
+    duration = await probe_duration(audio_path, settings.ffprobe_binary)
     max_seconds = settings.transcribe_chunk_seconds
     if duration <= max_seconds:
         return [AudioChunk(path=audio_path, offset_seconds=0.0)]
@@ -291,7 +301,8 @@ async def chunk_if_needed(audio_path: Path, work_dir: Path, settings: Settings) 
     while offset < duration:
         chunk_path = work_dir / f"chunk_{index:03d}.opus"
         await _run_ffmpeg(
-            ["-ss", str(offset), "-t", str(max_seconds), "-i", str(audio_path), "-c", "copy", str(chunk_path)]
+            ["-ss", str(offset), "-t", str(max_seconds), "-i", str(audio_path), "-c", "copy", str(chunk_path)],
+            settings.ffmpeg_binary,
         )
         chunks.append(AudioChunk(path=chunk_path, offset_seconds=offset))
         offset += max_seconds

@@ -107,6 +107,14 @@ class Settings(BaseSettings):
     gallery_dl_workers: int = Field(default=3, ge=1, le=20)
     gallery_dl_binary: str = Field(default="gallery-dl")
 
+    # ----- ffmpeg/ffprobe (transcription pipeline only) --------------------
+    # Bare names rely on the running process's PATH, which is NOT always the
+    # same PATH an interactive shell sees (systemd services, some containers,
+    # or a dev machine where ffmpeg was only added to a shell profile). Point
+    # these at an absolute path if `/health` reports either as unavailable.
+    ffmpeg_binary: str = Field(default="ffmpeg", alias="FFMPEG_BINARY")
+    ffprobe_binary: str = Field(default="ffprobe", alias="FFPROBE_BINARY")
+
     user_agent: str = Field(
         default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"

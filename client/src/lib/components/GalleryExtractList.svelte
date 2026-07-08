@@ -6,37 +6,33 @@
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import ImagesIcon from '@lucide/svelte/icons/images';
 	import Search from '@lucide/svelte/icons/search';
+	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
-	import { writeClipboard } from '$lib/clipboard';
+	import { copyUrlToClipboard, writeClipboard } from '$lib/clipboard';
 	import SourceGroupCard from '$lib/components/SourceGroupCard.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
 	import { downloadTextFile, safeFilename } from '$lib/export';
 	import { extraction } from '$lib/extraction.svelte';
+	import { sourceHost } from '$lib/format';
+	import { GroupRefreshTracker } from '$lib/group-refresh.svelte';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
-	import type { GroupedGallery, ImageAsset } from '$lib/types';
+	import type { GroupedGallery, ImageAsset, Preferences } from '$lib/types';
 
 	const { t } = i18n;
 
-	let { isExtractBusy = false, preferences } = $props();
+	let {
+		isExtractBusy = false,
+		preferences
+	}: { isExtractBusy?: boolean; preferences: Preferences } = $props();
 
 	let galleries = $derived(appStore.galleries);
 
 	async function copyToClipboard(url: string) {
-		if (!url) {
-			toast.error(t('toast.noUrlCopy'));
-
-			return;
-		}
-
-		if (await writeClipboard(url)) {
-			toast.success(t('toast.copied'));
-		} else {
-			toast.error(t('toast.copyFailed'));
-		}
+		await copyUrlToClipboard(url, t);
 	}
 
 	async function copyAllLinks(gallery: GroupedGallery) {
@@ -55,14 +51,6 @@
 		}
 	}
 
-	function sourceHost(url: string | undefined): string {
-		try {
-			return new URL(url ?? '').hostname.replace(/^www\./, '');
-		} catch {
-			return '';
-		}
-	}
-
 	function exportTxtFor(gallery: GroupedGallery) {
 		const txt = gallery.images
 			.map((img) => img.url)
@@ -75,7 +63,10 @@
 			return;
 		}
 
-		downloadTextFile(`${safeFilename(gallery.title) || sourceHost(gallery.webpage_url) || 'gallery'}.txt`, txt);
+		downloadTextFile(
+			`${safeFilename(gallery.title) || sourceHost(gallery.webpage_url) || 'gallery'}.txt`,
+			txt
+		);
 		toast.success(t('toast.exported'));
 	}
 
@@ -96,22 +87,20 @@
 
 	// Keyed by the gallery object itself -- same pattern VideoExtractList uses
 	// for its per-group refresh spinner.
-	const refreshingGalleries = new SvelteMap<GroupedGallery, boolean>();
+	const refreshTracker = new GroupRefreshTracker<GroupedGallery>();
 
 	async function refreshGallery(gallery: GroupedGallery) {
-		if (!gallery.webpage_url || refreshingGalleries.get(gallery)) {return;}
+		if (!gallery.webpage_url) {
+			return;
+		}
 
-		refreshingGalleries.set(gallery, true);
-
-		try {
-			const ok = await extraction.extractLinks(gallery.webpage_url, { forceRefresh: true });
+		await refreshTracker.run(gallery, async () => {
+			const ok = await extraction.extractLinks(gallery.webpage_url!, { forceRefresh: true });
 
 			if (ok) {
 				appStore.removeGalleryExtractResultFromStore(gallery);
 			}
-		} finally {
-			refreshingGalleries.set(gallery, false);
-		}
+		});
 	}
 
 	function removeGallery(gallery: GroupedGallery) {
@@ -168,7 +157,9 @@
 	}
 
 	function stepLightbox(delta: number) {
-		if (!lightboxGallery) {return;}
+		if (!lightboxGallery) {
+			return;
+		}
 
 		const count = lightboxGallery.images.length;
 
@@ -176,8 +167,11 @@
 	}
 
 	function onLightboxKeydown(event: KeyboardEvent) {
-		if (event.key === 'ArrowLeft') {stepLightbox(-1);}
-		else if (event.key === 'ArrowRight') {stepLightbox(1);}
+		if (event.key === 'ArrowLeft') {
+			stepLightbox(-1);
+		} else if (event.key === 'ArrowRight') {
+			stepLightbox(1);
+		}
 	}
 </script>
 
@@ -226,10 +220,16 @@
 					onCopyAll={() => copyAllLinks(gallery)}
 					onExportTxt={() => exportTxtFor(gallery)}
 					onRefresh={() => refreshGallery(gallery)}
-					refreshing={refreshingGalleries.get(gallery)}
+					refreshing={refreshTracker.isRefreshing(gallery)}
 					onRemove={() => removeGallery(gallery)}
 				>
 					<div class="px-3.5 pt-1 sm:px-0">
+						{#if gallery.skippedCount}
+							<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
+								<TriangleAlert class="h-3 w-3 shrink-0" />
+								{t('gallery.someSkipped', { n: gallery.skippedCount })}
+							</p>
+						{/if}
 						<!-- Responsive auto-fit grid: the column count adapts to how
 						     many images there are (1 image fills the row, 2 share it
 						     evenly, ...) instead of a fixed column count leaving empty
@@ -314,7 +314,10 @@
 					</div>
 
 					<div class="px-3.5 sm:px-0">
-						<div class="grid gap-2" style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));">
+						<div
+							class="grid gap-2"
+							style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));"
+						>
 							{#each [0, 1, 2, 3, 4, 5] as k (k)}
 								<div class="bg-muted aspect-square animate-pulse rounded-xl"></div>
 							{/each}
@@ -331,6 +334,7 @@
 	<Dialog.Content
 		onkeydown={onLightboxKeydown}
 		class="bg-black/95 border-none max-w-[95vw] gap-0 p-0 sm:max-w-4xl"
+		closeLabel={t('common.close')}
 		showCloseButton
 	>
 		{#if lightboxImage && lightboxGallery}
@@ -365,9 +369,7 @@
 					</span>
 				{/if}
 
-				<div
-					class="absolute bottom-2 inset-x-0 flex items-center justify-center gap-2"
-				>
+				<div class="absolute bottom-2 inset-x-0 flex items-center justify-center gap-2">
 					<Button
 						variant="secondary"
 						size="sm"
@@ -389,7 +391,7 @@
 					</Button>
 					<!-- eslint-disable svelte/no-navigation-without-resolve -->
 					<a
-						href={lightboxImage.url}
+						href={lightboxImage.sourceUrl || lightboxImage.url}
 						target="_blank"
 						rel="noreferrer noopener"
 						class="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors"

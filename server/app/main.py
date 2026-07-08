@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import importlib.util
 import logging
+import shutil
 import sys
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -74,6 +76,20 @@ def _resolve_client_dir() -> Path | None:
     return candidate if (candidate / "index.html").is_file() else None
 
 
+def _check_binary(name: str, configured: str) -> bool:
+    """shutil.which resolves both a bare PATH-only name and an absolute path
+    the operator pointed FFMPEG_BINARY/FFPROBE_BINARY/GALLERY_DL_BINARY at."""
+    available = shutil.which(configured) is not None
+    if not available:
+        logger.warning(
+            "%s (%r) was not found on PATH -- related features will fail until it's "
+            "installed or the binary setting points at its real location",
+            name,
+            configured,
+        )
+    return available
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _configure_logging()
@@ -90,6 +106,21 @@ async def lifespan(app: FastAPI):
     # None when unconfigured -- /transcribe responds 503 rather than the
     # whole app failing to start over a missing optional feature's key.
     app.state.transcriber = GroqTranscriber(settings) if settings.groq_api_key else None
+    # Advisory only (not fatal): normal extraction never touches ffmpeg, so a
+    # broken install shouldn't block startup -- but it silently breaks
+    # /transcribe otherwise, so surface it now instead of mid-job. Checked
+    # even when transcription is unconfigured, since gallery-dl always matters.
+    app.state.ffmpeg_available = _check_binary("ffmpeg", settings.ffmpeg_binary)
+    app.state.ffprobe_available = _check_binary("ffprobe", settings.ffprobe_binary)
+    if settings.gallery_dl_binary == "gallery-dl":
+        # The default invokes `sys.executable -m gallery_dl` (see
+        # GalleryExtractor._base_cmd), not a bare PATH lookup, so its
+        # availability is really "is the gallery_dl module importable".
+        app.state.gallery_dl_available = importlib.util.find_spec("gallery_dl") is not None
+        if not app.state.gallery_dl_available:
+            logger.warning("gallery_dl Python package is not installed -- /extract-gallery will fail")
+    else:
+        app.state.gallery_dl_available = _check_binary("gallery-dl", settings.gallery_dl_binary)
     logger.info("DirectStream API %s ready", __version__)
     try:
         yield
@@ -132,6 +163,7 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(ExtractionError)
     async def _extraction_error(_: Request, exc: ExtractionError) -> JSONResponse:
+        logger.warning("extraction failed (%s): %s", exc.status, exc)
         return JSONResponse(
             status_code=exc.status, content={"success": False, "error": str(exc)}
         )
@@ -161,6 +193,7 @@ def create_app() -> FastAPI:
         try:
             video = await app.state.extractor.extract(url, cookies=cookies)
         except ValueError as exc:
+            logger.warning("invalid extract-videos request for %s: %s", url, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         await cache.set(cache_key, video)
@@ -190,6 +223,7 @@ def create_app() -> FastAPI:
         try:
             gallery = await app.state.gallery_extractor.extract(url, cookies=cookies)
         except ValueError as exc:
+            logger.warning("invalid extract-gallery request for %s: %s", url, exc)
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
         await cache.set(cache_key, gallery)
@@ -206,6 +240,8 @@ def create_app() -> FastAPI:
         return HealthResponse(
             version=__version__,
             timestamp=datetime.now(timezone.utc).isoformat(),
+            ffmpeg_available=app.state.ffmpeg_available and app.state.ffprobe_available,
+            gallery_dl_available=app.state.gallery_dl_available,
         )
 
     # ---- Auto-subtitles (speech-to-text via Groq Whisper) ---------------

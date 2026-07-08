@@ -3,7 +3,7 @@
 # /etc/caddy/Caddyfile (or import it from there) and `systemctl reload caddy`.
 
 api.example.com {
-	reverse_proxy 127.0.0.1:8000 {
+	reverse_proxy 127.0.0.1:__PORT__ {
 		transport http {
 			read_timeout 300s
 			write_timeout 300s

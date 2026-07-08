@@ -1,10 +1,12 @@
 <script lang="ts">
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import { onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
 	import QualityMenu from '$lib/components/QualityMenu.svelte';
 	import SubtitlePanel from '$lib/components/SubtitlePanel.svelte';
+	import { Button } from '$lib/components/ui/button';
 	import { isAudioType, mediaKindLabel, qualityLabel } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
@@ -38,6 +40,7 @@
 		poster = '',
 		formatGroups = [],
 		useProxy = true,
+		onToggleProxy,
 		webpageUrl = '',
 		initialSubtitleTrack = null,
 		onReady,
@@ -48,6 +51,9 @@
 		poster?: string;
 		formatGroups?: FormatGroup[];
 		useProxy?: boolean;
+		/** Lets the error overlay offer "switch proxy mode" as an actual button
+		 *  instead of just telling the user to go find the toggle elsewhere. */
+		onToggleProxy?: () => void;
 		webpageUrl?: string;
 		/** Restores a previously generated/reused track (see `onSubtitleTrackChange`)
 		 *  so a page refresh doesn't lose it or force re-transcribing. */
@@ -123,7 +129,6 @@
 
 	let subtitlePanelOpen = $state(false);
 	let playerCurrentTime = $state(0);
-	let playerDuration = $state(0);
 	let hadTrack = false;
 
 	const activeSubtitleTrack = $derived(subtitles.track);
@@ -137,7 +142,9 @@
 	let lastReportedTrack: SubtitleTrackResult | null = untrack(() => initialSubtitleTrack ?? null);
 
 	$effect(() => {
-		if (activeSubtitleTrack === lastReportedTrack) {return;}
+		if (activeSubtitleTrack === lastReportedTrack) {
+			return;
+		}
 
 		lastReportedTrack = activeSubtitleTrack;
 		onSubtitleTrackChange?.(activeSubtitleTrack);
@@ -165,26 +172,29 @@
 		});
 	});
 
-	// Drive the subtitle panel's "now playing" position. Only runs once a
-	// track exists — no cost for videos nobody has subtitled. Re-runs
-	// whenever `videoEl` itself changes (e.g. a format-group tab switch
-	// remounts the element), since it's `$state` -- otherwise this would keep
-	// driving a torn-down element after switching tabs.
+	// Drive the subtitle panel's "now playing" position. Only runs while the
+	// panel is actually open and a track exists -- no cost for videos nobody
+	// has subtitled, or while the panel is closed/the video is paused (a
+	// `timeupdate` listener only fires while time is actually advancing,
+	// unlike a raw rAF loop, which used to burn a tick 60x/sec regardless of
+	// visibility or playback state). Re-runs whenever `videoEl` itself
+	// changes (e.g. a format-group tab switch remounts the element), since
+	// it's `$state` -- otherwise this would keep driving a torn-down element
+	// after switching tabs.
 	$effect(() => {
-		if (!activeSubtitleTrack || !videoEl) {return;}
+		if (!activeSubtitleTrack || !videoEl || !subtitlePanelOpen) {
+			return;
+		}
 
 		const el = videoEl;
-		let raf = 0;
-
-		const tick = () => {
+		const onTimeUpdate = () => {
 			playerCurrentTime = el.currentTime;
-			playerDuration = el.duration || playerDuration;
-			raf = requestAnimationFrame(tick);
 		};
 
-		raf = requestAnimationFrame(tick);
+		el.addEventListener('timeupdate', onTimeUpdate);
+		onTimeUpdate();
 
-		return () => cancelAnimationFrame(raf);
+		return () => el.removeEventListener('timeupdate', onTimeUpdate);
 	});
 
 	// Browsers don't reliably honor a <track default> added dynamically after
@@ -199,12 +209,16 @@
 	// `toggleSubtitles()` (the exact same call its CC button makes) keeps the
 	// native cue rendering AND the CC button's own "on" state in sync.
 	$effect(() => {
-		if (!activeSubtitleTrack?.vttUrl || !videoEl) {return;}
+		if (!activeSubtitleTrack?.vttUrl || !videoEl) {
+			return;
+		}
 
 		const el = videoEl as unknown as HTMLMediaElement;
 		const tracks = el.textTracks;
 
-		if (!tracks) {return;}
+		if (!tracks) {
+			return;
+		}
 
 		const apply = () => {
 			(playerRootEl as PlayerRootEl | null)?.store?.state.toggleSubtitles?.(true);
@@ -234,13 +248,17 @@
 	});
 
 	function seekTo(time: number) {
-		if (videoEl) {videoEl.currentTime = time;}
+		if (videoEl) {
+			videoEl.currentTime = time;
+		}
 	}
 
 	function downloadSrt() {
 		const url = activeSubtitleTrack?.srtUrl;
 
-		if (!url) {return;}
+		if (!url) {
+			return;
+		}
 
 		try {
 			const link = document.createElement('a');
@@ -571,10 +589,12 @@
 		<div class="flex items-center justify-between gap-3">
 			{#if showQualityMenu}
 				<select
-					class="bg-background text-foreground rounded-lg border px-2 py-1 text-xs font-medium"
+					class="bg-background text-foreground rounded-lg border px-2 py-1 text-xs font-medium disabled:cursor-wait disabled:opacity-60"
 					value={activeIndex}
+					disabled={switching}
 					onchange={(e) => switchQuality(Number(e.currentTarget.value))}
 					aria-label={t('player.audioLabel')}
+					aria-busy={switching}
 				>
 					{#each usable as q, i (i)}
 						<option value={i}>{qualityLabel(q, i)}</option>
@@ -592,9 +612,22 @@
 		{/if}
 
 		{#if hasError || !usable.length}
-			<div class="flex items-center gap-2 text-sm text-amber-500">
-				<TriangleAlert class="h-4 w-4 shrink-0" />
-				<span>{t('player.error')}</span>
+			<div class="flex flex-col gap-2">
+				<div class="text-warning flex items-center gap-2 text-sm">
+					<TriangleAlert class="h-4 w-4 shrink-0" />
+					<span>{t('player.error')}</span>
+				</div>
+				{#if onToggleProxy}
+					<Button
+						variant="outline"
+						size="sm"
+						onclick={onToggleProxy}
+						class="w-fit gap-1.5 rounded-full text-xs"
+					>
+						<Waypoints class="h-3 w-3" />
+						{t('player.error.switchProxy')}
+					</Button>
+				{/if}
 			</div>
 		{/if}
 	</div>
@@ -617,7 +650,13 @@
 						     active group so switching format-group tabs remounts it -- closing
 						     any open menu, same as the old inline menuOpen reset used to. -->
 						{#key activeGroupIndex}
-							<QualityMenu qualities={usable} {activeIndex} {switching} onSwitch={switchQuality} {controlsVisible} />
+							<QualityMenu
+								qualities={usable}
+								{activeIndex}
+								{switching}
+								onSwitch={switchQuality}
+								{controlsVisible}
+							/>
 						{/key}
 					{/if}
 				</video-minimal-skin>
@@ -628,8 +667,19 @@
 			<div
 				class="absolute inset-0 z-30 flex flex-col items-center justify-center gap-3 bg-black/85 px-4 text-center"
 			>
-				<TriangleAlert class="h-8 w-8 text-amber-400" />
+				<TriangleAlert class="text-warning h-8 w-8" />
 				<p class="max-w-xs text-sm text-white/90">{t('player.error')}</p>
+				{#if onToggleProxy}
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={onToggleProxy}
+						class="gap-1.5 rounded-full text-xs"
+					>
+						<Waypoints class="h-3 w-3" />
+						{t('player.error.switchProxy')}
+					</Button>
+				{/if}
 			</div>
 		{/if}
 	</div>

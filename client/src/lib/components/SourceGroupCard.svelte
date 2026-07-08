@@ -40,7 +40,9 @@
 	} = $props();
 </script>
 
-<div class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4">
+<div
+	class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
+>
 	<!-- Group label: origin link + group-wide actions. -->
 	<div
 		class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
@@ -80,6 +82,7 @@
 				onclick={onCopyAll}
 				class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
 				title={t('extract.copyAll')}
+				aria-label={t('extract.copyAll')}
 			>
 				<Copy class="h-3.5 w-3.5" />
 			</Button>
@@ -89,6 +92,7 @@
 				onclick={onExportTxt}
 				class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
 				title={t('extract.exportTxt')}
+				aria-label={t('extract.exportTxt')}
 			>
 				<FileText class="h-3.5 w-3.5" />
 			</Button>
@@ -99,6 +103,7 @@
 					onclick={onExportM3u}
 					class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
 					title={t('extract.exportM3u')}
+					aria-label={t('extract.exportM3u')}
 				>
 					<ListMusic class="h-3.5 w-3.5" />
 				</Button>
@@ -110,6 +115,7 @@
 				disabled={refreshing}
 				class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
 				title={t('extract.refreshGroup')}
+				aria-label={t('extract.refreshGroup')}
 			>
 				<RefreshCw class="h-3.5 w-3.5 {refreshing ? 'animate-spin' : ''}" />
 			</Button>
@@ -119,6 +125,7 @@
 				onclick={onRemove}
 				class="text-muted-foreground hover:text-destructive h-7 w-7 rounded-full"
 				title={t('extract.removeGroup')}
+				aria-label={t('extract.removeGroup')}
 			>
 				<Trash2 class="h-3.5 w-3.5" />
 			</Button>

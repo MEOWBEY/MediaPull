@@ -149,6 +149,7 @@
 <Sheet.Root bind:open={isPreferencesDialogOpen}>
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
+		closeLabel={t('common.close')}
 		class="bg-background z-999999! w-full gap-0 overflow-y-auto p-4 sm:max-w-lg sm:p-6 {desktop.matches
 			? ''
 			: 'h-[65vh] rounded-t-3xl'}"
@@ -164,13 +165,13 @@
 
 		<div class="space-y-4 pb-4 sm:space-y-8 sm:pb-6">
 			{#each sections as section (section.titleKey)}
-				<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
+				<section class="bg-card rounded-lg border">
 					<!-- Section Content -->
 					<div class="p-3 sm:p-4">
 						<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4">
 							{#each section.settings as setting (setting.id)}
 								<div
-									class="flex items-start justify-between rounded-lg bg-zinc-50 p-3 transition-colors hover:bg-zinc-100 dark:bg-zinc-800/50 dark:hover:bg-zinc-800"
+									class="bg-muted/60 hover:bg-muted flex items-start justify-between rounded-lg p-3 transition-colors"
 								>
 									<div class="flex-1 pe-3">
 										<div class="flex items-center gap-2">
@@ -180,12 +181,13 @@
 											<button
 												type="button"
 												title={t(setting.descKey)}
-												class="text-zinc-400 transition-colors hover:text-zinc-600 dark:text-zinc-500 dark:hover:text-zinc-300"
+												aria-label={t(setting.descKey)}
+												class="text-muted-foreground hover:text-foreground transition-colors"
 											>
 												<Info class="h-3 w-3" />
 											</button>
 										</div>
-										<p class="mt-1 text-xs text-zinc-500 dark:text-zinc-400">
+										<p class="mt-1 text-xs text-muted-foreground">
 											{t(setting.descKey)}
 										</p>
 									</div>
@@ -208,8 +210,8 @@
 			<CookiesPanel />
 
 			<!-- View Mode Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<LayoutList class="h-4 w-4 text-purple-600" />
 						{t('prefs.viewMode')}
@@ -239,8 +241,8 @@
 				</div>
 			</section>
 			<!-- Sorting Options Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<SortAsc class="h-4 w-4 text-orange-600" />
 						{t('prefs.sorting')}
@@ -295,8 +297,8 @@
 			</section>
 
 			<!-- Content Type Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<Image class="h-4 w-4 text-teal-600" />
 						{t('prefs.contentTypeSection')}
@@ -305,8 +307,9 @@
 				<div class="p-3 sm:p-4">
 					<div class="space-y-2">
 						<Label class="text-sm font-medium">{t('prefs.contentTypeLabel')}</Label>
+						<p class="text-muted-foreground text-xs">{t('prefs.contentTypeDesc')}</p>
 						<div class="flex flex-col gap-2 sm:flex-row">
-							{#each ['video', 'gallery'] as const as mode (mode)}
+							{#each ['auto', 'video', 'gallery'] as const as mode (mode)}
 								<Button
 									variant={preferences.contentTypeMode === mode ? 'default' : 'outline'}
 									size="sm"
@@ -322,8 +325,8 @@
 			</section>
 
 			<!-- Theme Selection -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<Palette class="h-4 w-4 text-pink-600" />
 						{t('prefs.themeSection')}
@@ -349,8 +352,8 @@
 			</section>
 
 			<!-- Language Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
 						<Languages class="h-4 w-4 text-indigo-600" />
 						{t('prefs.languageSection')}
@@ -376,10 +379,10 @@
 			</section>
 
 			<!-- Cache & Store Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
-						<HardDrive class="h-4 w-4 text-red-600" />
+						<HardDrive class="text-destructive h-4 w-4" />
 						{t('prefs.storedData')}
 					</h4>
 				</div>
@@ -404,7 +407,7 @@
 								appStore.reset();
 								toast.success(t('toast.dataCleared'));
 							}}
-							class="w-full h-11 sm:h-10 py-1.5 cursor-pointer px-4 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-700 dark:hover:bg-red-900/10 dark:hover:text-red-400"
+							class="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 h-11 w-full cursor-pointer px-4 py-1.5 transition-colors sm:h-10"
 						>
 							<Trash2 class="me-2 h-4 w-4" />
 							{t('prefs.clearData')}
@@ -414,10 +417,10 @@
 			</section>
 
 			<!-- Reset Section -->
-			<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-				<div class="border-b p-3 dark:border-zinc-700">
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
 					<h4 class="flex items-center gap-2 text-base font-semibold">
-						<AlertCircle class="h-4 w-4 text-red-600" />
+						<AlertCircle class="text-destructive h-4 w-4" />
 						{t('prefs.resetSection')}
 					</h4>
 				</div>

@@ -5,6 +5,7 @@
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
+	// import Sparkles from '@lucide/svelte/icons/sparkles';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import X from '@lucide/svelte/icons/x';
 
@@ -12,7 +13,7 @@
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
 
-	const {t} = i18n;
+	const { t } = i18n;
 
 	let {
 		runVideoExtractFromServer,
@@ -30,11 +31,13 @@
 	let isBatchRunning = $derived(batchTotal > 0);
 	let isOperationRunning = $derived(isVideoExtractRunning || isBatchRunning);
 
-	// Which endpoint the input routes to -- surfaced here (not just buried in
-	// Preferences) since it's the single most consequential choice before
-	// hitting Extract. No server-side auto-detection, so this toggle IS the
-	// routing decision.
+	// 'auto' (the default) tries video first and silently falls back to
+	// gallery -- see ExtractionController.extractAuto. Forcing 'video'/
+	// 'gallery' here only happens after the user explicitly picks manual mode
+	// in Preferences; this row then lets them swap between the two without
+	// leaving the input.
 	let contentTypeMode = $derived(appStore.preferences.contentTypeMode);
+	let isManualMode = $derived(contentTypeMode !== 'auto');
 
 	function setContentTypeMode(mode: 'video' | 'gallery') {
 		appStore.updatePreferences({ contentTypeMode: mode });
@@ -45,7 +48,9 @@
 	let urlCount = $derived(inputUrl.trim().split(/\s+/).filter(Boolean).length);
 
 	function clearInputUrl() {
-		if (isOperationRunning) {return;}
+		if (isOperationRunning) {
+			return;
+		}
 		inputUrl = '';
 	}
 
@@ -68,7 +73,9 @@
 		<!-- Input row -->
 		<div class="flex items-center gap-2">
 			<div class="relative flex-1">
-				<Globe class="text-muted-foreground absolute top-1/2 inset-s-3.5 h-5 w-5 -translate-y-1/2" />
+				<Globe
+					class="text-muted-foreground absolute top-1/2 inset-s-3.5 h-5 w-5 -translate-y-1/2"
+				/>
 				<input
 					id="video-url"
 					bind:value={inputUrl}
@@ -112,30 +119,40 @@
 
 		<!-- Action row -->
 		<div class="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
-			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
-				<Button
-					variant={contentTypeMode === 'video' ? 'default' : 'ghost'}
-					size="sm"
-					disabled={isOperationRunning}
-					onclick={() => setContentTypeMode('video')}
-					class="gap-1 rounded-full px-2.5 py-1 text-xs"
-					title={t('prefs.contentType.video')}
+			{#if isManualMode}
+				<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+					<Button
+						variant={contentTypeMode === 'video' ? 'default' : 'ghost'}
+						size="sm"
+						disabled={isOperationRunning}
+						onclick={() => setContentTypeMode('video')}
+						class="gap-1 rounded-full px-2.5 py-1 text-xs"
+						title={t('prefs.contentType.video')}
+					>
+						<VideoIcon class="h-3 w-3" />
+						<span>{t('prefs.contentType.video')}</span>
+					</Button>
+					<Button
+						variant={contentTypeMode === 'gallery' ? 'default' : 'ghost'}
+						size="sm"
+						disabled={isOperationRunning}
+						onclick={() => setContentTypeMode('gallery')}
+						class="gap-1 rounded-full px-2.5 py-1 text-xs"
+						title={t('prefs.contentType.gallery')}
+					>
+						<ImageIcon class="h-3 w-3" />
+						<span>{t('prefs.contentType.gallery')}</span>
+					</Button>
+				</div>
+			{:else}
+				<!-- <span
+					class="bg-muted/50 text-muted-foreground flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs"
+					title={t('prefs.contentType.autoHint')}
 				>
-					<VideoIcon class="h-3 w-3" />
-					<span>{t('prefs.contentType.video')}</span>
-				</Button>
-				<Button
-					variant={contentTypeMode === 'gallery' ? 'default' : 'ghost'}
-					size="sm"
-					disabled={isOperationRunning}
-					onclick={() => setContentTypeMode('gallery')}
-					class="gap-1 rounded-full px-2.5 py-1 text-xs"
-					title={t('prefs.contentType.gallery')}
-				>
-					<ImageIcon class="h-3 w-3" />
-					<span>{t('prefs.contentType.gallery')}</span>
-				</Button>
-			</div>
+					<Sparkles class="h-3 w-3" />
+					{t('prefs.contentType.auto')}
+				</span> -->
+			{/if}
 
 			<Button
 				onclick={() => runVideoExtractFromServer(inputUrl)}
@@ -143,10 +160,12 @@
 				class="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 cursor-pointer rounded-full font-semibold transition-colors sm:flex-none sm:px-6"
 			>
 				{#if isVideoExtractRunning || isBatchRunning}
-					<Loader2 class="me-2 h-4 w-4 animate-spin" /> {t('input.extracting')}
+					<Loader2 class="me-2 h-4 w-4 animate-spin" />
+					{t('input.extracting')}
 					{#if batchTotal > 1}<span class="ms-1 tabular-nums">{batchDone}/{batchTotal}</span>{/if}
 				{:else}
-					<Search class="me-2 h-4 w-4" /> {t('input.extract')}
+					<Search class="me-2 h-4 w-4" />
+					{t('input.extract')}
 					{#if urlCount > 1}<span class="ms-1 tabular-nums">({urlCount})</span>{/if}
 				{/if}
 			</Button>

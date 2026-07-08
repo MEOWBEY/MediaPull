@@ -11,7 +11,12 @@ from __future__ import annotations
 
 import array
 import asyncio
+import logging
 from pathlib import Path
+
+from .config import Settings
+
+logger = logging.getLogger("directstream.waveform")
 
 _SAMPLE_RATE = 16000
 _WINDOW_MS = 100
@@ -22,27 +27,34 @@ class WaveformError(Exception):
     pass
 
 
-async def extract_peaks(audio_path: Path, *, max_points: int = 3000) -> list[float]:
+async def extract_peaks(
+    audio_path: Path, settings: Settings, *, max_points: int = 3000
+) -> list[float]:
     """Normalized (0..1) peak amplitudes, one per ~100ms window, downsampled
     further if the result would exceed ``max_points`` (keeps long videos'
     payload small)."""
-    proc = await asyncio.create_subprocess_exec(
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(audio_path),
-        "-f",
-        "s16le",
-        "-ac",
-        "1",
-        "-ar",
-        str(_SAMPLE_RATE),
-        "-",
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            settings.ffmpeg_binary,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(audio_path),
+            "-f",
+            "s16le",
+            "-ac",
+            "1",
+            "-ar",
+            str(_SAMPLE_RATE),
+            "-",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        logger.error("ffmpeg binary %r is not runnable: %s", settings.ffmpeg_binary, exc)
+        raise WaveformError(f"ffmpeg is not installed or not on PATH ({settings.ffmpeg_binary!r})") from exc
+
     raw, stderr = await proc.communicate()
     if proc.returncode != 0:
         raise WaveformError(

@@ -16,6 +16,9 @@ export const LOCALES: { code: Locale; label: string; dir: 'ltr' | 'rtl' }[] = [
 export type MessageKey = keyof typeof en;
 
 export const en = {
+	// Common
+	'common.close': 'Close',
+
 	// Header / footer
 	'nav.madeBy': 'Made by',
 	'nav.language': 'Language',
@@ -69,7 +72,8 @@ export const en = {
 	'extract.loading': 'Extracting links…',
 	'extract.resultCount': '{n} links extracted',
 	'extract.videoOnly': 'video only',
-	'extract.videoOnlyHint': 'This quality has no audio (adaptive stream). Plays silently; still downloadable.',
+	'extract.videoOnlyHint':
+		'This quality has no audio (adaptive stream). Plays silently; still downloadable.',
 
 	// Gallery list
 	'gallery.heading': 'Galleries',
@@ -86,6 +90,8 @@ export const en = {
 	'gallery.prevImage': 'Previous image',
 	'gallery.nextImage': 'Next image',
 	'gallery.openOriginal': 'Open original',
+	'gallery.someSkipped':
+		'{n} item(s) could not be extracted (may need cookies for this source, or the post has since changed).',
 
 	// QR handoff
 	'qr.title': 'Scan to open on phone',
@@ -96,7 +102,8 @@ export const en = {
 	'player.audioLabel': 'Audio',
 	'player.formatTabs': 'Format',
 	'player.error':
-		"This link couldn't be played here. Try another quality, switch proxy mode, or open the link in an external player.",
+		"This link couldn't be played here. Try another quality (if available), switch proxy mode below, or open the link in an external player.",
+	'player.error.switchProxy': 'Switch proxy mode',
 
 	// Auto-subtitles (speech-to-text, no translation)
 	'subtitles.generate': 'Generate subtitles',
@@ -106,7 +113,8 @@ export const en = {
 	'subtitles.panel.title': 'Subtitles',
 	'subtitles.panel.search': 'Search text or time…',
 	'subtitles.panel.empty': 'No subtitle lines match your search.',
-	'subtitles.panel.noTrack': 'No subtitles yet — generate them from the Subtitles button on the card.',
+	'subtitles.panel.noTrack':
+		'No subtitles yet — generate them from the Subtitles button on the card.',
 	'subtitles.existingTrack': 'Use existing “{label}” subtitles',
 	'subtitles.error.notConfigured': 'Auto-subtitles are not configured on this server.',
 	'subtitles.error.generic': 'Could not generate subtitles for this video.',
@@ -114,7 +122,8 @@ export const en = {
 
 	// Error alert
 	'error.extractTitle': "Couldn't extract links",
-	'error.advice': "Check the URL and try again, or turn on proxy mode for a card if a direct link won't load.",
+	'error.advice':
+		"Check the URL and try again, or turn on proxy mode for a card if a direct link won't load.",
 	'error.dismiss': 'Dismiss',
 
 	// Instructions
@@ -128,9 +137,11 @@ export const en = {
 	'how.step3.title': 'Preview',
 	'how.step3.body': 'Play any quality in the built-in HLS-capable player.',
 	'how.step4.title': 'Save or proxy',
-	'how.step4.body': "Download a format, or stream it through the proxy when it won't load directly.",
+	'how.step4.body':
+		"Download a format, or stream it through the proxy when it won't load directly.",
 	'how.feat1.title': 'Built-in streaming proxy',
-	'how.feat1.body': 'Plays links that block hotlinking or need special headers, and rewrites HLS so it streams smoothly.',
+	'how.feat1.body':
+		'Plays links that block hotlinking or need special headers, and rewrites HLS so it streams smoothly.',
 	'how.feat2.title': 'Stays on your device',
 	'how.feat2.body':
 		"Results and preferences live in your browser's local storage — clear them anytime.",
@@ -206,6 +217,10 @@ export const en = {
 	'prefs.descending': 'Descending',
 	'prefs.contentTypeSection': 'Content type',
 	'prefs.contentTypeLabel': 'What to extract',
+	'prefs.contentTypeDesc':
+		'Auto tries video first and falls back to images automatically. Pick one manually to always use just that.',
+	'prefs.contentType.auto': 'Auto',
+	'prefs.contentType.autoHint': 'Auto-detecting video or images. Change this in Preferences.',
 	'prefs.contentType.video': 'Video',
 	'prefs.contentType.gallery': 'Gallery',
 	'prefs.themeSection': 'Theme selection',
@@ -225,7 +240,8 @@ export const en = {
 	// Subtitles / captions
 	'prefs.section.captions': 'Subtitles',
 	'prefs.autoOpenSubs.label': 'Auto-open subtitle panel',
-	'prefs.autoOpenSubs.desc': 'Open the searchable subtitle list automatically once generation finishes',
+	'prefs.autoOpenSubs.desc':
+		'Open the searchable subtitle list automatically once generation finishes',
 
 	// Cookies / sign-in
 	'cookies.section': 'Cookies & sign-in',
@@ -261,6 +277,8 @@ export const en = {
 } as const;
 
 export const fa: Record<MessageKey, string> = {
+	'common.close': 'بستن',
+
 	'nav.madeBy': 'ساخته‌شده توسط',
 	'nav.language': 'زبان',
 
@@ -308,7 +326,8 @@ export const fa: Record<MessageKey, string> = {
 	'extract.loading': 'در حال استخراج لینک‌ها…',
 	'extract.resultCount': '{n} لینک استخراج شد',
 	'extract.videoOnly': 'بدون صدا',
-	'extract.videoOnlyHint': 'این کیفیت صدا ندارد (استریم تطبیقی). بی‌صدا پخش می‌شود؛ قابل دانلود است.',
+	'extract.videoOnlyHint':
+		'این کیفیت صدا ندارد (استریم تطبیقی). بی‌صدا پخش می‌شود؛ قابل دانلود است.',
 
 	// Gallery list
 	'gallery.heading': 'گالری‌ها',
@@ -325,6 +344,8 @@ export const fa: Record<MessageKey, string> = {
 	'gallery.prevImage': 'تصویر قبلی',
 	'gallery.nextImage': 'تصویر بعدی',
 	'gallery.openOriginal': 'باز کردن اصل تصویر',
+	'gallery.someSkipped':
+		'{n} مورد استخراج نشد (ممکن است این منبع به کوکی نیاز داشته باشد، یا پست تغییر کرده باشد).',
 
 	// QR handoff
 	'qr.title': 'برای باز کردن روی گوشی اسکن کنید',
@@ -334,7 +355,8 @@ export const fa: Record<MessageKey, string> = {
 	'player.audioLabel': 'صوت',
 	'player.formatTabs': 'فرمت',
 	'player.error':
-		'این لینک اینجا قابل پخش نبود. کیفیت دیگری را امتحان کنید، حالت پروکسی را عوض کنید یا لینک را در پخش‌کننده بیرونی باز کنید.',
+		'این لینک اینجا قابل پخش نبود. کیفیت دیگری را امتحان کنید (در صورت وجود)، حالت پروکسی را پایین‌تر عوض کنید یا لینک را در پخش‌کننده بیرونی باز کنید.',
+	'player.error.switchProxy': 'تغییر حالت پروکسی',
 
 	'subtitles.generate': 'تولید زیرنویس',
 	'subtitles.generating': 'در حال تولید زیرنویس…',
@@ -365,7 +387,8 @@ export const fa: Record<MessageKey, string> = {
 	'how.step4.title': 'ذخیره یا پروکسی',
 	'how.step4.body': 'یک کیفیت را دانلود کنید، یا وقتی مستقیم باز نمی‌شود از پروکسی پخش کنید.',
 	'how.feat1.title': 'پروکسی پخش داخلی',
-	'how.feat1.body': 'لینک‌هایی که هات‌لینک را مسدود می‌کنند یا به هدر خاص نیاز دارند را پخش می‌کند و HLS را برای پخش روان بازنویسی می‌کند.',
+	'how.feat1.body':
+		'لینک‌هایی که هات‌لینک را مسدود می‌کنند یا به هدر خاص نیاز دارند را پخش می‌کند و HLS را برای پخش روان بازنویسی می‌کند.',
 	'how.feat2.title': 'روی دستگاه شما می‌ماند',
 	'how.feat2.body':
 		'نتایج و تنظیمات در حافظه محلی مرورگر شما ذخیره می‌شوند — هر وقت خواستید پاک کنید.',
@@ -419,7 +442,8 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.preload.label': 'پیش‌بارگذاری متادیتا',
 	'prefs.preload.desc': 'بارگذاری زودهنگام متادیتای ویدیو برای شروع سریع‌تر پخش',
 	'prefs.useProxy.label': 'حالت پروکسی',
-	'prefs.useProxy.desc': 'استفاده از حالت پروکسی برای دسترسی به لینک‌ها وقتی دسترسی مستقیم مسدود است',
+	'prefs.useProxy.desc':
+		'استفاده از حالت پروکسی برای دسترسی به لینک‌ها وقتی دسترسی مستقیم مسدود است',
 	'prefs.hlsDownload.label': 'نمایش دانلود HLS',
 	'prefs.hlsDownload.desc': 'نمایش دکمه دانلود برای ویدیوهای HLS',
 	'prefs.videoOnly.label': 'نمایش کیفیت‌های بدون صدا',
@@ -438,6 +462,11 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.descending': 'نزولی',
 	'prefs.contentTypeSection': 'نوع محتوا',
 	'prefs.contentTypeLabel': 'چه چیزی استخراج شود',
+	'prefs.contentTypeDesc':
+		'حالت خودکار ابتدا ویدیو را امتحان می‌کند و در صورت نبود، به‌طور خودکار به تصاویر برمی‌گردد. برای استفاده همیشگی از یک نوع، آن را دستی انتخاب کنید.',
+	'prefs.contentType.auto': 'خودکار',
+	'prefs.contentType.autoHint':
+		'تشخیص خودکار ویدیو یا تصویر. این را می‌توانید در تنظیمات تغییر دهید.',
 	'prefs.contentType.video': 'ویدیو',
 	'prefs.contentType.gallery': 'گالری',
 	'prefs.themeSection': 'انتخاب پوسته',

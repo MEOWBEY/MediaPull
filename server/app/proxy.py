@@ -107,9 +107,11 @@ class ProxyService:
         try:
             resp = await self._session.get(source, **self._request_kwargs(headers))
         except Exception as exc:  # noqa: BLE001 - surface any transport error
+            logger.warning("playlist proxy request failed for %s: %s", source, exc)
             return JSONResponse({"error": f"Upstream error: {exc}"}, status_code=502)
 
         if resp.status_code >= 400:
+            logger.warning("playlist proxy upstream %s returned %s", source, resp.status_code)
             return JSONResponse(
                 {"error": f"Upstream error: {resp.status_code}"},
                 status_code=resp.status_code,
@@ -144,10 +146,12 @@ class ProxyService:
                 source, stream=True, **self._request_kwargs(headers)
             )
         except Exception as exc:  # noqa: BLE001 - surface any transport error
+            logger.warning("stream proxy request failed for %s: %s", source, exc)
             return JSONResponse({"error": f"Upstream error: {exc}"}, status_code=502)
 
         if upstream.status_code >= 400:
             status = upstream.status_code
+            logger.warning("stream proxy upstream %s returned %s", source, status)
             await upstream.aclose()
             return JSONResponse({"error": f"Upstream error: {status}"}, status_code=status)
 

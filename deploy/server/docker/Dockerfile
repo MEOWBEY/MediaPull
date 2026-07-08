@@ -28,7 +28,10 @@ RUN npm run build
 FROM python:3.12-slim AS server
 WORKDIR /app
 
-# ffmpeg: needed by yt-dlp for merging/remuxing formats and audio extraction.
+# ffmpeg: needed by the auto-subtitles pipeline (/transcribe) for audio
+# extraction/chunking and the waveform preview -- yt-dlp itself never
+# downloads/remuxes anything here (extraction always runs with
+# download=False), so normal link extraction doesn't exercise ffmpeg at all.
 # curl: used by the container HEALTHCHECK below.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ffmpeg curl \

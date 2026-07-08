@@ -4,21 +4,25 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
-	import { writeClipboard } from '$lib/clipboard';
+	import { copyUrlToClipboard, writeClipboard } from '$lib/clipboard';
 	import QrDialog from '$lib/components/QrDialog.svelte';
 	import SourceGroupCard from '$lib/components/SourceGroupCard.svelte';
 	import VideoCard from '$lib/components/VideoCard.svelte';
 	import { allQualityLinks, buildVideosM3u, downloadTextFile, safeFilename } from '$lib/export';
 	import { extraction } from '$lib/extraction.svelte';
-	import { isAudioType, mediaKindLabel } from '$lib/format';
+	import { isAudioType, mediaKindLabel, sourceHost } from '$lib/format';
+	import { GroupRefreshTracker } from '$lib/group-refresh.svelte';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
-	import type { GroupedVideo } from '$lib/types';
+	import type { GroupedVideo, Preferences } from '$lib/types';
 	import { visibleFormatGroups } from '$lib/video-format-groups';
 
 	const { t } = i18n;
 
-	let { isExtractBusy = false, preferences } = $props();
+	let {
+		isExtractBusy = false,
+		preferences
+	}: { isExtractBusy?: boolean; preferences: Preferences } = $props();
 
 	let videoExtractResults = $derived(appStore.videoExtractResults);
 
@@ -59,20 +63,6 @@
 
 		qrUrl = url;
 		qrOpen = true;
-	}
-
-	async function copyToClipboard(url: string) {
-		if (!url) {
-			toast.error(t('toast.noUrlCopy'));
-
-			return;
-		}
-
-		if (await writeClipboard(url)) {
-			toast.success(t('toast.copied'));
-		} else {
-			toast.error(t('toast.copyFailed'));
-		}
 	}
 
 	// Copy/export helpers work on any set of cards — a single card ([video]) or a
@@ -128,20 +118,18 @@
 
 	// Per-group refresh spinner -- keyed by group.key, not the items themselves
 	// (those get replaced by the refresh).
-	const refreshingGroups = new SvelteMap<string, boolean>();
+	const refreshTracker = new GroupRefreshTracker<string>();
 
 	// Direct links (especially proxied/CDN ones) can expire; re-pull the same
 	// source URL and swap in the fresh result. Removes the stale cards only
 	// once the re-extraction actually succeeds, so a failed refresh doesn't
 	// wipe out a still-good (if possibly stale) set of links.
 	async function refreshGroup(group: SourceGroup) {
-		if (!group.sourceUrl || refreshingGroups.get(group.key)) {
+		if (!group.sourceUrl) {
 			return;
 		}
 
-		refreshingGroups.set(group.key, true);
-
-		try {
+		await refreshTracker.run(group.key, async () => {
 			const staleItems = [...group.items];
 			const ok = await extraction.extractLinks(group.sourceUrl, { forceRefresh: true });
 
@@ -150,17 +138,7 @@
 					appStore.removeVideoExtractResultFromStore(v);
 				}
 			}
-		} finally {
-			refreshingGroups.set(group.key, false);
-		}
-	}
-
-	function sourceHost(url: string): string {
-		try {
-			return new URL(url).hostname.replace(/^www\./, '');
-		} catch {
-			return '';
-		}
+		});
 	}
 
 	// Free-text filter over title, format-kind labels, and per-quality resolution/extension.
@@ -296,7 +274,7 @@
 					onExportTxt={() => exportTxtFor(group.items, sourceHost(group.sourceUrl) || 'group')}
 					onExportM3u={() => exportM3uFor(group.items, sourceHost(group.sourceUrl) || 'group')}
 					onRefresh={() => refreshGroup(group)}
-					refreshing={refreshingGroups.get(group.key)}
+					refreshing={refreshTracker.isRefreshing(group.key)}
 					onRemove={() => removeGroup(group.items)}
 				>
 					<!-- Videos in this group -- plain content, no per-video card. A
@@ -386,4 +364,4 @@
 	</section>
 {/if}
 
-<QrDialog bind:open={qrOpen} url={qrUrl} onCopy={copyToClipboard} />
+<QrDialog bind:open={qrOpen} url={qrUrl} onCopy={(url) => copyUrlToClipboard(url, t)} />

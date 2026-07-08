@@ -102,7 +102,9 @@
 	}
 
 	function urlForQuality(quality: { proxiedVideoUrl?: string; sourceVideoUrl?: string }) {
-		return useProxy ? quality.proxiedVideoUrl : quality.sourceVideoUrl;
+		return useProxy
+			? quality.proxiedVideoUrl || quality.sourceVideoUrl
+			: quality.sourceVideoUrl || quality.proxiedVideoUrl;
 	}
 
 	async function copyToClipboard(url: string) {
@@ -140,6 +142,7 @@
 			poster={video.thumbnail}
 			{formatGroups}
 			{useProxy}
+			{onToggleProxy}
 			webpageUrl={video.webpage_url}
 			initialSubtitleTrack={video.subtitleTrack}
 			onReady={(handle) => (playerHandle = handle)}
@@ -222,9 +225,13 @@
 		     between rows, instead of a stack of separately-boxed rows.
 		     Reads like a compact table: badge + size on the left,
 		     tight action icons on the right, row highlights on hover. -->
-		<div class="border-border/50 divide-border/50 max-h-56 divide-y overflow-y-auto rounded-xl border">
+		<div
+			class="border-border/50 divide-border/50 max-h-56 divide-y overflow-y-auto rounded-xl border"
+		>
 			{#each visibleQualities as quality, index (index)}
-				<div class="bg-muted/50 hover:bg-muted flex flex-wrap items-center gap-2 px-3 py-2 transition-colors">
+				<div
+					class="bg-muted/50 hover:bg-muted flex flex-wrap items-center gap-2 px-3 py-2 transition-colors"
+				>
 					<div class="flex min-w-0 flex-1 items-center gap-2">
 						<span
 							class="bg-primary/10 text-primary min-w-11 shrink-0 rounded-md px-1.5 py-0.5 text-center text-xs font-bold"
@@ -236,7 +243,7 @@
 						</span>
 						{#if quality.videoOnly}
 							<span
-								class="bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-medium"
+								class="bg-warning/15 text-warning-foreground dark:text-warning shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-medium"
 								title={t('extract.videoOnlyHint')}
 							>
 								{t('extract.videoOnly')}
@@ -251,6 +258,7 @@
 							onclick={() => copyToClipboard(urlForQuality(quality) ?? '')}
 							class="h-7 w-7 rounded-md"
 							title={t('extract.copyUrl')}
+							aria-label={t('extract.copyUrl')}
 						>
 							<Copy class="h-3.5 w-3.5" />
 						</Button>
@@ -261,6 +269,7 @@
 							onclick={() => onShowQr(urlForQuality(quality))}
 							class="hidden h-7 w-7 rounded-md sm:inline-flex"
 							title={t('extract.showQr')}
+							aria-label={t('extract.showQr')}
 						>
 							<QrCode class="h-3.5 w-3.5" />
 						</Button>
@@ -271,6 +280,7 @@
 								onclick={() => downloadQuality(quality)}
 								class="h-7 w-7 rounded-md"
 								title={t('extract.download')}
+								aria-label={t('extract.download')}
 							>
 								<Download class="h-3.5 w-3.5" />
 							</Button>

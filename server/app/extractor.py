@@ -15,9 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import re
-import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from urllib.parse import urlparse
@@ -28,7 +26,7 @@ from curl_cffi.requests import AsyncSession
 
 from .config import Settings
 from .models import SubtitleTrack, VideoFormat, VideoInfo
-from .net_common import build_impersonate, normalize_cookies
+from .net_common import build_impersonate, cookie_tempfile, impersonate_kwarg, normalize_cookies
 
 logger = logging.getLogger("directstream.extractor")
 
@@ -189,10 +187,7 @@ class Extractor:
         self._probe_session: AsyncSession | None = None
 
     def _probe_kwargs(self) -> dict:
-        s = self._settings
-        if s.enable_impersonation and s.impersonate_client:
-            return {"impersonate": s.impersonate_client}
-        return {}
+        return impersonate_kwarg(self._settings)
 
     async def aclose(self) -> None:
         await self._client.aclose()
@@ -309,7 +304,8 @@ class Extractor:
             status = resp.status_code
             content_type = resp.headers.get("content-type", "")
             await resp.aclose()
-        except Exception:  # noqa: BLE001 - uncertain → keep the format
+        except Exception as exc:  # noqa: BLE001 - uncertain → keep the format
+            logger.debug("format probe inconclusive for %s: %s", url, exc)
             return True
 
         if status in (404, 410):
@@ -407,30 +403,15 @@ class Extractor:
         # Authentication cookies: per-request blob (from the user's Settings)
         # wins; otherwise the server-side default file. The temp file lives only
         # for this one extraction and is removed right after.
-        cookie_tmp: str | None = None
         cookie_text = normalize_cookies(cookies, url) if cookies else None
-        if cookie_text:
-            handle = tempfile.NamedTemporaryFile(
-                "w", suffix=".txt", delete=False, encoding="utf-8"
-            )
-            try:
-                handle.write(cookie_text)
-            finally:
-                handle.close()
-            cookie_tmp = handle.name
-            opts["cookiefile"] = cookie_tmp
-        elif s.cookie_file:
-            opts["cookiefile"] = s.cookie_file
+        with cookie_tempfile(cookie_text) as cookie_tmp:
+            if cookie_tmp:
+                opts["cookiefile"] = cookie_tmp
+            elif s.cookie_file:
+                opts["cookiefile"] = s.cookie_file
 
-        try:
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-        finally:
-            if cookie_tmp is not None:
-                try:
-                    os.unlink(cookie_tmp)
-                except OSError:
-                    pass
 
         if not info:
             raise ExtractionError("No video information extracted")

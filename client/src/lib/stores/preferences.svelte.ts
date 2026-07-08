@@ -17,14 +17,16 @@ export const DEFAULT_PREFERENCES: Preferences = {
 	showHlsTypeDownloadButton: false,
 	showVideoOnlyFormats: false,
 	autoOpenSubtitlePanel: false,
-	contentTypeMode: 'video'
+	contentTypeMode: 'auto'
 };
 
 export class PreferencesStore {
 	current = $state<Preferences>({ ...DEFAULT_PREFERENCES });
 
 	constructor() {
-		if (browser) {this.load();}
+		if (browser) {
+			this.load();
+		}
 	}
 
 	update(patch: Partial<Preferences>): void {
@@ -34,21 +36,27 @@ export class PreferencesStore {
 
 	reset(): void {
 		Object.assign(this.current, DEFAULT_PREFERENCES);
-		if (browser) {localStorage.removeItem(STORAGE_KEY);}
+		if (browser) {
+			localStorage.removeItem(STORAGE_KEY);
+		}
 	}
 
 	private load(): void {
 		try {
 			const raw = localStorage.getItem(STORAGE_KEY);
 
-			if (raw) {Object.assign(this.current, JSON.parse(raw));}
+			if (raw) {
+				Object.assign(this.current, JSON.parse(raw));
+			}
 		} catch (error) {
 			console.warn('Failed to load preferences:', error);
 		}
 	}
 
 	private persist(): void {
-		if (!browser) {return;}
+		if (!browser) {
+			return;
+		}
 
 		try {
 			localStorage.setItem(STORAGE_KEY, JSON.stringify(this.current));

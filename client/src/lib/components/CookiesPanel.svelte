@@ -14,7 +14,7 @@
 	import { normalizeDomain } from '$lib/stores/cookies.svelte';
 
 	const { t } = i18n;
-	const {cookies} = appStore;
+	const { cookies } = appStore;
 
 	// Famous sites shown by default; any custom domain the user saved is appended.
 	const PRESET_DOMAINS = [
@@ -85,13 +85,17 @@
 			extraDomains = extraDomains.filter((d) => d !== domain);
 		}
 		toast.success(t('cookies.clearedToast', { site: domain }));
-		if (editing === domain) {cancelEdit();}
+		if (editing === domain) {
+			cancelEdit();
+		}
 	}
 
 	function addCustom() {
 		const domain = normalizeDomain(customDomain);
 
-		if (!domain) {return;}
+		if (!domain) {
+			return;
+		}
 
 		if (!extraDomains.includes(domain)) {
 			extraDomains = [...extraDomains, domain];
@@ -108,10 +112,10 @@
 	}
 </script>
 
-<section class="rounded-lg border bg-white dark:border-zinc-700 dark:bg-zinc-800/50">
-	<div class="border-b p-3 dark:border-zinc-700">
+<section class="bg-card rounded-lg border">
+	<div class="border-border/60 border-b p-3">
 		<h4 class="flex items-center gap-2 text-base font-semibold">
-			<Cookie class="h-4 w-4 text-amber-600" />
+			<Cookie class="text-warning h-4 w-4" />
 			{t('cookies.section')}
 		</h4>
 	</div>
@@ -121,7 +125,7 @@
 
 		<!-- Warnings -->
 		<div
-			class="flex gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+			class="bg-warning/10 border-warning/40 text-warning-foreground dark:text-white flex gap-2 rounded-lg border p-3 text-xs"
 		>
 			<ShieldAlert class="mt-0.5 h-4 w-4 shrink-0" />
 			<div class="space-y-1">
@@ -132,17 +136,20 @@
 		</div>
 
 		<!-- How-to guide (collapsible) -->
-		<div class="rounded-lg border dark:border-zinc-700">
+		<div class="rounded-lg border">
 			<button
 				type="button"
 				class="flex w-full items-center justify-between p-3 text-sm font-medium"
 				onclick={() => (showGuide = !showGuide)}
+				aria-expanded={showGuide}
+				aria-controls="cookies-guide-steps"
 			>
 				<span>{t('cookies.guideToggle')}</span>
 				<ChevronDown class="h-4 w-4 transition-transform {showGuide ? 'rotate-180' : ''}" />
 			</button>
 			{#if showGuide}
 				<ol
+					id="cookies-guide-steps"
 					class="text-muted-foreground list-decimal space-y-1 p-3 pt-0 ps-8 text-xs"
 				>
 					<li>{t('cookies.guide.s1')}</li>
@@ -156,13 +163,13 @@
 		<!-- Per-site rows -->
 		<div class="space-y-2">
 			{#each rows as domain (domain)}
-				<div class="rounded-lg bg-zinc-50 p-3 dark:bg-zinc-800/50">
+				<div class="bg-muted/60 rounded-lg p-3">
 					<div class="flex items-center justify-between gap-2">
 						<div class="flex min-w-0 items-center gap-2">
 							<span class="truncate text-sm font-medium">{domain}</span>
 							{#if cookies.has(domain)}
 								<span
-									class="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400"
+									class="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
 								>
 									<Check class="h-3 w-3" />
 									{t('cookies.statusSaved')}
@@ -184,7 +191,7 @@
 								<Button
 									variant="outline"
 									size="sm"
-									class="h-8 cursor-pointer px-2 hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-700 dark:hover:bg-red-900/10 dark:hover:text-red-400"
+									class="h-8 cursor-pointer px-2 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
 									onclick={() => clearOne(domain)}
 								>
 									<Trash2 class="h-4 w-4" />
@@ -245,7 +252,7 @@
 			<Button
 				variant="outline"
 				size="sm"
-				class="h-9 w-full cursor-pointer px-4 transition-colors hover:border-red-300 hover:bg-red-50 hover:text-red-700 dark:hover:border-red-700 dark:hover:bg-red-900/10 dark:hover:text-red-400"
+				class="h-9 w-full cursor-pointer px-4 transition-colors hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
 				onclick={clearAll}
 			>
 				<Trash2 class="me-2 h-4 w-4" />

@@ -38,7 +38,7 @@ owns extract + proxy.
 
 - [x] **OVC removed** — the headless-browser resolver (`ovc.py`, Playwright,
   `POST /ovc-proxy-video`) was dropped in favor of the impersonating proxy, which
-  covers most of what it was for. Design preserved in `docs/OVC.md` for a future
+  covers most of what it was for. Design preserved in `archive/OVC.md` for a future
   revival (see Android note below).
 - [x] **Anti-bot bypass** — extraction **and** the proxy now use curl_cffi
   **browser impersonation**, so sites/CDNs that gate on TLS fingerprint
@@ -57,6 +57,19 @@ owns extract + proxy.
   >720p now appears, flagged `videoOnly`); no `player_client` pin (it collapsed
   YouTube to 360p).
 - [ ] **General perf/bugs** — caching, timeouts, concurrency (ongoing).
+- [x] **Image/gallery extraction** — done. `server/app/gallery.py` (gallery-dl
+  subprocess) + `POST /extract-gallery`, with its own client list/lightbox
+  UI (`GalleryExtractList.svelte`). Images are proxied with a Referer header
+  the same way video formats are, and partial/skipped items are surfaced
+  instead of silently vanishing.
+- [x] **Auto-generated subtitles** — done. `server/app/jobs.py` +
+  `transcribe/` (Groq Whisper speech-to-text), with ffmpeg-based audio
+  acquisition/chunking and a waveform preview for the seek bar. Opt-in,
+  requires a free `GROQ_API_KEY`.
+- [x] **Auto/manual content-type detection** — done. `contentTypeMode:
+  'auto' | 'video' | 'gallery'` in preferences; auto (the default) tries
+  video first and falls back to gallery automatically, no need to know
+  which kind of page you're pasting.
 
 > Goal: a clean, well-defined extractor + proxy contract (`{metadata, formats}` /
 > `ApiEnvelope`) — that contract is exactly what the Android local engine must reproduce.
@@ -76,7 +89,7 @@ Same UI/UX, same core ability, **extraction runs locally on-device**; external s
 - [ ] **Server fallback** — `extract(url)`: try local → on error/timeout/unsupported → call existing `/api/extract-videos`. Works because downstream only cares about the format shape. **Must be fully removable** (local-only build).
 
 ### OVC on Android (only if revived)
-- [ ] OVC was removed on web (see `docs/OVC.md`). If a class of sites needs a
+- [ ] OVC was removed on web (see `archive/OVC.md`). If a class of sites needs a
   real-browser resolver again, the Android equivalent is **WebView
   `shouldInterceptRequest`** (hidden WebView, intercept the media request +
   headers) — prefer driving the source page directly over a third-party site.

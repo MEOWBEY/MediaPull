@@ -69,7 +69,9 @@ def to_client_gallery(info: GalleryInfo) -> ClientGallery:
                 height=img.height,
                 filesize=img.filesize,
                 ext=img.ext,
+                http_headers=img.http_headers,
             )
             for img in info.images
         ],
+        skipped=info.skipped,
     )

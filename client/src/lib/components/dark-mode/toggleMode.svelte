@@ -17,8 +17,14 @@
 	}
 </script>
 
-<Button onclick={toggle} variant="ghost" size="icon" class="relative" title={t('theme.toggle')}>
-
+<Button
+	onclick={toggle}
+	variant="ghost"
+	size="icon"
+	class="relative"
+	title={t('theme.toggle')}
+	aria-label={t('theme.toggle')}
+>
 	<SunIcon
 		class="h-[1.2rem] w-[1.2rem] scale-100 rotate-0 transition-all! dark:scale-0 dark:-rotate-90"
 	/>

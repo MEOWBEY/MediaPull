@@ -7,10 +7,11 @@
 	import Waypoints from '@lucide/svelte/icons/waypoints';
 
 	import { i18n } from '$lib/i18n/index.svelte';
+	import type { Preferences } from '$lib/types';
 
-	let { preferences } = $props();
+	let { preferences }: { preferences: Pick<Preferences, 'enableCompact'> } = $props();
 
-	const {t} = i18n;
+	const { t } = i18n;
 
 	// Build reactively so the labels re-translate when the locale changes.
 	const steps = $derived([
@@ -37,9 +38,7 @@
 	<ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 		{#each steps as step, i (i)}
 			<li
-				class="ds-glass shadow-soft relative p-4 {i % 2 === 0
-					? 'rounded-3xl'
-					: 'rounded-[1.9rem]'}"
+				class="ds-glass shadow-soft relative p-4 {i % 2 === 0 ? 'rounded-3xl' : 'rounded-[1.9rem]'}"
 			>
 				<span
 					class="bg-primary text-primary-foreground absolute -top-2.5 -inset-s-2.5 flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold shadow-sm"
@@ -68,5 +67,4 @@
 			</div>
 		{/each}
 	</div>
-
 </section>

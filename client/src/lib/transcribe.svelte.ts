@@ -65,7 +65,9 @@ export class TranscriptionController {
 			this.track = await this.runJob(source);
 			this.progress = 1;
 		} catch (err) {
-			if (this.controller.signal.aborted) {return;}
+			if (this.controller.signal.aborted) {
+				return;
+			}
 
 			const message = err instanceof Error ? err.message : t('subtitles.error.generic');
 
@@ -135,6 +137,14 @@ export class TranscriptionController {
 
 	private startTrickle(): void {
 		this.trickleTimer = setInterval(() => {
+			// A backgrounded tab has nothing showing this value -- skip the
+			// reactive write (and the re-render it'd trigger once the tab is
+			// foregrounded again mid-transition) rather than creeping the
+			// progress bar toward its ceiling for no visible audience.
+			if (typeof document !== 'undefined' && document.hidden) {
+				return;
+			}
+
 			const ceiling = Math.min(this.serverProgress + TRICKLE_LOOKAHEAD, TRICKLE_MAX);
 
 			if (this.progress < ceiling) {
