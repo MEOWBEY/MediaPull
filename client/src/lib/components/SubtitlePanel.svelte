@@ -27,6 +27,8 @@
 		onDownload,
 		onGenerate,
 		generating = false,
+		progress = 0,
+		stepLabel = '',
 		onCancel
 	}: {
 		open: boolean;
@@ -39,30 +41,20 @@
 		 *  closing the panel and hunting for the card's own Subtitles button. */
 		onGenerate?: () => void;
 		generating?: boolean;
+		/** Real job progress (0..1) and the pipeline stage it's in -- shown
+		 *  while `generating` so the user sees actual movement, not a spinner. */
+		progress?: number;
+		stepLabel?: string;
 		/** Stops an in-flight Groq job -- shown next to the generating spinner. */
 		onCancel?: () => void;
 	} = $props();
 
 	let filterQuery = $state('');
-	const rowEls: Record<number, HTMLButtonElement> = {};
 
-	// Auto-scroll follows the playing caption by default, but a manual scroll
-	// (the user browsing other lines while the video keeps playing) suspends
-	// it -- otherwise the next active-line change mid-playback yanks their
-	// scroll position back, which is exactly the "scrolled down, then dialog
-	// scrolls back up on its own" bug this guards against. `programmatic`
-	// distinguishes our own `scrollIntoView` calls from real user scrolls,
-	// since both fire the same native `scroll` event.
-	let followActive = $state(true);
-	let programmatic = false;
-
-	function onListScroll() {
-		if (programmatic) {
-			return;
-		}
-
-		followActive = false;
-	}
+	// No auto-scroll on purpose: the list never moves on its own. Earlier
+	// versions followed the playing caption with scrollIntoView plus a
+	// manual-scroll suspend heuristic, but clicks/taps still triggered
+	// surprise jumps -- the user scrolls, the active line is only highlighted.
 
 	// Filter by text OR timestamp — typing "1:23" jumps you to lines around
 	// that time, typing words filters by content.
@@ -78,31 +70,11 @@
 		);
 	});
 
-	// The segment currently under the playhead (highlighted + auto-scrolled).
+	// The segment currently under the playhead (highlighted only -- the list
+	// never auto-scrolls to it, see above).
 	const activeSeg = $derived(
 		segments.find((seg) => currentTime >= seg.start && currentTime <= seg.end) ?? null
 	);
-
-	$effect(() => {
-		if (!open || !activeSeg || !followActive) {
-			return;
-		}
-
-		const idx = filteredSegments.indexOf(activeSeg);
-
-		if (idx < 0) {
-			return;
-		}
-
-		// Flag this as our own scroll so the `scroll` listener below doesn't
-		// mistake it for a manual one and immediately cancel `followActive`.
-		// `scrollIntoView` with `behavior: 'smooth'` animates over several
-		// frames, so this can't just be reset synchronously after the call --
-		// give it a beat to actually finish scrolling first.
-		programmatic = true;
-		rowEls[idx]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-		setTimeout(() => (programmatic = false), 500);
-	});
 </script>
 
 <Sheet.Root bind:open>
@@ -145,17 +117,13 @@
 				/>
 			</div>
 
-			<div onscroll={onListScroll} class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pe-1">
-				{#each filteredSegments as seg, i (seg)}
+			<div class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pe-1">
+				{#each filteredSegments as seg (seg)}
 					<button
-						bind:this={rowEls[i]}
 						type="button"
 						data-active={seg === activeSeg}
 						class="hover:bg-muted data-[active=true]:bg-primary/10 data-[active=true]:text-primary flex w-full items-start gap-3 rounded-lg px-3 py-2 text-start transition-colors"
-						onclick={() => {
-							followActive = true;
-							onSeek(seg.start);
-						}}
+						onclick={() => onSeek(seg.start)}
 					>
 						<span class="text-muted-foreground shrink-0 pt-0.5 text-xs font-medium tabular-nums">
 							{formatSecondsToTime(seg.start)}
@@ -174,17 +142,25 @@
 					{t('subtitles.panel.noTrack')}
 				</p>
 				{#if onGenerate}
-					<div class="flex items-center gap-2">
-						<Button size="sm" disabled={generating} onclick={onGenerate} class="gap-1.5 rounded-full">
-							{#if generating}
-								<Loader2 class="h-4 w-4 animate-spin" />
-								{t('subtitles.generating')}
-							{:else}
-								<Captions class="h-4 w-4" />
-								{t('subtitles.generate')}
-							{/if}
-						</Button>
-						{#if generating && onCancel}
+					{#if generating}
+						<!-- Progress is status, not a button: a bar + percentage + the
+						     pipeline stage, with cancel as its own explicit action. -->
+						<div class="w-full max-w-xs space-y-2">
+							<div class="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+								<div
+									class="bg-primary h-full rounded-full transition-[width] duration-300"
+									style="width: {Math.round(progress * 100)}%"
+								></div>
+							</div>
+							<div class="text-muted-foreground flex items-center justify-between gap-2 text-xs">
+								<span class="inline-flex min-w-0 items-center gap-1.5">
+									<Loader2 class="h-3.5 w-3.5 shrink-0 animate-spin" />
+									<span class="truncate">{stepLabel || t('subtitles.generating')}</span>
+								</span>
+								<span class="shrink-0 tabular-nums">{Math.round(progress * 100)}%</span>
+							</div>
+						</div>
+						{#if onCancel}
 							<Button
 								variant="outline"
 								size="sm"
@@ -196,7 +172,12 @@
 								{t('subtitles.cancel')}
 							</Button>
 						{/if}
-					</div>
+					{:else}
+						<Button size="sm" onclick={onGenerate} class="gap-1.5 rounded-full">
+							<Captions class="h-4 w-4" />
+							{t('subtitles.generate')}
+						</Button>
+					{/if}
 				{/if}
 			</div>
 		{/if}

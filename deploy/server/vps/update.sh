@@ -44,6 +44,23 @@ echo "==> new commit:     $(sudo -u "$SERVICE_USER" git -C "$REPO_DIR" rev-parse
 echo "==> installing backend dependencies"
 sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install -r "$REPO_DIR/server/requirements.txt"
 
+# Settings removed from the app in past releases -- scrub them from a
+# long-lived server/.env so it stays clean and nobody wastes time tuning a
+# knob that no longer exists. (The app itself ignores unknown keys, so this
+# is hygiene, not a fix.) Add to this list whenever a setting is retired.
+OBSOLETE_ENV_KEYS=(
+  TRANSCRIBE_CHUNK_SECONDS
+  GROQ_CHUNK_CONCURRENCY
+)
+if [[ -f "$REPO_DIR/server/.env" ]]; then
+  for key in "${OBSOLETE_ENV_KEYS[@]}"; do
+    if grep -q "^${key}=" "$REPO_DIR/server/.env"; then
+      echo "==> removing obsolete setting $key from server/.env"
+      sudo -u "$SERVICE_USER" sed -i "/^${key}=/d" "$REPO_DIR/server/.env"
+    fi
+  done
+fi
+
 # yt-dlp and gallery-dl fight a constant arms race against site changes
 # (YouTube/Instagram/X break scrapers often) -- the exact version pinned in
 # requirements.txt only moves when someone edits the app's code, which can

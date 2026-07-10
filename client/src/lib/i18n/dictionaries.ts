@@ -120,6 +120,19 @@ export const en = {
 	'subtitles.error.notConfigured': 'Auto-subtitles are not configured on this server.',
 	'subtitles.error.generic': 'Could not generate subtitles for this video.',
 	'subtitles.error.fetchFailed': 'Could not load this subtitle track. Try again.',
+	// Pipeline stage labels. Keyed by the job's fine-grained `detail` sub-stage
+	// when present, else its coarse `status` (see `stageLabel` in transcribe.svelte).
+	'subtitles.stage.queued': 'Waiting to start…',
+	'subtitles.stage.planning': 'Preparing…',
+	'subtitles.stage.downloading': 'Extracting audio…',
+	'subtitles.stage.downloadingSource': 'Downloading source…',
+	'subtitles.stage.extracting': 'Extracting audio…',
+	'subtitles.stage.compressing': 'Compressing audio…',
+	'subtitles.stage.chunking': 'Preparing audio…',
+	'subtitles.stage.transcribing': 'Transcribing…',
+	'subtitles.stage.transcribingChunks': 'Transcribing… ({done} of {total})',
+	'subtitles.stage.finalizing': 'Building subtitles…',
+	'subtitles.stage.waveform': 'Building waveform…',
 
 	// Error alert
 	'error.extractTitle': "Couldn't extract links",
@@ -151,6 +164,7 @@ export const en = {
 	'toast.invalidUrlEmpty': 'Please enter a valid URL',
 	'toast.invalidUrl': 'Invalid URL format',
 	'toast.loadedCache': 'Loaded {n} formats from cache',
+	'toast.alreadyInLibrary': 'Already in your library',
 	'toast.foundOne': 'Found 1 format',
 	'toast.foundMany': 'Found {n} formats',
 	'toast.loadedCacheImages': 'Loaded {n} images from cache',
@@ -372,6 +386,18 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.error.notConfigured': 'زیرنویس خودکار روی این سرور تنظیم نشده است.',
 	'subtitles.error.generic': 'تولید زیرنویس برای این ویدیو ممکن نشد.',
 	'subtitles.error.fetchFailed': 'بارگذاری این زیرنویس ممکن نشد. دوباره تلاش کنید.',
+	// Pipeline stage labels, keyed by the job's `status` field
+	'subtitles.stage.queued': 'در انتظار شروع…',
+	'subtitles.stage.planning': 'در حال آماده‌سازی…',
+	'subtitles.stage.downloading': 'استخراج صدا…',
+	'subtitles.stage.downloadingSource': 'در حال دانلود منبع…',
+	'subtitles.stage.extracting': 'استخراج صدا…',
+	'subtitles.stage.compressing': 'فشرده‌سازی صدا…',
+	'subtitles.stage.chunking': 'آماده‌سازی صدا…',
+	'subtitles.stage.transcribing': 'در حال تبدیل گفتار به متن…',
+	'subtitles.stage.transcribingChunks': 'تبدیل گفتار به متن… ({done} از {total})',
+	'subtitles.stage.finalizing': 'ساخت زیرنویس…',
+	'subtitles.stage.waveform': 'ساخت نمودار صدا…',
 
 	'error.extractTitle': 'استخراج لینک‌ها ممکن نشد',
 	'error.advice':
@@ -398,6 +424,7 @@ export const fa: Record<MessageKey, string> = {
 	'toast.invalidUrlEmpty': 'لطفاً یک لینک معتبر وارد کنید',
 	'toast.invalidUrl': 'فرمت لینک نامعتبر است',
 	'toast.loadedCache': '{n} فرمت از حافظه بارگذاری شد',
+	'toast.alreadyInLibrary': 'قبلاً در کتابخانه شما هست',
 	'toast.foundOne': '۱ فرمت پیدا شد',
 	'toast.foundMany': '{n} فرمت پیدا شد',
 	'toast.loadedCacheImages': '{n} تصویر از حافظه بارگذاری شد',

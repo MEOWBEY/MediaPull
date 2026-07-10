@@ -295,6 +295,15 @@ if [[ ! -f "$REPO_DIR/server/.env" ]]; then
   sudo -u "$SERVICE_USER" cp "$REPO_DIR/server/.env.production.example" "$REPO_DIR/server/.env"
 else
   echo "==> server/.env already exists, leaving it alone"
+  # ...except for settings the app no longer has: scrub retired keys so a
+  # re-run against an old install leaves a clean file (same list update.sh
+  # maintains for routine updates).
+  for key in TRANSCRIBE_CHUNK_SECONDS GROQ_CHUNK_CONCURRENCY; do
+    if grep -q "^${key}=" "$REPO_DIR/server/.env"; then
+      echo "    removing obsolete setting $key"
+      sudo -u "$SERVICE_USER" sed -i "/^${key}=/d" "$REPO_DIR/server/.env"
+    fi
+  done
 fi
 sudo -u "$SERVICE_USER" sed -i "s#^PORT=.*#PORT=$PORT#" "$REPO_DIR/server/.env"
 if [[ -n "$GROQ_API_KEY" ]]; then

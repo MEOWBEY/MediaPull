@@ -51,8 +51,11 @@ class AppStore {
 		return this.library.extractResults;
 	}
 
-	addVideoExtractResultsToStore(data: IncomingVideo): void {
-		this.library.addExtractResult(data);
+	/** Returns false when an entry for the same source already exists (caller
+	 *  shows an "already in library" toast instead of appending a duplicate).
+	 *  `allowDuplicate` is used by the refresh flow -- see `LibraryStore`. */
+	addVideoExtractResultsToStore(data: IncomingVideo, opts: { allowDuplicate?: boolean } = {}): boolean {
+		return this.library.addExtractResult(data, opts);
 	}
 
 	removeVideoExtractResultFromStore(target: GroupedVideo): void {
@@ -63,8 +66,8 @@ class AppStore {
 		return this.library.galleryResults;
 	}
 
-	addGalleryExtractResultsToStore(data: IncomingGallery): void {
-		this.library.addGalleryResult(data);
+	addGalleryExtractResultsToStore(data: IncomingGallery, opts: { allowDuplicate?: boolean } = {}): boolean {
+		return this.library.addGalleryResult(data, opts);
 	}
 
 	removeGalleryExtractResultFromStore(target: GroupedGallery): void {

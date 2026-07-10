@@ -204,6 +204,10 @@ class TranscribeRequest(BaseModel):
     webpage_url: str
     formats: list[VideoFormat]
     cookies: str | None = Field(default=None, max_length=262_144)
+    # Video duration as the player knows it -- lets the server turn ffmpeg's
+    # out_time into a real acquisition percentage even for sources it can't
+    # cheaply probe (HLS). Optional: progress degrades gracefully without it.
+    duration_seconds: float | None = Field(default=None, ge=0, le=86_400)
 
 
 class TranscribeStartResponse(BaseModel):
@@ -228,5 +232,14 @@ class TranscribeStatus(BaseModel):
     status: str
     progress: float
     step_label: str = Field(alias="stepLabel")
+    # Fine-grained sub-stage code the client maps to its own localized text
+    # (planning / downloading_source / extracting / compressing / transcribing /
+    # building_subtitles / waveform). More specific than `status`, which stays
+    # coarse for back-compat. None until the pipeline sets one.
+    detail: str | None = Field(default=None, alias="detail")
+    # Transcription chunk counters (0 until that stage) -- lets the client
+    # render/localize its own "x of y" text instead of parsing stepLabel.
+    chunks_done: int = Field(default=0, alias="chunksDone")
+    chunks_total: int = Field(default=0, alias="chunksTotal")
     error: str | None = None
     result: TranscribeResult | None = None

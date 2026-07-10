@@ -76,7 +76,7 @@
 			{/if}
 		</div>
 		<div class="ms-auto flex shrink-0 items-center gap-0.5">
-			<Button
+			<!-- <Button
 				variant="ghost"
 				size="icon"
 				onclick={onCopyAll}
@@ -85,7 +85,7 @@
 				aria-label={t('extract.copyAll')}
 			>
 				<Copy class="h-3.5 w-3.5" />
-			</Button>
+			</Button> -->
 			<Button
 				variant="ghost"
 				size="icon"

@@ -30,6 +30,12 @@ class TranscriptionResult:
 
 
 class Transcriber(Protocol):
+    @property
+    def max_concurrency(self) -> int:
+        """How many chunk requests the engine can usefully run in parallel
+        (for Groq: scales with the API-key pool)."""
+        ...
+
     async def transcribe(self, audio_path: Path) -> TranscriptionResult:
         """Speech-to-text in whatever language was spoken, with per-segment
         timestamps and the detected language code."""

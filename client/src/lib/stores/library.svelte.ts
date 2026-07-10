@@ -15,6 +15,23 @@ const MAX_ENTRIES = 50;
 const KEY_EXTRACT = 'videoExtractResults';
 const KEY_GALLERIES = 'galleryExtractResults';
 
+/** Whether two entries point at the same source. Prefer the source page URL
+ *  (stable across re-extraction and independent of which input URL variant the
+ *  user pasted); fall back to `id`. When neither is known we can't be sure, so
+ *  treat them as different rather than risk hiding a genuinely new result. */
+function sameSource(
+	a: { webpage_url?: string; id?: string },
+	b: { webpage_url?: string; id?: string }
+): boolean {
+	if (a.webpage_url && b.webpage_url) {
+		return a.webpage_url === b.webpage_url;
+	}
+	if (a.id && b.id) {
+		return a.id === b.id;
+	}
+	return false;
+}
+
 function sortVideos(items: GroupedVideo[], preferences: Preferences): GroupedVideo[] {
 	const sorted = [...items].sort((a, b) => {
 		let comparison = 0;
@@ -49,10 +66,32 @@ export class LibraryStore {
 		return sortVideos(this.extractResults, this.preferences.current);
 	}
 
-	addExtractResult(video: IncomingVideo): void {
-		this.extractResults.push(...groupVideosByQuality([video]));
+	/** Adds a freshly extracted video to the library. Returns `true` if it was
+	 *  actually added, `false` when an entry for the same source is already
+	 *  present (the caller then shows an "already in your library" toast instead
+	 *  of appending a duplicate card). `allowDuplicate` is for the refresh flow,
+	 *  which appends the fresh result *then* removes the stale one -- there the
+	 *  temporary duplicate is intended, so dedupe must not skip it. */
+	addExtractResult(video: IncomingVideo, opts: { allowDuplicate?: boolean } = {}): boolean {
+		const incoming = groupVideosByQuality([video]);
+
+		if (!opts.allowDuplicate) {
+			const fresh = incoming.filter(
+				(v) => !this.extractResults.some((existing) => sameSource(existing, v))
+			);
+
+			if (!fresh.length) {
+				return false;
+			}
+			this.extractResults.push(...fresh);
+		} else {
+			this.extractResults.push(...incoming);
+		}
+
 		this.evictOldest(this.extractResults);
 		this.persist(KEY_EXTRACT, this.extractResults);
+
+		return true;
 	}
 
 	/** Keep only the most recent MAX_ENTRIES, dropping the oldest (front). */
@@ -87,10 +126,28 @@ export class LibraryStore {
 		this.remove(KEY_EXTRACT);
 	}
 
-	addGalleryResult(gallery: IncomingGallery): void {
-		this.galleryResults.push(...groupGalleriesBySource([gallery]));
+	/** Mirrors `addExtractResult` for galleries -- see it for the dedupe /
+	 *  `allowDuplicate` contract. */
+	addGalleryResult(gallery: IncomingGallery, opts: { allowDuplicate?: boolean } = {}): boolean {
+		const incoming = groupGalleriesBySource([gallery]);
+
+		if (!opts.allowDuplicate) {
+			const fresh = incoming.filter(
+				(g) => !this.galleryResults.some((existing) => sameSource(existing, g))
+			);
+
+			if (!fresh.length) {
+				return false;
+			}
+			this.galleryResults.push(...fresh);
+		} else {
+			this.galleryResults.push(...incoming);
+		}
+
 		this.evictOldest(this.galleryResults);
 		this.persist(KEY_GALLERIES, this.galleryResults);
+
+		return true;
 	}
 
 	removeGalleryResult(target: GroupedGallery): void {

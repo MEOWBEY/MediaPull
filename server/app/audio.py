@@ -5,23 +5,24 @@ exclusively inside an explicit, opt-in ``POST /transcribe`` job -- extraction
 (``extractor.py``) always resolves URLs with ``download=False`` and that
 invariant is untouched by this module.
 
-Each step (no-download-needed / download / extract / chunk) only runs when
-actually necessary:
-  * an HLS source lets ffmpeg pull audio straight off the manifest URL, no
-    manual segment reassembly;
-  * a progressive source is downloaded once, then ffmpeg strips it to a
-    mono/16kHz/low-bitrate track sized for Whisper;
-  * chunking only kicks in when the extracted track exceeds
-    ``transcribe_chunk_seconds`` (kept comfortably under Groq's per-request
-    size limit at the default bitrate).
+Built for latency: ffmpeg reads the source URL directly whenever it can (HLS
+*and* progressive), so downloading and transcoding are one overlapped pass
+with nothing but the final mono/16kHz/32kbps opus track ever touching disk.
+Only when a host rejects ffmpeg's plain TLS (anti-bot CDNs) does it fall back
+to the old two-step: curl_cffi download with browser impersonation, then a
+local transcode. Every step reports real progress -- ffmpeg's ``-progress``
+stream for transcodes, byte counts for downloads -- so the job can show the
+user an honest percentage instead of a stalled bar.
 """
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import shutil
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -34,16 +35,130 @@ from .net_common import impersonate_kwarg
 
 logger = logging.getLogger("directstream.audio")
 
-_FFMPEG_AUDIO_ARGS = ("-vn", "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k")
-# Bound every ffmpeg/ffprobe call so a stalled network read (e.g. a dead HLS
-# segment) can't hang forever and pin a concurrency slot.
-_FFMPEG_TIMEOUT = 300
-# ffprobe is just reading a local file's metadata (no network), so it needs
-# far less slack than the ffmpeg extraction/chunking calls above -- this only
-# guards against a wedged/zombie process.
+# Intermediate audio codecs Whisper accepts, keyed by the TRANSCRIBE_AUDIO_CODEC
+# setting. Each carries the ffmpeg output args (always mono/16kHz -- Whisper's
+# native rate) and an approximate encoded-bytes-per-second, used only to size
+# time windows so a chunk stays under Groq's upload cap. All drop the video
+# track (-vn). opus: tiny (voip mode is speech-tuned and cheap); wav: raw PCM,
+# zero encode CPU but ~8x larger; flac: fast lossless, roughly half of PCM.
+@dataclass(frozen=True)
+class _Codec:
+    ext: str
+    args: tuple[str, ...]
+    bytes_per_second: float
+
+
+_CODECS: dict[str, _Codec] = {
+    "opus": _Codec(
+        ext="opus",
+        args=("-vn", "-ac", "1", "-ar", "16000", "-c:a", "libopus", "-b:a", "32k",
+              "-application", "voip"),
+        bytes_per_second=4_000.0,  # 32kbps
+    ),
+    "wav": _Codec(
+        ext="wav",
+        args=("-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le"),
+        bytes_per_second=32_000.0,  # 16kHz * 2 bytes
+    ),
+    "flac": _Codec(
+        ext="flac",
+        args=("-vn", "-ac", "1", "-ar", "16000", "-c:a", "flac"),
+        bytes_per_second=18_000.0,  # ~55% of PCM for speech
+    ),
+}
+_DEFAULT_CODEC = "opus"
+
+
+def resolve_codec(name: str) -> _Codec:
+    """Map the ``TRANSCRIBE_AUDIO_CODEC`` setting to a codec, defaulting to
+    opus for any unrecognized value rather than failing the job."""
+    codec = _CODECS.get((name or "").strip().lower())
+    if codec is None:
+        logger.warning("unknown TRANSCRIBE_AUDIO_CODEC %r -- falling back to opus", name)
+        return _CODECS[_DEFAULT_CODEC]
+    return codec
+
+
+# Auto-pick order: cheapest CPU (biggest output) first. wav = raw PCM, zero
+# encode work; flac = fast lossless; opus = most CPU but tiny. The picker walks
+# this list and takes the FIRST whose whole track still fits one upload window,
+# so a short clip skips the encode entirely and only a long one pays for opus.
+_AUTO_ORDER = ("wav", "flac", "opus")
+
+
+def build_custom_codec(settings: Settings) -> _Codec:
+    """A ``_Codec`` from the ``TRANSCRIBE_CUSTOM_*`` settings (custom mode).
+    Falls back to the opus preset when no custom args are configured so a
+    half-set custom mode degrades gracefully instead of failing the job."""
+    args = settings.transcribe_custom_ffmpeg_arg_list
+    if not args:
+        logger.warning(
+            "TRANSCRIBE_MODE=custom but TRANSCRIBE_CUSTOM_FFMPEG_ARGS is empty -- "
+            "using the opus preset"
+        )
+        return _CODECS[_DEFAULT_CODEC]
+    ext = (settings.transcribe_custom_ext or "opus").strip().lstrip(".") or "opus"
+    return _Codec(
+        ext=ext,
+        args=tuple(args),
+        bytes_per_second=settings.transcribe_custom_bytes_per_second,
+    )
+
+
+def choose_codec(
+    settings: Settings, *, duration_hint: float | None, cap_bytes: int
+) -> _Codec:
+    """Decide how the audio fed to Whisper is encoded.
+
+    * ``custom`` mode -> the operator's own ffmpeg args (``build_custom_codec``).
+    * ``auto`` mode   -> the fastest encode (least CPU) whose whole track still
+      fits one upload window: wav if it fits, else flac, else opus. A track too
+      long to fit even as opus still uses opus and gets windowed/chunked under
+      the cap downstream. Unknown duration -> the ``TRANSCRIBE_AUDIO_CODEC``
+      fallback (opus by default), the safe small choice when we can't size it.
+    """
+    if (settings.transcribe_mode or "auto").strip().lower() == "custom":
+        return build_custom_codec(settings)
+
+    if not duration_hint or duration_hint <= 0:
+        return resolve_codec(settings.transcribe_audio_codec)
+
+    budget = 0.8 * cap_bytes  # same headroom plan_windows targets
+    for name in _AUTO_ORDER:
+        codec = _CODECS[name]
+        if codec.bytes_per_second * duration_hint <= budget:
+            logger.info(
+                "auto codec: %s (%.0fs track ~%.1fMB fits %.0fMB cap window)",
+                name,
+                duration_hint,
+                codec.bytes_per_second * duration_hint / 1e6,
+                cap_bytes / 1e6,
+            )
+            return codec
+    logger.info("auto codec: opus (%.0fs track needs chunking under the cap)", duration_hint)
+    return _CODECS["opus"]
+
+# Fallback chunk length for the single-pass path (HLS / unknown-duration), where
+# we can't window the extraction itself. At 32kbps opus this is ~1.2MB, far
+# under the cap. The fast parallel path sizes its own windows from the cap and
+# the extract parallelism instead (see ``plan_windows``).
+CHUNK_SECONDS = 300
+# Don't split when the whole track fits in one chunk plus slack -- a second
+# request for 20 trailing seconds costs more than it saves.
+_CHUNK_SLACK = 1.15
+
+# Network-reading ffmpeg runs (extraction) get a generous cap -- the job's own
+# wall-clock timeout is the real guard; this only reaps a fully wedged child.
+_FFMPEG_EXTRACT_TIMEOUT = 900
+# Local-only re-mux (segmenting) is disk-speed, never minutes.
+_FFMPEG_SEGMENT_TIMEOUT = 120
+# ffprobe is just reading a local file's metadata (no network).
 _FFPROBE_TIMEOUT = 30
 # ffmpeg's own per-read network timeout (microseconds) -- 30s.
 _FFMPEG_RW_TIMEOUT = "30000000"
+
+# Reports fractional progress of one step, 0.0..1.0.
+ProgressFn = Callable[[float], None]
 
 
 def _unwrap_proxied(url: str) -> tuple[str, dict[str, str]]:
@@ -90,6 +205,87 @@ class AudioChunk:
     offset_seconds: float
 
 
+@dataclass(frozen=True)
+class Window:
+    """One planned extraction slice: ``length`` seconds of audio starting at
+    ``start`` seconds into the source. ``index`` fixes chunk order (and thus
+    the output filename) independent of which window finishes extracting first."""
+    index: int
+    start: float
+    length: float
+
+
+def plan_windows(
+    duration: float, codec: _Codec, cap_bytes: int, parallelism: int
+) -> list[Window]:
+    """Slice ``[0, duration]`` into contiguous windows that each stay under the
+    Groq upload cap while giving the extract pool something to parallelize.
+
+    The window length is the smaller of:
+      * ``cap_seconds`` -- the longest slice whose encoded size stays under
+        ~80% of the cap (margin for VBR/container overhead), and
+      * an even split into ``parallelism`` pieces -- so a short-enough video
+        still fans out across the workers instead of becoming one big window.
+    """
+    cap_seconds = 0.8 * cap_bytes / codec.bytes_per_second
+    if cap_seconds <= 0:
+        cap_seconds = duration
+    even_split = duration / max(parallelism, 1)
+    window = max(1.0, min(cap_seconds, even_split))
+    count = max(1, math.ceil(duration / window))
+    return [
+        Window(index=i, start=i * window, length=min(window, duration - i * window))
+        for i in range(count)
+    ]
+
+
+@dataclass(frozen=True)
+class AcquisitionPlan:
+    """What the job needs to acquire audio. ``windows`` is the fast parallel
+    path (each extracted straight off ``url`` via a Range read); ``None`` means
+    fall back to the single-pass ``acquire_audio`` (HLS, unknown duration, or a
+    socks proxy ffmpeg can't use)."""
+    codec: _Codec
+    url: str
+    headers: dict[str, str]
+    windows: list[Window] | None
+
+
+def plan_acquisition(
+    formats: list[VideoFormat], settings: Settings, *, duration_hint: float | None
+) -> AcquisitionPlan:
+    """Decide how to pull the audio: parallel cap-sized windows when the source
+    is progressive and its duration is known, else the single-pass fallback."""
+    codec = choose_codec(
+        settings,
+        duration_hint=duration_hint,
+        cap_bytes=settings.transcribe_max_upload_bytes,
+    )
+    fmt = pick_audio_format(formats)
+    real_url, extra_headers = _unwrap_proxied(fmt.url or "")
+    headers = {**(fmt.http_headers or {}), **extra_headers}
+
+    socks_proxy = bool(settings.proxy_url) and not settings.proxy_url.startswith("http")
+    can_window = (
+        fmt.protocol != "m3u8_native"
+        and duration_hint is not None
+        and duration_hint > 0
+        and not socks_proxy
+        and settings.transcribe_extract_parallelism >= 1
+    )
+    windows = (
+        plan_windows(
+            duration_hint,  # type: ignore[arg-type]  (guarded above)
+            codec,
+            settings.transcribe_max_upload_bytes,
+            settings.transcribe_extract_parallelism,
+        )
+        if can_window
+        else None
+    )
+    return AcquisitionPlan(codec=codec, url=real_url, headers=headers, windows=windows)
+
+
 def create_work_dir() -> Path:
     return Path(tempfile.mkdtemp(prefix="ds-transcribe-"))
 
@@ -99,43 +295,74 @@ def cleanup_work_dir(work_dir: Path) -> None:
 
 
 def pick_audio_format(formats: list[VideoFormat]) -> VideoFormat:
-    """Pick the format to pull audio from -- the video track itself is unused.
+    """Pick the format to pull audio from -- the video track itself is unused,
+    so the goal is the SMALLEST download that still carries audio. The client
+    sends its whole format list; we always re-pick here and ignore whatever it
+    plays with, because the smallest audio source is rarely the playback pick.
 
-    Ranking (best first), because we only know ``ext``/``resolution``/
-    ``protocol``/``video_only`` here (a heuristic, not an exact codec check):
+    Ranking (best first). We only know ``ext``/``resolution``/``protocol``/
+    ``video_only``/``tbr`` here (a heuristic, not an exact codec check):
 
-    1. **Progressive over HLS.** A progressive (single-file) URL is a plain
-       download ffmpeg reads directly. An HLS URL goes through our proxy,
-       which rewrites the playlist's segment URLs and drops their extensions
-       -- ffmpeg then refuses them ("not in allowed_segment_extensions").
-       So progressive is strongly preferred; HLS is a last resort (and
-       ``_extract_audio_from_url`` passes ``-allowed_extensions ALL`` for it).
-    2. **Audio-bearing over video-only.** A ``video_only`` stream has no audio
-       to transcribe at all, so it's worst. Audio-only (no resolution, not
-       video-only) is best; muxed (audio+video) is the middle.
-    3. **Smaller bitrate first** -- less to download.
+    1. **Audio-bearing, audio-only best.** Primary key. A muxed (audio+video)
+       stream makes ffmpeg download the whole *picture* just to drop it
+       (``-vn``); a ``video_only`` stream has no audio to transcribe at all, so
+       it's last and only used if nothing else exists.
+    2. **Smallest first**, by bitrate -- the size proxy, since every format of
+       one video shares its duration. Format/protocol (mp4 vs HLS vs …) does
+       NOT matter here: a smaller HLS beats a larger progressive. Unknown
+       bitrate sorts last so an unknown-size format never poses as "smallest";
+       resolution breaks ties and stands in when bitrate is missing.
+    3. **Progressive over HLS** only as the final tie-break (equal size) --
+       never to pick a bigger file -- because a single-file URL is one plain
+       Range-capable read the windowed extractor can parallelize.
     """
     candidates = [f for f in formats if f.url]
     if not candidates:
         raise AudioError("No downloadable format available for this video")
 
-    def score(f: VideoFormat) -> tuple[int, int, float]:
-        is_hls = 1 if f.protocol == "m3u8_native" else 0
+    def score(f: VideoFormat) -> tuple[int, float, int, int]:
         is_audio_only = f.resolution is None and not f.video_only
         tier = 0 if is_audio_only else (2 if f.video_only else 1)
-        return (is_hls, tier, f.tbr or 0.0)
+        bitrate = f.tbr if (f.tbr and f.tbr > 0) else float("inf")
+        resolution = f.resolution or 0
+        is_hls = 1 if f.protocol == "m3u8_native" else 0
+        return (tier, bitrate, resolution, is_hls)
 
-    return sorted(candidates, key=score)[0]
+    chosen = sorted(candidates, key=score)[0]
+    # Prove the smallest audio source really is what we pull to disk -- shows
+    # up once per job so a "why did it download the big file?" suspicion is
+    # answerable from the logs.
+    kind = (
+        "audio-only" if (chosen.resolution is None and not chosen.video_only)
+        else "video-only" if chosen.video_only
+        else "muxed"
+    )
+    logger.info(
+        "audio source: format=%s %s tbr=%s res=%s proto=%s (smallest of %d)",
+        chosen.format_id, kind, chosen.tbr, chosen.resolution, chosen.protocol,
+        len(candidates),
+    )
+    return chosen
 
 
-async def _run_ffmpeg(args: list[str], binary: str = "ffmpeg") -> None:
+async def _run_ffmpeg(
+    args: list[str],
+    binary: str = "ffmpeg",
+    *,
+    timeout: float = _FFMPEG_EXTRACT_TIMEOUT,
+    on_out_time: Callable[[float], None] | None = None,
+) -> None:
+    """Run ffmpeg to completion. With ``on_out_time``, ffmpeg's ``-progress``
+    stream is parsed and the callback receives the output timestamp (seconds
+    of media produced so far) roughly twice a second -- divide by the track's
+    duration for a real percentage."""
+    prefix = ["-y", "-hide_banner", "-loglevel", "error"]
+    if on_out_time is not None:
+        prefix += ["-nostats", "-progress", "pipe:1"]
     try:
         proc = await asyncio.create_subprocess_exec(
             binary,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
+            *prefix,
             *args,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -146,8 +373,32 @@ async def _run_ffmpeg(args: list[str], binary: str = "ffmpeg") -> None:
             f"ffmpeg is not installed or not on PATH ({binary!r}). Set FFMPEG_BINARY to its "
             "absolute path if it's installed somewhere not on this process's PATH."
         ) from exc
+
+    async def _pump_stdout() -> None:
+        assert proc.stdout is not None
+        while True:
+            line = await proc.stdout.readline()
+            if not line:
+                return
+            if on_out_time is None:
+                continue
+            text = line.decode(errors="ignore").strip()
+            # ffmpeg quirk: out_time_ms is ALSO microseconds (same as
+            # out_time_us) -- both divide by 1e6. Value is "N/A" early on.
+            if text.startswith(("out_time_us=", "out_time_ms=")):
+                try:
+                    on_out_time(max(0, int(text.split("=", 1)[1])) / 1_000_000)
+                except ValueError:
+                    continue
+
+    async def _consume() -> bytes:
+        assert proc.stderr is not None
+        _, stderr = await asyncio.gather(_pump_stdout(), proc.stderr.read())
+        await proc.wait()
+        return stderr
+
     try:
-        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFMPEG_TIMEOUT)
+        stderr = await asyncio.wait_for(_consume(), timeout=timeout)
     except asyncio.TimeoutError as exc:
         proc.kill()
         await proc.wait()
@@ -202,10 +453,16 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
 
 
 async def _download_stream(
-    url: str, headers: dict[str, str], ext: str, settings: Settings, work_dir: Path
+    url: str,
+    headers: dict[str, str],
+    ext: str,
+    settings: Settings,
+    work_dir: Path,
+    on_progress: ProgressFn | None = None,
 ) -> Path:
     """Stream a progressive media URL to disk (with browser impersonation),
-    capped at ``transcribe_max_download_bytes``."""
+    capped at ``transcribe_max_download_bytes``. Reports bytes/Content-Length
+    as fractional progress when the server discloses a length."""
     proxy = settings.proxy_url or None
     max_bytes = settings.transcribe_max_download_bytes
     dest = work_dir / f"source.{ext or 'bin'}"
@@ -226,6 +483,11 @@ async def _download_stream(
             await resp.aclose()
             raise AudioError(f"Failed to download source media: HTTP {resp.status_code}")
 
+        try:
+            total = int(resp.headers.get("content-length", "0")) or None
+        except ValueError:
+            total = None
+
         written = 0
         try:
             with dest.open("wb") as fh:
@@ -236,6 +498,8 @@ async def _download_stream(
                             "Source media exceeds the server's transcription download size limit"
                         )
                     fh.write(chunk)
+                    if on_progress is not None and total:
+                        on_progress(min(written / total, 1.0))
         except AudioError:
             raise
         except Exception as exc:  # noqa: BLE001 - surface as a clean AudioError
@@ -246,88 +510,242 @@ async def _download_stream(
     return dest
 
 
-async def extract_audio_track(source: Path, work_dir: Path, settings: Settings) -> Path:
-    out = work_dir / "audio.opus"
-    await _run_ffmpeg(["-i", str(source), *_FFMPEG_AUDIO_ARGS, str(out)], settings.ffmpeg_binary)
-    return out
+def _out_time_progress(duration_hint: float | None, on_progress: ProgressFn | None):
+    """Adapt an absolute out_time (seconds transcoded) to a 0..1 fraction --
+    only possible when the track's duration is known."""
+    if on_progress is None or not duration_hint or duration_hint <= 0:
+        return None
+
+    def _cb(out_time: float) -> None:
+        on_progress(min(out_time / duration_hint, 1.0))
+
+    return _cb
 
 
-async def _extract_audio_from_url(
-    url: str, headers: dict[str, str] | None, work_dir: Path, settings: Settings
+async def extract_audio_track(
+    source: Path,
+    work_dir: Path,
+    settings: Settings,
+    codec: _Codec,
+    *,
+    duration_hint: float | None = None,
+    on_progress: ProgressFn | None = None,
 ) -> Path:
-    """ffmpeg reads an HLS (or any ffmpeg-readable) URL directly -- no need to
-    download and manually reassemble segments first.
-
-    Fetches the origin directly with the source's own headers (Referer/UA/
-    Cookie), so segment URLs keep their real extensions. ``-allowed_extensions
-    ALL`` covers fragmented-MP4 (.m4s) segments that aren't in ffmpeg's default
-    allow-list; ``-rw_timeout`` bounds each network read.
-    """
-    out = work_dir / "audio.opus"
-    header_args: list[str] = []
-    if headers:
-        header_lines = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
-        header_args = ["-headers", header_lines]
+    out = work_dir / f"audio.{codec.ext}"
+    if duration_hint is None and on_progress is not None:
+        try:
+            duration_hint = await probe_duration(source, settings.ffprobe_binary)
+        except AudioError:
+            duration_hint = None  # progress stays indeterminate; extraction still runs
     await _run_ffmpeg(
-        [
-            *header_args,
-            "-allowed_extensions",
-            "ALL",
-            "-rw_timeout",
-            _FFMPEG_RW_TIMEOUT,
-            "-i",
-            url,
-            *_FFMPEG_AUDIO_ARGS,
-            str(out),
-        ],
+        ["-i", str(source), *codec.args, str(out)],
         settings.ffmpeg_binary,
+        on_out_time=_out_time_progress(duration_hint, on_progress),
     )
     return out
 
 
-async def acquire_audio(
-    formats: list[VideoFormat], settings: Settings, work_dir: Path
+def _ffmpeg_proxy_args(settings: Settings) -> list[str]:
+    # ffmpeg's http protocol only speaks http(s) proxies -- socks stays on the
+    # curl_cffi fallback path.
+    if settings.proxy_url and settings.proxy_url.startswith("http"):
+        return ["-http_proxy", settings.proxy_url]
+    return []
+
+
+def _url_input_args(
+    url: str, headers: dict[str, str] | None, settings: Settings, *, hls: bool
+) -> list[str]:
+    """The common ffmpeg input args for reading a source URL directly: proxy,
+    the source's own request headers, HLS extension allow-list, and the
+    per-read network timeout."""
+    args: list[str] = [*_ffmpeg_proxy_args(settings)]
+    if headers:
+        header_lines = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
+        args += ["-headers", header_lines]
+    if hls:
+        args += ["-allowed_extensions", "ALL"]
+    args += ["-rw_timeout", _FFMPEG_RW_TIMEOUT]
+    return args
+
+
+async def _extract_audio_from_url(
+    url: str,
+    headers: dict[str, str] | None,
+    work_dir: Path,
+    settings: Settings,
+    codec: _Codec,
+    *,
+    hls: bool,
+    duration_hint: float | None = None,
+    on_progress: ProgressFn | None = None,
 ) -> Path:
-    """Resolve the audio track for the transcription job: one mono/16kHz/opus file.
+    """ffmpeg reads the source URL directly -- download and transcode become
+    one overlapped pass and the source file never hits the disk.
+
+    Fetches the origin with the source's own headers (Referer/UA/Cookie).
+    For HLS, ``-allowed_extensions ALL`` covers fragmented-MP4 (.m4s) segments
+    that aren't in ffmpeg's default allow-list. ``-rw_timeout`` bounds each
+    network read so a dead host can't wedge the job.
+    """
+    out = work_dir / f"audio.{codec.ext}"
+    args = _url_input_args(url, headers, settings, hls=hls)
+    args += ["-i", url, *codec.args, str(out)]
+    await _run_ffmpeg(
+        args,
+        settings.ffmpeg_binary,
+        on_out_time=_out_time_progress(duration_hint, on_progress),
+    )
+    return out
+
+
+async def extract_window(
+    url: str,
+    headers: dict[str, str] | None,
+    work_dir: Path,
+    settings: Settings,
+    codec: _Codec,
+    window: Window,
+    *,
+    on_progress: ProgressFn | None = None,
+) -> AudioChunk:
+    """Extract one planned ``Window`` straight off the source URL into its own
+    chunk file. ``-ss``/``-t`` sit *before* ``-i`` so ffmpeg issues an HTTP
+    Range request and starts reading near the window instead of from byte 0
+    (on range-capable progressive origins -- the common case). Re-encoding
+    makes the seek sample-accurate, so the chunk's offset is exactly
+    ``window.start`` with no probing needed."""
+    out = work_dir / f"chunk_{window.index:03d}.{codec.ext}"
+    args = _url_input_args(url, headers, settings, hls=False)
+    args += [
+        "-ss", f"{window.start:.3f}",
+        "-t", f"{window.length:.3f}",
+        "-i", url,
+        *codec.args,
+        str(out),
+    ]
+    await _run_ffmpeg(
+        args,
+        settings.ffmpeg_binary,
+        on_out_time=_out_time_progress(window.length, on_progress),
+    )
+    return AudioChunk(path=out, offset_seconds=window.start)
+
+
+async def acquire_audio(
+    formats: list[VideoFormat],
+    settings: Settings,
+    work_dir: Path,
+    *,
+    duration_hint: float | None = None,
+    on_progress: ProgressFn | None = None,
+) -> Path:
+    """Resolve the audio track for the transcription job into ONE file (the
+    single-pass fallback used for HLS / unknown-duration sources), reporting
+    0..1 progress across the whole acquire step.
 
     The client sends proxied (``/proxy-video?...``) URLs (that's what the
     player uses). For server-side acquisition we unwrap them and hit the origin
     directly with the source's own headers -- see ``_unwrap_proxied``.
+
+    Fast path for every protocol is a single ffmpeg pass straight off the URL.
+    A progressive host that rejects ffmpeg's TLS (anti-bot CDNs that need
+    browser impersonation) falls back to curl_cffi download + local transcode.
     """
+    codec = choose_codec(
+        settings,
+        duration_hint=duration_hint,
+        cap_bytes=settings.transcribe_max_upload_bytes,
+    )
     fmt = pick_audio_format(formats)
     real_url, extra_headers = _unwrap_proxied(fmt.url or "")
     headers = {**(fmt.http_headers or {}), **extra_headers}
 
     if fmt.protocol == "m3u8_native":
-        return await _extract_audio_from_url(real_url, headers, work_dir, settings)
+        return await _extract_audio_from_url(
+            real_url, headers, work_dir, settings, codec,
+            hls=True, duration_hint=duration_hint, on_progress=on_progress,
+        )
 
-    downloaded = await _download_stream(real_url, headers, fmt.ext, settings, work_dir)
-    return await extract_audio_track(downloaded, work_dir, settings)
+    # A socks proxy forces the curl_cffi path -- ffmpeg can't speak it.
+    if not (settings.proxy_url and not settings.proxy_url.startswith("http")):
+        try:
+            return await _extract_audio_from_url(
+                real_url, headers, work_dir, settings, codec,
+                hls=False, duration_hint=duration_hint, on_progress=on_progress,
+            )
+        except AudioError as exc:
+            logger.warning(
+                "direct ffmpeg read failed (%s) -- falling back to impersonated download",
+                str(exc)[:300],
+            )
+
+    # Fallback: impersonated download (first ~55%% of the step), then local
+    # transcode (the rest). The weights are honest-ish, not measured -- both
+    # sub-steps scale with the same source length.
+    def _dl_progress(frac: float) -> None:
+        if on_progress is not None:
+            on_progress(frac * 0.55)
+
+    def _tc_progress(frac: float) -> None:
+        if on_progress is not None:
+            on_progress(0.55 + frac * 0.45)
+
+    downloaded = await _download_stream(
+        real_url, headers, fmt.ext, settings, work_dir, on_progress=_dl_progress
+    )
+    audio = await extract_audio_track(
+        downloaded, work_dir, settings, codec,
+        duration_hint=duration_hint, on_progress=_tc_progress,
+    )
+    # The source file is by far the largest thing in the work dir -- drop it
+    # as soon as the opus track exists instead of holding disk until cleanup.
+    downloaded.unlink(missing_ok=True)
+    return audio
 
 
-async def chunk_if_needed(audio_path: Path, work_dir: Path, settings: Settings) -> list[AudioChunk]:
-    """Split into ``transcribe_chunk_seconds``-sized pieces only when needed.
-
-    Re-cuts with ``-c copy`` (no re-encode) since the source is already the
-    low-bitrate opus track ``acquire_audio`` produced.
-    """
-    duration = await probe_duration(audio_path, settings.ffprobe_binary)
-    max_seconds = settings.transcribe_chunk_seconds
-    if duration <= max_seconds:
+async def chunk_audio(
+    audio_path: Path, work_dir: Path, settings: Settings, *, duration: float
+) -> list[AudioChunk]:
+    """Split into ``CHUNK_SECONDS`` pieces with ONE ffmpeg segmenting pass
+    (``-c copy``, no re-encode) -- not one invocation per chunk. Offsets are
+    then measured from the produced files (cumulative real durations), so
+    merged subtitle timing is exact regardless of where the muxer could
+    actually cut. Used only on the single-pass fallback path."""
+    if duration <= CHUNK_SECONDS * _CHUNK_SLACK:
         return [AudioChunk(path=audio_path, offset_seconds=0.0)]
 
+    ext = audio_path.suffix.lstrip(".") or "opus"
+    pattern = work_dir / f"chunk_%03d.{ext}"
+    await _run_ffmpeg(
+        [
+            "-i",
+            str(audio_path),
+            "-f",
+            "segment",
+            "-segment_time",
+            str(CHUNK_SECONDS),
+            "-reset_timestamps",
+            "1",
+            "-c",
+            "copy",
+            str(pattern),
+        ],
+        settings.ffmpeg_binary,
+        timeout=_FFMPEG_SEGMENT_TIMEOUT,
+    )
+
+    paths = sorted(work_dir.glob(f"chunk_*.{ext}"))
+    if not paths:
+        raise AudioError("Audio chunking produced no output")
+
+    # Sequential probes on purpose: local metadata reads are ~50ms each, and
+    # fanning out N ffprobe processes at once is needless load on a small VPS.
     chunks: list[AudioChunk] = []
     offset = 0.0
-    index = 0
-    while offset < duration:
-        chunk_path = work_dir / f"chunk_{index:03d}.opus"
-        await _run_ffmpeg(
-            ["-ss", str(offset), "-t", str(max_seconds), "-i", str(audio_path), "-c", "copy", str(chunk_path)],
-            settings.ffmpeg_binary,
-        )
-        chunks.append(AudioChunk(path=chunk_path, offset_seconds=offset))
-        offset += max_seconds
-        index += 1
+    for path in paths:
+        chunks.append(AudioChunk(path=path, offset_seconds=offset))
+        offset += await probe_duration(path, settings.ffprobe_binary)
 
-    logger.info("split audio into %d chunk(s) (%.0fs each)", len(chunks), max_seconds)
+    logger.info("split %.0fs audio into %d chunk(s)", duration, len(chunks))
     return chunks

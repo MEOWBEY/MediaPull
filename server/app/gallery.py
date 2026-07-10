@@ -23,7 +23,7 @@ from urllib.parse import urlparse
 from .config import Settings
 from .extractor import ExtractionError, classify_extraction_error, is_valid_url
 from .models import GalleryImage, GalleryInfo
-from .net_common import cookie_tempfile, normalize_cookies
+from .net_common import cookie_tempfile, get_cookie_pool, normalize_cookies
 
 logger = logging.getLogger("directstream.gallery")
 
@@ -87,16 +87,20 @@ class GalleryExtractor:
         ]
 
         # Authentication cookies: per-request blob (from the user's Settings)
-        # wins; otherwise the server-side default file, same fallback order
+        # wins; otherwise the next server-side default file in the rotation
+        # (COOKIE_FILE may list several accounts), same fallback order
         # extractor.py uses for yt-dlp. Instagram/X mostly refuse to list
         # content at all without a logged-in session, so this matters more
         # here than for video sites.
         cookie_text = normalize_cookies(cookies, url) if cookies else None
+        pool_cookie: str | None = None
         with cookie_tempfile(cookie_text) as cookie_tmp:
             if cookie_tmp:
                 cmd += ["--cookies", cookie_tmp]
-            elif s.cookie_file:
-                cmd += ["--cookies", s.cookie_file]
+            else:
+                pool_cookie = get_cookie_pool(s).pick()
+                if pool_cookie:
+                    cmd += ["--cookies", pool_cookie]
 
             cmd.append(url)  # URL must be last -- a positional arg, not a flag value
 
@@ -118,6 +122,10 @@ class GalleryExtractor:
 
         if proc.returncode != 0 and not proc.stdout.strip():
             status, message = classify_extraction_error(RuntimeError(proc.stderr))
+            # Same account-rotation contract as the yt-dlp path: a block
+            # earned on a pool account rests that account for a while.
+            if pool_cookie and status in (401, 403, 429):
+                get_cookie_pool(s).report_block(pool_cookie)
             if message == _GENERIC_EXTRACTION_MESSAGE:
                 message = _GENERIC_GALLERY_MESSAGE
             raise ExtractionError(message, status=status)

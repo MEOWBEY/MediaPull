@@ -18,7 +18,7 @@ import logging
 import re
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 import httpx
 import yt_dlp
@@ -26,7 +26,13 @@ from curl_cffi.requests import AsyncSession
 
 from .config import Settings
 from .models import SubtitleTrack, VideoFormat, VideoInfo
-from .net_common import build_impersonate, cookie_tempfile, impersonate_kwarg, normalize_cookies
+from .net_common import (
+    build_impersonate,
+    cookie_tempfile,
+    get_cookie_pool,
+    impersonate_kwarg,
+    normalize_cookies,
+)
 
 logger = logging.getLogger("directstream.extractor")
 
@@ -155,6 +161,29 @@ def is_valid_url(url: str) -> bool:
         return bool(parsed.netloc and parsed.scheme in ("http", "https"))
     except ValueError:
         return False
+
+
+def _normalize_caption_url(url: str, ext: str) -> tuple[str, str]:
+    """Force a browser-parseable caption format.
+
+    YouTube's timedtext endpoint serves whatever ``fmt`` the query asks for
+    (json3/srv3/ttml/vtt); yt-dlp often lists a non-vtt entry first, which the
+    client's WebVTT/SRT parser can't read -- so the "use existing caption"
+    button failed with "could not load this subtitle track". Rewriting
+    ``fmt=vtt`` onto any timedtext URL guarantees WebVTT regardless of which
+    entry was picked. Non-timedtext URLs (real .vtt/.srt files other sites
+    provide) pass through untouched.
+    """
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return url, ext
+    if "timedtext" not in parsed.path and "timedtext" not in parsed.netloc:
+        return url, ext
+    query = parse_qs(parsed.query)
+    query["fmt"] = ["vtt"]
+    new_query = urlencode({k: v[-1] for k, v in query.items()})
+    return urlunparse(parsed._replace(query=new_query)), "vtt"
 
 
 class Extractor:
@@ -401,17 +430,30 @@ class Extractor:
             opts.update(force_generic_extractor=True, nocheckcertificate=True)
 
         # Authentication cookies: per-request blob (from the user's Settings)
-        # wins; otherwise the server-side default file. The temp file lives only
+        # wins; otherwise the next server-side default file in the rotation
+        # (COOKIE_FILE may list several accounts). The temp file lives only
         # for this one extraction and is removed right after.
         cookie_text = normalize_cookies(cookies, url) if cookies else None
+        pool_cookie: str | None = None
         with cookie_tempfile(cookie_text) as cookie_tmp:
             if cookie_tmp:
                 opts["cookiefile"] = cookie_tmp
-            elif s.cookie_file:
-                opts["cookiefile"] = s.cookie_file
+            else:
+                pool_cookie = get_cookie_pool(s).pick()
+                if pool_cookie:
+                    opts["cookiefile"] = pool_cookie
 
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=False)
+            try:
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+            except Exception as exc:
+                # A rate-limit / bot-flag / login wall while running on a
+                # server cookie account means THAT account is burned for a
+                # while -- rest it so the next request rotates to another
+                # one instead of re-hitting the same block.
+                if pool_cookie and classify_extraction_error(exc)[0] in (401, 403, 429):
+                    get_cookie_pool(s).report_block(pool_cookie)
+                raise
 
         if not info:
             raise ExtractionError("No video information extracted")
@@ -457,10 +499,19 @@ class Extractor:
             for lang, fmts in (container or {}).items():
                 if lang in seen_langs or not fmts:
                     continue
-                fmt = next((f for f in fmts if f.get("ext") == "vtt"), fmts[0])
+                # Prefer a directly parseable text format: WebVTT, then SRT
+                # (the client parses both). Only if neither exists fall back to
+                # the first entry (often YouTube's json3/srv3) -- which the
+                # timedtext normalization below then forces back to WebVTT.
+                fmt = (
+                    next((f for f in fmts if f.get("ext") == "vtt"), None)
+                    or next((f for f in fmts if f.get("ext") == "srt"), None)
+                    or fmts[0]
+                )
                 fmt_url = fmt.get("url")
                 if not fmt_url:
                     continue
+                fmt_url, ext = _normalize_caption_url(fmt_url, fmt.get("ext") or "vtt")
                 seen_langs.add(lang)
                 label = fmt.get("name") or lang
                 tracks.append(
@@ -468,7 +519,7 @@ class Extractor:
                         lang=lang,
                         label=f"{label} (auto)" if is_auto else label,
                         url=fmt_url,
-                        ext=fmt.get("ext") or "vtt",
+                        ext=ext,
                         is_auto=is_auto,
                     )
                 )

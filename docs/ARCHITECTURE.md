@@ -91,27 +91,34 @@ everything else only resolves/streams URLs. `POST /transcribe` creates a
 in-flight jobs) and runs it as a background `asyncio` task:
 
 1. `acquire_audio()` picks the best format to pull audio from (progressive
-   over HLS, audio-bearing over video-only, smaller bitrate first) and
-   either downloads it or has ffmpeg read an HLS URL directly.
-2. `extract_audio_track()` strips it to mono/16kHz/opus via ffmpeg.
-3. `chunk_if_needed()` splits it if it's longer than Groq's per-request
-   limit allows.
-4. Each chunk goes through `transcribe/groq_engine.py` (Groq's Whisper API).
-5. `subtitles.py` merges the per-chunk segments (adjusting timestamps by
+   over HLS, audio-bearing over video-only, smaller bitrate first) and has
+   ffmpeg read the source URL directly wherever possible — download and
+   mono/16kHz/opus transcode become one overlapped pass and the source file
+   never touches disk. Hosts that reject ffmpeg's plain TLS fall back to a
+   curl_cffi impersonated download + local transcode. Both paths report real
+   progress (ffmpeg's `-progress` stream / download byte counts).
+2. `chunk_audio()` splits tracks longer than ~5 minutes with a single
+   ffmpeg segmenting pass (`-c copy`, no re-encode), then measures each
+   chunk's real duration for exact merge offsets.
+3. Chunks transcribe **in parallel** through `transcribe/groq_engine.py`.
+   `GROQ_API_KEY` may hold several comma-separated keys: requests spread
+   round-robin across the pool, a 429'd key goes on cooldown while the
+   request instantly retries on the next key, and per-job concurrency
+   scales with the pool (5 per key, capped at 16). `waveform.py` decodes
+   the audio to its seek-bar peaks array concurrently with the Groq round
+   trips (non-fatal if it fails; subtitles work without it).
+4. `subtitles.py` merges the per-chunk segments (adjusting timestamps by
    each chunk's offset) and renders `.vtt`/`.srt`.
-6. `waveform.py` decodes the same audio track to raw PCM once and
-   downsamples it to a small peaks array for the player's seek bar —
-   non-fatal if it fails; subtitles still work without a waveform.
 
 The client subscribes to `GET /transcribe/{jobId}/events` (SSE — the server
 pushes an update the instant `JobStore.update()` changes the job, via a
-per-job `asyncio.Queue` fanned out to every subscriber) and shows a progress
-bar that blends that real, pushed progress with a client-side "trickle"
-animation so the still-genuinely-flat single-step stages (e.g. audio
-download/transcode) don't look frozen between real updates (see
-`transcribe.svelte.ts`). `GET /transcribe/{jobId}` (plain, one-shot) still
-exists alongside it for a quick manual check or a client that can't hold a
-streaming connection open.
+per-job `asyncio.Queue` fanned out to every subscriber). Progress is
+continuous and real — the client sends the player's known duration
+(`duration_seconds`) so even direct-URL ffmpeg reads report an honest
+percentage; a light client-side "trickle" only smooths the gaps between
+pushed updates (see `transcribe.svelte.ts`). `GET /transcribe/{jobId}`
+(plain, one-shot) still exists alongside it for a quick manual check or a
+client that can't hold a streaming connection open.
 
 ### Configuration (`config.py`)
 

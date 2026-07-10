@@ -190,6 +190,21 @@ export interface TranscribeStatus {
 	status: 'queued' | 'downloading' | 'chunking' | 'transcribing' | 'finalizing' | 'done' | 'error' | 'cancelled';
 	progress: number;
 	stepLabel: string;
+	/** Fine-grained sub-stage code, more specific than `status` — the client
+	 *  maps it to its own localized text. Absent on older servers. */
+	detail?:
+		| 'planning'
+		| 'downloading_source'
+		| 'extracting'
+		| 'compressing'
+		| 'transcribing'
+		| 'building_subtitles'
+		| 'waveform'
+		| null;
+	/** Transcription chunk counters (0 until that stage) — the client builds
+	 *  its own localized "x of y" stage text from these. */
+	chunksDone?: number;
+	chunksTotal?: number;
 	error?: string | null;
 	result?: {
 		language: string;

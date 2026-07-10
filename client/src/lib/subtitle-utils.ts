@@ -65,3 +65,33 @@ export async function fetchAndParseVtt(url: string): Promise<SubtitleSegment[]> 
 
 	return parseVtt(await response.text());
 }
+
+function formatVttTime(seconds: number): string {
+	const ms = Math.max(0, Math.round(seconds * 1000));
+	const hh = Math.floor(ms / 3_600_000);
+	const mm = Math.floor((ms % 3_600_000) / 60_000);
+	const ss = Math.floor((ms % 60_000) / 1000);
+	const mmm = ms % 1000;
+
+	return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}.${String(mmm).padStart(3, '0')}`;
+}
+
+/** Serialize parsed segments back to WebVTT and wrap it in a blob URL.
+ *
+ *  Native `<track src>` rendering needs a URL, but the URLs a track arrives
+ *  with are unreliable: a source caption URL can expire or fail CORS, and a
+ *  generated track's server URL dies with the job's TTL. The segments
+ *  themselves are always at hand (they're what the panel renders and what
+ *  gets persisted), so a same-origin blob built from them is the one URL
+ *  that always works. */
+export function segmentsToVttUrl(segments: SubtitleSegment[]): string {
+	const lines: string[] = ['WEBVTT', ''];
+
+	for (const seg of segments) {
+		lines.push(`${formatVttTime(seg.start)} --> ${formatVttTime(seg.end)}`);
+		lines.push(seg.text);
+		lines.push('');
+	}
+
+	return URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/vtt' }));
+}

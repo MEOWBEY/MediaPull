@@ -22,7 +22,8 @@
 	export interface VideoPlayerHandle {
 		requestSubtitles: () => Promise<void>;
 		openSubtitlePanel: () => void;
-		useExistingTrack: (track: SubtitleTrack) => void;
+		/** Resolves true only when the track actually yielded usable cues. */
+		useExistingTrack: (track: SubtitleTrack) => Promise<boolean>;
 		cancelSubtitles: () => void;
 	}
 
@@ -32,6 +33,9 @@
 		hasTrack: boolean;
 		isRunning: boolean;
 		progress: number;
+		/** Human-readable current pipeline stage, for a tooltip next to the
+		 *  percentage ("Acquiring audio…", "Transcribing... (3 of 8 done)"). */
+		stepLabel: string;
 		/** True while an existing source caption is being fetched/parsed --
 		 *  distinct from `isRunning` (the Groq job) since it never has a
 		 *  meaningful progress percentage. */
@@ -44,6 +48,7 @@
 		useProxy = true,
 		onToggleProxy,
 		webpageUrl = '',
+		duration = 0,
 		initialSubtitleTrack = null,
 		onReady,
 		onSubtitleState,
@@ -57,6 +62,10 @@
 		 *  instead of just telling the user to go find the toggle elsewhere. */
 		onToggleProxy?: () => void;
 		webpageUrl?: string;
+		/** Video duration (seconds) as extraction reported it -- forwarded with
+		 *  the transcription request so the server can compute real acquisition
+		 *  progress. 0/undefined is fine (progress degrades gracefully). */
+		duration?: number;
 		/** Restores a previously generated/reused track (see `onSubtitleTrackChange`)
 		 *  so a page refresh doesn't lose it or force re-transcribing. */
 		initialSubtitleTrack?: SubtitleTrackResult | null;
@@ -170,6 +179,7 @@
 			hasTrack: Boolean(activeSubtitleTrack),
 			isRunning: subtitles.isRunning,
 			progress: subtitles.progress,
+			stepLabel: subtitles.stepLabel,
 			isResolvingExisting: subtitles.resolvingExisting
 		});
 	});
@@ -237,7 +247,11 @@
 		// dedicated audio-only stream may live in a different tab than the one
 		// currently playing, and the backend already knows how to pick the
 		// best audio-bearing source out of a mixed bag.
-		await subtitles.generate({ webpageUrl, qualities: formatGroups.flatMap((g) => g.qualities) });
+		await subtitles.generate({
+			webpageUrl,
+			durationSeconds: duration || undefined,
+			qualities: formatGroups.flatMap((g) => g.qualities)
+		});
 	}
 
 	function cancelSubtitles() {
@@ -251,8 +265,7 @@
 			openSubtitlePanel: () => (subtitlePanelOpen = true),
 			useExistingTrack: (track: SubtitleTrack) => subtitles.useExisting(track),
 			cancelSubtitles
-		});
-	});
+		});	});
 
 	// Removing this card (unmounts VideoPlayer) or navigating away shouldn't
 	// leave an in-flight Groq job running server-side with nobody watching
@@ -500,12 +513,45 @@
 	// Follow the skin's control-bar visibility. The skin is an open-shadow web
 	// component that toggles `data-visible` on its `.media-controls` element; mirror
 	// that onto `controlsVisible` so our slotted quality button tracks it exactly.
+	//
+	// Two touch problems this handles, both rooted in the packaged skin's
+	// hardcoded behaviour:
+	//
+	// 1. First-tap-does-nothing: after interacting elsewhere (or an idle
+	//    auto-hide), the skin's internal "user active" state can be left stale,
+	//    so the next tap on a HIDDEN bar toggles straight back to hidden instead
+	//    of showing it -- the user has to tap again. We capture visibility at
+	//    touchstart and, if a tap that began while hidden didn't end up visible,
+	//    dispatch the skin's own activity event to force it open. A tap that
+	//    began while visible is left alone, so deliberate tap-to-hide still works.
+	//
+	// 2. Auto-hide too fast: the library hides controls a fixed 2s after the last
+	//    activity (hardcoded IDLE_DELAY in @videojs/core, not configurable). On
+	//    touch a single tap is the only activity, so the bar vanished 2s after
+	//    showing -- too fast to read or hit a button. While the bar is visible
+	//    and playing, poke the library's own activity path (a synthetic
+	//    pointermove, exactly what a mouse wiggle sends) a couple of times to
+	//    stretch the visible window to ~5s, the conventional mobile duration.
+	const TOUCH_KEEPALIVE_MS = 1500;
+	const TOUCH_KEEPALIVE_POKES = 2;
+	// How long to wait after a tap before deciding it failed to reveal the bar.
+	// Long enough for the skin to process its own toggle, short enough to feel
+	// instant.
+	const TOUCH_REVEAL_CHECK_MS = 120;
+
 	function bindSkin(node: HTMLElement) {
 		let observer: MutationObserver | null = null;
 		let raf = 0;
+		let keepAliveTimer: ReturnType<typeof setTimeout> | null = null;
+		let revealTimer: ReturnType<typeof setTimeout> | null = null;
+		let visibleAtTouchStart = false;
+		const controlsEl = () => node.shadowRoot?.querySelector('.media-controls');
+		const isControlsVisible = () => !!controlsEl()?.hasAttribute('data-visible');
+		const pokeActivity = () =>
+			videoEl?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, composed: true }));
 
 		const attach = () => {
-			const controls = node.shadowRoot?.querySelector('.media-controls');
+			const controls = controlsEl();
 
 			if (!controls) {
 				raf = requestAnimationFrame(attach);
@@ -520,12 +566,67 @@
 			observer.observe(controls, { attributes: true, attributeFilter: ['data-visible'] });
 		};
 
+		const poke = (remaining: number) => {
+			keepAliveTimer = setTimeout(() => {
+				keepAliveTimer = null;
+
+				if (remaining <= 0 || !videoEl || videoEl.paused) {
+					return;
+				}
+
+				if (!isControlsVisible()) {
+					return;
+				}
+
+				pokeActivity();
+				poke(remaining - 1);
+			}, TOUCH_KEEPALIVE_MS);
+		};
+
+		const onTouchStart = () => {
+			visibleAtTouchStart = isControlsVisible();
+		};
+
+		const onTouchEnd = () => {
+			if (keepAliveTimer) {
+				clearTimeout(keepAliveTimer);
+			}
+			if (revealTimer) {
+				clearTimeout(revealTimer);
+			}
+
+			// A tap that began while the bar was hidden must reveal it. If the
+			// skin's toggle left it hidden anyway (stale active-state), force it
+			// open so the user never has to tap twice.
+			if (!visibleAtTouchStart) {
+				revealTimer = setTimeout(() => {
+					revealTimer = null;
+					if (!isControlsVisible()) {
+						pokeActivity();
+					}
+				}, TOUCH_REVEAL_CHECK_MS);
+			}
+
+			poke(TOUCH_KEEPALIVE_POKES);
+		};
+
 		attach();
+		node.addEventListener('touchstart', onTouchStart, { passive: true });
+		node.addEventListener('touchend', onTouchEnd, { passive: true });
 
 		return {
 			destroy() {
 				cancelAnimationFrame(raf);
 				observer?.disconnect();
+				node.removeEventListener('touchstart', onTouchStart);
+				node.removeEventListener('touchend', onTouchEnd);
+
+				if (keepAliveTimer) {
+					clearTimeout(keepAliveTimer);
+				}
+				if (revealTimer) {
+					clearTimeout(revealTimer);
+				}
 			}
 		};
 	}
@@ -723,7 +824,7 @@
 	</div>
 {/if}
 
-{#if formatGroups.length > 1}
+{#if formatGroups.length}
 	<!-- Format-kind tabs: one card, several tabs (progressive/HLS/audio-only/...)
 	     -- they're all the same source, so switching tabs stays in this one
 	     player instance (see switchGroup) rather than swapping components.
@@ -766,4 +867,6 @@
 	onGenerate={generateSubtitles}
 	onCancel={cancelSubtitles}
 	generating={subtitles.isRunning}
+	progress={subtitles.progress}
+	stepLabel={subtitles.stepLabel}
 />

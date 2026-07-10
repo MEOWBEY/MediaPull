@@ -33,7 +33,8 @@ def merge_chunks(chunk_results: list[tuple[float, list[Segment]]]) -> list[Segme
 
     # Guard against zero/negative-duration cues (e.g. a whole-clip fallback
     # segment with no real per-word timing) -- SRT/VTT players render these
-    # poorly or not at all.
+    # poorly or not at all. Silence-padded ends are already tightened to the
+    # words' real timing at the engine level (see groq_engine._tighten_to_words).
     return [
         seg if seg.end > seg.start else Segment(seg.start, seg.start + _MIN_SEGMENT_DURATION, seg.text)
         for seg in deduped

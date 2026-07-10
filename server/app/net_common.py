@@ -11,11 +11,78 @@ import contextlib
 import logging
 import os
 import tempfile
+import threading
+import time
 from urllib.parse import urlparse
 
 from .config import Settings
 
 logger = logging.getLogger("directstream.net_common")
+
+
+class CookiePool:
+    """Round-robin over the server-side cookie files (``COOKIE_FILE`` may
+    hold several comma-separated paths, e.g. two Instagram accounts).
+
+    Requests spread across the accounts, and when a site answers one of them
+    with a rate-limit / bot-flag / login-wall the caller reports it here --
+    that file goes on cooldown while the others keep serving, then rejoins
+    the rotation automatically. Mirrors the Groq key pool's behavior, but
+    thread-safe (both extraction engines run in thread pools, not the event
+    loop) and time-based only: a cookie account recovers, a revoked API key
+    doesn't.
+    """
+
+    _COOLDOWN_SECONDS = 300.0
+
+    def __init__(self, paths: list[str]) -> None:
+        self._paths = [p for p in paths if p]
+        self._cooldown_until: dict[str, float] = {}
+        self._rr = 0
+        self._lock = threading.Lock()
+
+    def __len__(self) -> int:
+        return len(self._paths)
+
+    def pick(self) -> str | None:
+        """Next cookie file to use, skipping ones on cooldown. When every
+        file is cooling, returns the one that frees up soonest -- stale
+        cookies still beat no cookies on login-gated sites."""
+        with self._lock:
+            if not self._paths:
+                return None
+            now = time.monotonic()
+            available = [p for p in self._paths if self._cooldown_until.get(p, 0.0) <= now]
+            if not available:
+                return min(self._paths, key=lambda p: self._cooldown_until.get(p, 0.0))
+            self._rr += 1
+            return available[self._rr % len(available)]
+
+    def report_block(self, path: str) -> None:
+        """A site rejected this file's session (429/403/401) -- rest it."""
+        with self._lock:
+            if path not in self._paths:
+                return
+            self._cooldown_until[path] = time.monotonic() + self._COOLDOWN_SECONDS
+        logger.warning(
+            "cookie file %s hit a block, cooling it down %.0fs and rotating",
+            os.path.basename(path),
+            self._COOLDOWN_SECONDS,
+        )
+
+
+# One pool per COOKIE_FILE value, shared by yt-dlp and gallery-dl so a
+# cooldown earned through either engine protects the account from both.
+_cookie_pools: dict[str, CookiePool] = {}
+_cookie_pools_lock = threading.Lock()
+
+
+def get_cookie_pool(settings: Settings) -> CookiePool:
+    with _cookie_pools_lock:
+        pool = _cookie_pools.get(settings.cookie_file)
+        if pool is None:
+            pool = _cookie_pools[settings.cookie_file] = CookiePool(settings.cookie_files)
+        return pool
 
 
 @contextlib.contextmanager

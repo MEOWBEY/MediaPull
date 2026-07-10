@@ -106,7 +106,7 @@ async def lifespan(app: FastAPI):
     app.state.jobs = JobStore(settings)
     # None when unconfigured -- /transcribe responds 503 rather than the
     # whole app failing to start over a missing optional feature's key.
-    app.state.transcriber = GroqTranscriber(settings) if settings.groq_api_key else None
+    app.state.transcriber = GroqTranscriber(settings) if settings.groq_api_keys else None
     # Advisory only (not fatal): normal extraction never touches ffmpeg, so a
     # broken install shouldn't block startup -- but it silently breaks
     # /transcribe otherwise, so surface it now instead of mid-job. Checked
@@ -269,6 +269,9 @@ def create_app() -> FastAPI:
             status=job.status,
             progress=job.progress,
             step_label=job.step_label,
+            detail=job.detail,
+            chunks_done=job.chunks_done,
+            chunks_total=job.chunks_total,
             error=job.error,
             result=result,
         )
@@ -283,7 +286,12 @@ def create_app() -> FastAPI:
         job = await app.state.jobs.create()
         task = asyncio.create_task(
             run_transcription_job(
-                job.id, payload.formats, settings, app.state.jobs, app.state.transcriber
+                job.id,
+                payload.formats,
+                settings,
+                app.state.jobs,
+                app.state.transcriber,
+                duration_hint=payload.duration_seconds,
             )
         )
         await app.state.jobs.set_task(job.id, task)

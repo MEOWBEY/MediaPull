@@ -305,7 +305,7 @@ either.
 | `VALIDATE_FORMATS` | `true` | Probe links and hide only confirmed-dead ones (404/410/HTML page). |
 | `CACHE_TTL` | `300` | Result cache time-to-live (seconds, `0` disables). |
 | `CACHE_MAX_ENTRIES` | `512` | Max entries kept in the in-memory result cache. |
-| `COOKIE_FILE` | _(empty)_ | Path to a server-side default Netscape `cookies.txt` (fallback when a request brings no cookies). Unlocks age-restricted / private / login-gated content. |
+| `COOKIE_FILE` | _(empty)_ | Server-side default Netscape `cookies.txt` path(s), comma-separated for several accounts (fallback when a request brings no cookies). Requests rotate across the accounts; one that hits a rate limit / bot flag rests 5 minutes while the others keep serving. Unlocks age-restricted / private / login-gated content. |
 | `PROXY_URL` | _(empty)_ | Outbound proxy (`http(s)://…` / `socks5://…`) for extraction, probing **and** media streaming. Routes around datacenter-IP blocks/rate-limits. |
 | `YOUTUBE_PLAYER_CLIENTS` | _(empty)_ | Comma list of YouTube player clients (e.g. `default,tv,web_safari`). Keep `default` to preserve the full quality ladder; add age-gate-capable clients. |
 | `YOUTUBE_PO_TOKEN` | _(empty)_ | Comma-separated PO token(s) to clear YouTube bot-detection on datacenter IPs. Manually-copied tokens go stale almost immediately (YouTube binds them to a specific video ID) — the [VPS installer](deploy/server/vps/) sets up an automatic PO-token-provider service instead, which is what you want on a real deploy. |
@@ -314,12 +314,11 @@ either.
 | `GALLERY_DL_TIMEOUT` | `45` | Per-extraction timeout for gallery-dl (seconds). |
 | `GALLERY_DL_WORKERS` | `3` | Thread-pool size for gallery-dl subprocess calls. |
 | `FFMPEG_BINARY` / `FFPROBE_BINARY` | `ffmpeg` / `ffprobe` | Only used by auto-subtitles (`/transcribe`) and its waveform preview. Set to an absolute path (e.g. `/usr/bin/ffmpeg`) if it's installed somewhere not on this process's PATH — check `GET /health`'s `ffmpegAvailable` field if you're not sure. |
-| `GROQ_API_KEY` | _(empty)_ | Free key from [console.groq.com](https://console.groq.com), no card required. Empty disables `/transcribe` (503 instead of failing mid-job). |
+| `GROQ_API_KEY` | _(empty)_ | Free key from [console.groq.com](https://console.groq.com), no card required. Empty disables `/transcribe` (503 instead of failing mid-job). Accepts several comma-separated keys — requests spread across the pool, a rate-limited key cools down while the job instantly retries on another, and chunk parallelism scales with pool size (5 per key, capped at 16). |
 | `GROQ_WHISPER_MODEL` | `whisper-large-v3-turbo` | Which Groq Whisper model to transcribe with. |
 | `TRANSCRIBE_ENABLED` | `true` | Turns the whole `/transcribe` feature off without touching `GROQ_API_KEY`. |
 | `TRANSCRIBE_MAX_CONCURRENT_JOBS` | `2` | Concurrent transcription jobs across all clients — each pins Groq + local ffmpeg CPU work. |
 | `TRANSCRIBE_MAX_DOWNLOAD_BYTES` | `300000000` | Hard cap on the one audio/video stream a job downloads to disk (~300MB). |
-| `TRANSCRIBE_CHUNK_SECONDS` | `600` | Audio longer than this is split into chunks to stay under Groq's per-request size limit. |
 | `TRANSCRIBE_JOB_TTL` | `1800` | How long a finished job's result/subtitle files stay downloadable before being swept from memory. |
 | `TRANSCRIBE_WORKERS` | `2` | Thread/subprocess pool size for the ffmpeg extraction/chunking step. |
 

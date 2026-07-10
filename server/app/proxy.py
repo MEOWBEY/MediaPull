@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import re
-from urllib.parse import urlencode, urljoin
+from urllib.parse import quote, urlencode, urljoin
 
 from curl_cffi.requests import AsyncSession
 from fastapi import Request
@@ -42,6 +42,16 @@ _FORWARD_RESP_HEADERS = (
 _HLS_CONTENT_TYPE = "application/vnd.apple.mpegurl"
 _URI_ATTR = re.compile(r'URI="([^"]+)"')
 _IS_PLAYLIST = re.compile(r"\.m3u8(\?|$)", re.IGNORECASE)
+# Strip CR/LF/quotes so a client-supplied filename can't inject response headers.
+_UNSAFE_FILENAME = re.compile(r'[\r\n"]+')
+
+
+def _download_filename(q) -> str:
+    """Sanitized filename for the forced-download Content-Disposition, from the
+    ``?filename=`` query param (falls back to a generic name)."""
+    raw = (q.get("filename") or "video").strip()
+    cleaned = _UNSAFE_FILENAME.sub("", raw)[:200]
+    return cleaned or "video"
 
 
 class ProxyService:
@@ -97,7 +107,14 @@ class ProxyService:
         if protocol == "m3u8_native":
             return await self._handle_playlist(request, source, upstream_headers, q)
 
-        return await self._handle_stream(source, upstream_headers)
+        # ?download=1 turns the response into a forced file save (attachment)
+        # instead of something the browser plays inline. Without this, a
+        # cross-origin proxied URL makes the download link just navigate to and
+        # stream the video in a tab (bandwidth with no saved file) -- the
+        # `download` attribute is ignored across origins, but Content-Disposition
+        # is honored everywhere.
+        download_name = _download_filename(q) if q.get("download") else None
+        return await self._handle_stream(source, upstream_headers, download_name=download_name)
 
     # ----- HLS playlist -------------------------------------------------
 
@@ -140,7 +157,9 @@ class ProxyService:
 
     # ----- byte stream (segments + progressive files) ------------------
 
-    async def _handle_stream(self, source: str, headers: dict[str, str]) -> Response:
+    async def _handle_stream(
+        self, source: str, headers: dict[str, str], *, download_name: str | None = None
+    ) -> Response:
         try:
             upstream = await self._session.get(
                 source, stream=True, **self._request_kwargs(headers)
@@ -162,6 +181,15 @@ class ProxyService:
         out_headers.setdefault("Accept-Ranges", "bytes")
         # Keep GZip middleware off media so Content-Length/Range stay intact.
         out_headers.setdefault("Content-Encoding", "identity")
+        if download_name:
+            # Force a save (never inline playback), overriding any inline
+            # disposition the source sent. RFC 5987 filename* carries the real
+            # (possibly non-ASCII) name; the plain filename is an ASCII fallback.
+            ascii_name = download_name.encode("ascii", "ignore").decode() or "video"
+            out_headers["Content-Disposition"] = (
+                f'attachment; filename="{ascii_name}"; '
+                f"filename*=UTF-8''{quote(download_name)}"
+            )
 
         async def body():
             try:

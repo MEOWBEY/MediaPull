@@ -18,30 +18,80 @@ export type { SubtitleTrackResult } from '$lib/types';
 
 const { t } = i18n;
 
-// The server only reports a handful of discrete stage percentages (see
-// `jobs.py`) with long, silent gaps in between -- e.g. "acquiring audio" sits
-// at a flat 5% for however long the download+ffmpeg extraction actually
-// takes, which for a long video reads as "stuck". A fake trickle fills the
-// gap: it eases the *displayed* progress up toward a ceiling just ahead of
-// the last real value the server reported, so there's always visible motion,
-// while a genuine new server value (or the terminal done/error state) always
-// wins immediately -- this never invents completion, only motion toward it.
-// Real updates now arrive over SSE the instant the server has them (not up to
-// 1.75s late, back when this was polled) -- during the transcribing stage
-// especially, where each completed chunk pushes its own update, the trickle
-// barely gets a chance to run at all. It still earns its keep for the
-// still-genuinely-flat single-step stages (audio download/transcode), just
-// with a tighter leash now that it's compensating for real gaps, not
-// polling latency.
+// The server now streams real, continuous progress over SSE: acquisition
+// reports ffmpeg's transcode position (or download bytes) against the
+// video's duration roughly twice a second, and every transcribed chunk
+// pushes its own tick. The trickle survives only as a visual smoother for
+// the sub-second gaps between those real updates -- and as the sole source
+// of motion in the one case the server genuinely can't measure (an HLS
+// source whose duration the client didn't know either). It eases the
+// *displayed* value toward a ceiling barely ahead of the last real server
+// value; a genuine update (or the terminal done/error state) always wins
+// immediately -- it never invents completion, only motion toward it.
 const TRICKLE_INTERVAL_MS = 250;
 // How far ahead of the last real server value the ceiling is allowed to
 // drift before another real update arrives -- keeps the trickle honest
-// (it never claims to be almost done on its own).
-const TRICKLE_LOOKAHEAD = 0.04;
+// (it never claims to be almost done on its own). Tight, because real
+// updates are frequent now: the displayed number should essentially BE the
+// server's number.
+const TRICKLE_LOOKAHEAD = 0.02;
 const TRICKLE_MAX = 0.97;
 // Fraction of the remaining gap (to the ceiling) closed per tick -- smaller
 // = slower creep, since it's an ease-out (asymptotic, never quite arrives).
 const TRICKLE_EASE = 0.05;
+
+/** Localized stage text from the job's machine-readable fields. The server's
+ *  own `stepLabel` string is English-only; the client rebuilds the label from
+ *  `status` + chunk counters so it follows the app locale (and updates live
+ *  if the user switches language mid-job). */
+function stageLabel(status: TranscribeStatus): string {
+	// The transcribing stage always renders its "x of y" counter regardless of
+	// which path produced it, so handle it up front from the counters.
+	if (status.status === 'transcribing' || status.detail === 'transcribing') {
+		return (status.chunksTotal ?? 0) > 1
+			? t('subtitles.stage.transcribingChunks', {
+					done: status.chunksDone ?? 0,
+					total: status.chunksTotal ?? 0
+				})
+			: t('subtitles.stage.transcribing');
+	}
+
+	// Prefer the fine-grained `detail` sub-stage when the server sends one --
+	// it's more specific than `status` (e.g. extracting vs downloading_source,
+	// building_subtitles vs waveform). Falls back to `status` on older servers.
+	switch (status.detail) {
+		case 'planning':
+			return t('subtitles.stage.planning');
+		case 'downloading_source':
+			return t('subtitles.stage.downloadingSource');
+		case 'extracting':
+			// No per-chunk counter here: in the windowed path extraction and
+			// transcription overlap and share the chunk counters, so the count
+			// belongs to the transcribing label, not this one.
+			return t('subtitles.stage.extracting');
+		case 'compressing':
+			return t('subtitles.stage.compressing');
+		case 'building_subtitles':
+			return t('subtitles.stage.finalizing');
+		case 'waveform':
+			return t('subtitles.stage.waveform');
+	}
+
+	switch (status.status) {
+		case 'queued':
+			return t('subtitles.stage.queued');
+		case 'downloading':
+			return t('subtitles.stage.downloading');
+		case 'chunking':
+			return t('subtitles.stage.chunking');
+		case 'finalizing':
+			return t('subtitles.stage.finalizing');
+		default:
+			// Terminal states (done/error/cancelled) never show a stage label --
+			// the UI switches to its own result/error rendering.
+			return '';
+	}
+}
 
 export class TranscriptionController {
 	isRunning = $state(false);
@@ -141,7 +191,7 @@ export class TranscriptionController {
 						// look-ahead window, and jumping backward would look broken.
 						this.serverProgress = status.progress;
 						this.progress = Math.max(this.progress, status.progress);
-						this.stepLabel = status.stepLabel;
+						this.stepLabel = stageLabel(status) || this.stepLabel;
 
 						if (status.status === 'error') {
 							this.stopStream();

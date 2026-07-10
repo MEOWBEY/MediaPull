@@ -203,9 +203,15 @@ export class ExtractionController {
 		const cached = opts.forceRefresh ? null : extractCache.get(cacheKey);
 
 		if (cached) {
-			appStore.addVideoExtractResultsToStore(cached);
+			const added = appStore.addVideoExtractResultsToStore(cached, {
+				allowDuplicate: opts.forceRefresh
+			});
 			if (!opts.silent) {
-				toast.success(t('toast.loadedCache', { n: cached.formats?.length ?? 0 }));
+				toast.success(
+					added
+						? t('toast.loadedCache', { n: cached.formats?.length ?? 0 })
+						: t('toast.alreadyInLibrary')
+				);
 			}
 
 			return true;
@@ -218,9 +224,15 @@ export class ExtractionController {
 				post<IncomingVideo>('/extract-videos', cookies ? { url, cookies } : { url }, { signal }),
 			onSuccess: (video) => {
 				extractCache.set(cacheKey, video);
-				appStore.addVideoExtractResultsToStore(video);
+				const added = appStore.addVideoExtractResultsToStore(video, {
+					allowDuplicate: opts.forceRefresh
+				});
 
 				if (!opts.silent) {
+					if (!added) {
+						toast.success(t('toast.alreadyInLibrary'));
+						return;
+					}
 					const count = video?.formats?.length ?? 0;
 
 					toast.success(count === 1 ? t('toast.foundOne') : t('toast.foundMany', { n: count }));
@@ -249,9 +261,15 @@ export class ExtractionController {
 		const cached = opts.forceRefresh ? null : galleryExtractCache.get(cacheKey);
 
 		if (cached) {
-			appStore.addGalleryExtractResultsToStore(cached);
+			const added = appStore.addGalleryExtractResultsToStore(cached, {
+				allowDuplicate: opts.forceRefresh
+			});
 			if (!opts.silent) {
-				toast.success(t('toast.loadedCacheImages', { n: cached.images?.length ?? 0 }));
+				toast.success(
+					added
+						? t('toast.loadedCacheImages', { n: cached.images?.length ?? 0 })
+						: t('toast.alreadyInLibrary')
+				);
 			}
 
 			return true;
@@ -265,9 +283,15 @@ export class ExtractionController {
 				}),
 			onSuccess: (gallery) => {
 				galleryExtractCache.set(cacheKey, gallery);
-				appStore.addGalleryExtractResultsToStore(gallery);
+				const added = appStore.addGalleryExtractResultsToStore(gallery, {
+					allowDuplicate: opts.forceRefresh
+				});
 
 				if (!opts.silent) {
+					if (!added) {
+						toast.success(t('toast.alreadyInLibrary'));
+						return;
+					}
 					const count = gallery?.images?.length ?? 0;
 
 					toast.success(

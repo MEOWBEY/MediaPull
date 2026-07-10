@@ -93,10 +93,12 @@
 		}
 
 		if (existingVttTrack) {
-			// Await so the panel opens once segments are actually populated,
-			// instead of opening immediately and briefly showing "no captions".
-			await playerHandle.useExistingTrack(existingVttTrack);
-			playerHandle.openSubtitlePanel();
+			// Await so the panel opens once segments are actually populated --
+			// and only if the track really resolved; opening it against a
+			// failed fetch would just show "no captions" under a green button.
+			if (await playerHandle.useExistingTrack(existingVttTrack)) {
+				playerHandle.openSubtitlePanel();
+			}
 		} else {
 			void playerHandle.requestSubtitles();
 		}
@@ -127,10 +129,41 @@
 			const filename = `${video?.title}.${quality.resolution}.${quality.ext}`;
 			const link = document.createElement('a');
 
-			link.href = urlForQuality(quality) ?? '';
-			link.download = filename;
-			link.click();
-			toast.success(t('toast.downloadStarted', { name: filename }));
+			if (useProxy && quality.proxiedVideoUrl) {
+				// Proxy mode -> add ?download=1 so /proxy-video replies with
+				// Content-Disposition: attachment. The browser then SAVES the file
+				// (and never plays it inline) whether or not the proxy is
+				// same-origin -- fixing the "it just streams the video in a tab
+				// until I close it" behaviour on split client/API deployments.
+				const base = quality.proxiedVideoUrl;
+				const sep = base.includes('?') ? '&' : '?';
+
+				link.href = `${base}${sep}download=1&filename=${encodeURIComponent(filename)}`;
+				link.download = filename; // same-origin hint; disposition does the real work
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+				toast.success(t('toast.downloadStarted', { name: filename }));
+			} else {
+				// No-proxy mode -> the URL is the cross-origin source. Browsers
+				// IGNORE `download` cross-origin, so don't fake it: open the source
+				// as a plain link and let the browser / a download manager (IDM)
+				// handle it like any other direct link on the web.
+				const url = quality.sourceVideoUrl || quality.proxiedVideoUrl || '';
+
+				if (!url) {
+					toast.error(t('toast.downloadFailed'));
+
+					return;
+				}
+
+				link.href = url;
+				link.target = '_blank';
+				link.rel = 'noopener';
+				document.body.appendChild(link);
+				link.click();
+				link.remove();
+			}
 		} catch {
 			toast.error(t('toast.downloadFailed'));
 		}
@@ -145,6 +178,7 @@
 			{useProxy}
 			{onToggleProxy}
 			webpageUrl={video.webpage_url}
+			duration={video.duration ?? 0}
 			initialSubtitleTrack={video.subtitleTrack}
 			onReady={(handle) => (playerHandle = handle)}
 			onSubtitleState={(s) => (subtitleState = s)}
@@ -178,17 +212,31 @@
 
 			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
 				{#if subtitleState?.isRunning}
+					<!-- Progress is a status readout (spinner + stage + real percentage);
+					     cancel is its own explicit button beside it, so a glance at the
+					     number can't accidentally kill the job. The stage text is hidden
+					     on narrow screens (the tooltip still carries it) so the pill
+					     never crowds out the cancel button on mobile. -->
+					<span
+						class="text-muted-foreground inline-flex items-center gap-1 px-2 py-1 text-xs"
+						title={subtitleState.stepLabel}
+						role="status"
+						aria-label={subtitleState.stepLabel}
+					>
+						<Loader2 class="h-3 w-3 animate-spin" />
+						<span class="max-w-36 truncate inline">{subtitleState.stepLabel}</span>
+						<span class="tabular-nums">{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
+					</span>
 					<Button
 						variant="ghost"
 						size="sm"
 						onclick={() => playerHandle?.cancelSubtitles()}
 						title={t('subtitles.cancel')}
 						aria-label={t('subtitles.cancel')}
-						class="gap-1 rounded-full px-2.5 py-1 text-xs"
+						class="hover:text-destructive gap-1 rounded-full px-2 py-1 text-xs"
 					>
-						<Loader2 class="h-3 w-3 animate-spin" />
-						<span>{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
-						<X class="h-3 w-3 opacity-60" />
+						<X class="h-3 w-3" />
+						<span>{t('subtitles.cancel')}</span>
 					</Button>
 				{:else if subtitleState?.isResolvingExisting}
 					<Button variant="ghost" size="sm" disabled class="gap-1 rounded-full px-2.5 py-1 text-xs">

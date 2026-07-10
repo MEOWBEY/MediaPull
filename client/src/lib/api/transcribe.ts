@@ -17,6 +17,10 @@ import type { VideoFormat } from '$lib/types';
  *  its own shape so `VideoPlayer.svelte` can pass its flat props through. */
 export interface TranscribeSource {
 	webpageUrl?: string;
+	/** The player's known duration -- the server uses it to turn ffmpeg's
+	 *  transcode position into a real percentage (it can't cheaply probe an
+	 *  HLS source's length itself). Optional; progress degrades gracefully. */
+	durationSeconds?: number;
 	qualities: Partial<VideoFormat>[];
 }
 
@@ -57,7 +61,11 @@ export function startTranscription(
 ): Promise<{ jobId: string }> {
 	return postJson<{ jobId: string }>(
 		'/transcribe',
-		{ webpage_url: source.webpageUrl ?? '', formats: toBackendFormats(source) },
+		{
+			webpage_url: source.webpageUrl ?? '',
+			duration_seconds: source.durationSeconds || null,
+			formats: toBackendFormats(source)
+		},
 		opts
 	);
 }
