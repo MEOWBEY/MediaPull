@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     # comma-separated "CLIENT.CONTEXT+TOKEN" values. Lets a datacenter IP pass
     # bot-detection. Usually supplied by a bgutil PO-token provider sidecar.
     youtube_po_token: str = Field(default="", alias="YOUTUBE_PO_TOKEN")
+    # Base URL of the bgutil PO-token provider sidecar (see the VPS installer).
+    # yt-dlp's bgutil HTTP plugin auto-detects http://127.0.0.1:4416, so this
+    # only needs setting when the provider runs on a NON-default port (e.g. 4416
+    # was already taken). Maps to extractor_args youtubepot-bgutilhttp:base_url.
+    youtube_pot_base_url: str = Field(default="", alias="YOUTUBE_POT_BASE_URL")
 
     # Politeness: random sleep (seconds) between extractor HTTP requests. A
     # small value (1–3) markedly cuts 429/"used too much" blocks under load.

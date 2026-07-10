@@ -7,6 +7,7 @@
 	import GalleryExtractList from '$lib/components/GalleryExtractList.svelte';
 	import InputUrl from '$lib/components/InputUrl.svelte';
 	import Instructions from '$lib/components/Instructions.svelte';
+	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
 	import PreferencesDialog from '$lib/components/PreferencesDialog.svelte';
 	import VideoExtractList from '$lib/components/VideoExtractList.svelte';
 	import { extraction } from '$lib/extraction.svelte';
@@ -26,10 +27,6 @@
 	let hasResults = $derived(
 		appStore.videoExtractResults.length > 0 || appStore.galleries.length > 0
 	);
-	let showEmptyState = $derived(
-		!hasResults && !isVideoExtractRunning && !videoExtractError
-	);
-
 	const runVideoExtractFromServer = (url: string) => extraction.extract(url);
 	const cancelActiveOperation = () => extraction.cancel();
 
@@ -39,6 +36,13 @@
 	// Stays true across a whole batch (batchTotal > 0) so the skeleton doesn't
 	// flicker off between individual items in the queue.
 	let isExtractBusy = $derived(isVideoExtractRunning || batchTotal > 0);
+
+	let showEmptyState = $derived(!hasResults && !isExtractBusy && !videoExtractError);
+	// One neutral skeleton, shown only while extracting into an EMPTY library.
+	// Once any result (video or gallery) is on screen we don't cover it with a
+	// skeleton, and we never show a video- AND gallery-shaped skeleton at once
+	// -- a single generic placeholder stands in until the real kind lands.
+	let showSkeleton = $derived(isExtractBusy && !hasResults);
 
 	// Scroll to and focus the URL field — used by the side button and on first load.
 	function focusInput(scroll = true) {
@@ -124,15 +128,13 @@
 			<ErrorAlert {videoExtractError} />
 		{/if}
 
-		<VideoExtractList
-			{isExtractBusy}
-			{preferences}
-		/>
+		<VideoExtractList {preferences} />
 
-		<GalleryExtractList
-			{isExtractBusy}
-			{preferences}
-		/>
+		<GalleryExtractList {preferences} />
+
+		{#if showSkeleton}
+			<LoadingSkeleton {preferences} />
+		{/if}
 
 		{#if showEmptyState}
 			<div

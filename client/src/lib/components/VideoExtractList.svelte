@@ -4,7 +4,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
-	import { copyUrlToClipboard, writeClipboard } from '$lib/clipboard';
+	import { copyUrlToClipboard} from '$lib/clipboard';
 	import QrDialog from '$lib/components/QrDialog.svelte';
 	import SourceGroupCard from '$lib/components/SourceGroupCard.svelte';
 	import VideoCard from '$lib/components/VideoCard.svelte';
@@ -19,10 +19,7 @@
 
 	const { t } = i18n;
 
-	let {
-		isExtractBusy = false,
-		preferences
-	}: { isExtractBusy?: boolean; preferences: Preferences } = $props();
+	let { preferences }: { preferences: Preferences } = $props();
 
 	let videoExtractResults = $derived(appStore.videoExtractResults);
 
@@ -67,21 +64,6 @@
 
 	// Copy/export helpers work on any set of cards — a single card ([video]) or a
 	// whole source group — collecting every quality URL, honoring per-card proxy.
-	async function copyLinks(videos: Card[]) {
-		const links = allQualityLinks(videos, cardUsesProxy);
-
-		if (!links.length) {
-			toast.error(t('toast.noUrlCopy'));
-
-			return;
-		}
-
-		if (await writeClipboard(links.join('\n'))) {
-			toast.success(t('toast.copiedAll', { count: links.length }));
-		} else {
-			toast.error(t('toast.copyFailed'));
-		}
-	}
 
 	function exportTxtFor(videos: Card[], name: string) {
 		const txt = allQualityLinks(videos, cardUsesProxy).join('\n');
@@ -270,7 +252,6 @@
 				<SourceGroupCard
 					sourceUrl={group.sourceUrl}
 					itemCount={group.items.length}
-					onCopyAll={() => copyLinks(group.items)}
 					onExportTxt={() => exportTxtFor(group.items, sourceHost(group.sourceUrl) || 'group')}
 					onExportM3u={() => exportM3uFor(group.items, sourceHost(group.sourceUrl) || 'group')}
 					onRefresh={() => refreshGroup(group)}
@@ -295,71 +276,6 @@
 			{/each}
 		</div>
 	</div>
-{/if}
-
-<!-- Loading skeleton: shown while extracting (including across a whole batch).
-     Sits below any existing results so a batch shows "more loading" beneath what
-     already landed; on a first extraction it's the only thing on screen. Mirrors
-     the single-card shell used above (no outer boxed panel). -->
-{#if isExtractBusy}
-	<section class="mb-10" role="status" aria-busy="true" aria-label={t('extract.loading')}>
-		<span class="sr-only">{t('extract.loading')}</span>
-
-		<div
-			class="grid gap-4 sm:gap-5 {preferences.layoutList === 'grid'
-				? 'grid-cols-1 lg:grid-cols-2'
-				: 'grid-cols-1'}"
-		>
-				<div
-					class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
-				>
-					<!-- Group label skeleton: icon + source url + action-icon cluster -->
-					<div
-						class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
-					>
-						<div class="bg-muted h-3.5 w-3.5 shrink-0 animate-pulse rounded-full"></div>
-						<div class="bg-muted h-3.5 w-40 max-w-full animate-pulse rounded"></div>
-						<div class="ms-auto flex shrink-0 items-center gap-1.5">
-							{#each [0, 1, 2, 3, 4] as j (j)}
-								<div class="bg-muted h-7 w-7 animate-pulse rounded-full"></div>
-							{/each}
-						</div>
-					</div>
-
-					<!-- Single video-item skeleton -->
-					<div class="overflow-hidden rounded-none sm:rounded-xl">
-						<div class="bg-muted aspect-video w-full animate-pulse"></div>
-					</div>
-
-					<div class="space-y-3 px-3.5 pt-3 sm:px-0">
-						<!-- Title -->
-						<div class="bg-muted h-4 w-3/4 animate-pulse rounded"></div>
-
-						<!-- Duration + subtitle/proxy pill row -->
-						<div class="flex items-center justify-between gap-2">
-							<div class="bg-muted/70 h-3 w-16 animate-pulse rounded"></div>
-							<div class="bg-muted/70 h-6 w-28 animate-pulse rounded-full"></div>
-						</div>
-
-						<!-- Quality list rows -->
-						<div
-							class="border-border/50 divide-border/50 divide-y overflow-hidden rounded-xl border"
-						>
-							{#each [0, 1, 2] as k (k)}
-								<div class="bg-muted/50 flex items-center gap-2 px-3 py-2">
-									<div class="bg-muted h-5 w-11 animate-pulse rounded-md"></div>
-									<div class="bg-muted/70 h-3 w-10 animate-pulse rounded"></div>
-									<div class="ms-auto flex gap-1">
-										<div class="bg-muted h-7 w-7 animate-pulse rounded-md"></div>
-										<div class="bg-muted h-7 w-7 animate-pulse rounded-md"></div>
-									</div>
-								</div>
-							{/each}
-						</div>
-					</div>
-				</div>
-		</div>
-	</section>
 {/if}
 
 <QrDialog bind:open={qrOpen} url={qrUrl} onCopy={(url) => copyUrlToClipboard(url, t)} />

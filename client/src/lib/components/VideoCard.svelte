@@ -138,8 +138,12 @@
 				const base = quality.proxiedVideoUrl;
 				const sep = base.includes('?') ? '&' : '?';
 
+				// Rely on the proxy's `Content-Disposition: attachment` to force the
+				// save (see proxy.py). Deliberately NOT setting `link.download`: that
+				// forces the browser's built-in downloader and bypasses a download
+				// manager (IDM) the user may have hooked in. A plain click on an
+				// attachment URL lets the browser OR IDM take it, whichever is set up.
 				link.href = `${base}${sep}download=1&filename=${encodeURIComponent(filename)}`;
-				link.download = filename; // same-origin hint; disposition does the real work
 				document.body.appendChild(link);
 				link.click();
 				link.remove();
@@ -201,16 +205,16 @@
 
 		<!-- Duration on the left, subtitle + proxy as a small
 		     labeled tab-style pair on the right. -->
-		<div class="flex items-center justify-between gap-2">
+		<div class="flex flex-wrap items-center justify-between gap-2">
 			{#if video.duration}
-				<span class="text-muted-foreground inline-flex items-center gap-1 text-xs">
+				<span class="hidden text-muted-foreground sm:inline-flex items-center gap-1 text-xs">
 					<Clock class="h-3 w-3" />{formatSecondsToTime(video.duration)}
 				</span>
 			{:else}
 				<span></span>
 			{/if}
 
-			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+			<div class="bg-muted/50 ms-auto flex shrink-0 items-center gap-1 rounded-full p-0.5">
 				{#if subtitleState?.isRunning}
 					<!-- Progress is a status readout (spinner + stage + real percentage);
 					     cancel is its own explicit button beside it, so a glance at the
@@ -223,8 +227,8 @@
 						role="status"
 						aria-label={subtitleState.stepLabel}
 					>
-						<Loader2 class="h-3 w-3 animate-spin" />
-						<span class="max-w-36 truncate inline">{subtitleState.stepLabel}</span>
+						<Loader2 class="h-3 w-3 animate-spin hidden sm:inline" />
+						<span class="text-xs max-w-36 truncate inline">{subtitleState.stepLabel}</span>
 						<span class="tabular-nums">{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
 					</span>
 					<Button
@@ -233,10 +237,10 @@
 						onclick={() => playerHandle?.cancelSubtitles()}
 						title={t('subtitles.cancel')}
 						aria-label={t('subtitles.cancel')}
-						class="hover:text-destructive gap-1 rounded-full px-2 py-1 text-xs"
+						class="hover:text-destructive gap-1 rounded-full px-1 sm:px-2 py-1 text-xs"
 					>
 						<X class="h-3 w-3" />
-						<span>{t('subtitles.cancel')}</span>
+						<span class="hidden sm:inline">{t('subtitles.cancel')}</span>
 					</Button>
 				{:else if subtitleState?.isResolvingExisting}
 					<Button variant="ghost" size="sm" disabled class="gap-1 rounded-full px-2.5 py-1 text-xs">

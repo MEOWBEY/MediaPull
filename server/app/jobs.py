@@ -214,7 +214,7 @@ async def run_transcription_job(
                 progress=_ACQUIRE_START,
             )
 
-            plan = plan_acquisition(formats, settings, duration_hint=duration_hint)
+            plan = await plan_acquisition(formats, settings, duration_hint=duration_hint)
 
             # ----- shared finalize (both acquisition paths end here) --------
             async def _finalize(

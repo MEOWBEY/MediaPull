@@ -116,6 +116,7 @@ export const en = {
 	'subtitles.panel.empty': 'No subtitle lines match your search.',
 	'subtitles.panel.noTrack':
 		'No subtitles yet — generate them from the Subtitles button on the card.',
+	'subtitles.panel.scrollToActive': 'Scroll to current line',
 	'subtitles.existingTrack': 'Use existing “{label}” subtitles',
 	'subtitles.error.notConfigured': 'Auto-subtitles are not configured on this server.',
 	'subtitles.error.generic': 'Could not generate subtitles for this video.',
@@ -257,6 +258,13 @@ export const en = {
 	'prefs.autoOpenSubs.label': 'Auto-open subtitle panel',
 	'prefs.autoOpenSubs.desc':
 		'Open the searchable subtitle list automatically once generation finishes',
+	'prefs.subtitlePanelSection': 'Subtitle panel',
+	'prefs.minWords.label': 'Minimum words per line',
+	'prefs.minWords.desc':
+		'Hide lines shorter than this from the panel (0 = show all). The video still shows every line.',
+	'prefs.minWords.off': 'Off',
+	'prefs.minWords.decrease': 'Fewer words',
+	'prefs.minWords.increase': 'More words',
 
 	// Cookies / sign-in
 	'cookies.section': 'Cookies & sign-in',
@@ -382,6 +390,7 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.panel.search': 'جستجوی متن یا زمان…',
 	'subtitles.panel.empty': 'هیچ خطی با جستجوی شما مطابقت ندارد.',
 	'subtitles.panel.noTrack': 'هنوز زیرنویسی نیست — از دکمه زیرنویس روی کارت تولید کنید.',
+	'subtitles.panel.scrollToActive': 'رفتن به خط فعلی',
 	'subtitles.existingTrack': 'استفاده از زیرنویس موجود «{label}»',
 	'subtitles.error.notConfigured': 'زیرنویس خودکار روی این سرور تنظیم نشده است.',
 	'subtitles.error.generic': 'تولید زیرنویس برای این ویدیو ممکن نشد.',
@@ -515,6 +524,13 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.section.captions': 'زیرنویس',
 	'prefs.autoOpenSubs.label': 'باز شدن خودکار پنل زیرنویس',
 	'prefs.autoOpenSubs.desc': 'پنل جستجوی زیرنویس پس از پایان تولید به‌طور خودکار باز شود',
+	'prefs.subtitlePanelSection': 'پنل زیرنویس',
+	'prefs.minWords.label': 'حداقل کلمات در هر خط',
+	'prefs.minWords.desc':
+		'خط‌های کوتاه‌تر از این مقدار در پنل نمایش داده نمی‌شوند (۰ = نمایش همه). ویدیو همه خط‌ها را نشان می‌دهد.',
+	'prefs.minWords.off': 'خاموش',
+	'prefs.minWords.decrease': 'کلمات کمتر',
+	'prefs.minWords.increase': 'کلمات بیشتر',
 
 	// Cookies / sign-in
 	'cookies.section': 'کوکی‌ها و ورود',

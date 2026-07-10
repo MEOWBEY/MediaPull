@@ -114,7 +114,9 @@ class ProxyService:
         # `download` attribute is ignored across origins, but Content-Disposition
         # is honored everywhere.
         download_name = _download_filename(q) if q.get("download") else None
-        return await self._handle_stream(source, upstream_headers, download_name=download_name)
+        return await self._handle_stream(
+            request, source, upstream_headers, download_name=download_name
+        )
 
     # ----- HLS playlist -------------------------------------------------
 
@@ -158,7 +160,12 @@ class ProxyService:
     # ----- byte stream (segments + progressive files) ------------------
 
     async def _handle_stream(
-        self, source: str, headers: dict[str, str], *, download_name: str | None = None
+        self,
+        request: Request,
+        source: str,
+        headers: dict[str, str],
+        *,
+        download_name: str | None = None,
     ) -> Response:
         try:
             upstream = await self._session.get(
@@ -192,8 +199,19 @@ class ProxyService:
             )
 
         async def body():
+            # Stop pulling from the origin the instant the browser goes away
+            # (cancelled download, closed tab, seeked to a new range). Without
+            # this the proxy would keep downloading the whole file from the
+            # source into nowhere -- the "bandwidth keeps running after cancel"
+            # bug. The pure-ASGI LogContextMiddleware is what lets this
+            # disconnect actually reach us; `aclose()` in `finally` then tears
+            # down the upstream curl transfer. Backpressure covers the paused
+            # (not disconnected) case: when the player stops reading, `yield`
+            # blocks and curl_cffi pauses the transfer on its own.
             try:
                 async for chunk in upstream.aiter_content():
+                    if await request.is_disconnected():
+                        break
                     yield chunk
             finally:
                 await upstream.aclose()

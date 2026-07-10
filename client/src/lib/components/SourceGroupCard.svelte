@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Copy from '@lucide/svelte/icons/copy';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Link from '@lucide/svelte/icons/link';
 	import ListMusic from '@lucide/svelte/icons/list-music';
@@ -20,7 +19,6 @@
 	let {
 		sourceUrl,
 		itemCount,
-		onCopyAll,
 		onExportTxt,
 		onExportM3u,
 		onRefresh,
@@ -30,7 +28,6 @@
 	}: {
 		sourceUrl: string;
 		itemCount: number;
-		onCopyAll: () => void;
 		onExportTxt: () => void;
 		onExportM3u?: () => void;
 		onRefresh: () => void;
@@ -76,16 +73,6 @@
 			{/if}
 		</div>
 		<div class="ms-auto flex shrink-0 items-center gap-0.5">
-			<!-- <Button
-				variant="ghost"
-				size="icon"
-				onclick={onCopyAll}
-				class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
-				title={t('extract.copyAll')}
-				aria-label={t('extract.copyAll')}
-			>
-				<Copy class="h-3.5 w-3.5" />
-			</Button> -->
 			<Button
 				variant="ghost"
 				size="icon"

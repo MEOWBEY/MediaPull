@@ -24,11 +24,7 @@ from .config import settings
 from .extractor import ExtractionError, Extractor
 from .gallery import GalleryExtractor
 from .jobs import JobStore, TranscriptionJob, run_transcription_job
-from .logging_context import (
-    RequestContextFilter,
-    client_ip_from_headers,
-    set_request_context,
-)
+from .logging_context import LogContextMiddleware, RequestContextFilter
 from .models import (
     ExtractRequest,
     ExtractResponse,
@@ -151,16 +147,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(GZipMiddleware, minimum_size=1024)
-
-    @app.middleware("http")
-    async def _log_context_middleware(request: Request, call_next):
-        set_request_context(
-            client_ip_from_headers(
-                request.headers, request.client.host if request.client else None
-            ),
-            request.headers.get("user-agent", "-"),
-        )
-        return await call_next(request)
+    # Pure-ASGI (see LogContextMiddleware): a BaseHTTPMiddleware here would
+    # swallow client disconnects and leave the media proxy streaming from the
+    # origin after the browser cancelled -- burning bandwidth for nobody.
+    app.add_middleware(LogContextMiddleware)
 
     @app.exception_handler(ExtractionError)
     async def _extraction_error(_: Request, exc: ExtractionError) -> JSONResponse:

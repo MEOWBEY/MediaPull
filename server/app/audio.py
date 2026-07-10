@@ -251,23 +251,40 @@ class AcquisitionPlan:
     windows: list[Window] | None
 
 
-def plan_acquisition(
+async def plan_acquisition(
     formats: list[VideoFormat], settings: Settings, *, duration_hint: float | None
 ) -> AcquisitionPlan:
     """Decide how to pull the audio: parallel cap-sized windows when the source
-    is progressive and its duration is known, else the single-pass fallback."""
+    is progressive and its duration is known, else the single-pass fallback.
+
+    When the client didn't send a duration, probe the picked source directly
+    (``probe_duration_url``) before giving up on windowing -- a cheap metadata
+    read that keeps the fast path available for unknown-duration sources instead
+    of dropping every one of them to the slow single connection."""
+    fmt = pick_audio_format(formats)
+    real_url, extra_headers = _unwrap_proxied(fmt.url or "")
+    headers = {**(fmt.http_headers or {}), **extra_headers}
+    is_hls = fmt.protocol == "m3u8_native"
+
+    # No duration from the client -> probe it ourselves so windowing stays on
+    # the table. HLS can't be windowed regardless, so don't spend a probe on it.
+    if (duration_hint is None or duration_hint <= 0) and not is_hls:
+        probed = await probe_duration_url(real_url, headers, settings, hls=is_hls)
+        if probed:
+            logger.info("planning: probed source duration %.0fs (client sent none)", probed)
+            duration_hint = probed
+
+    # Duration may have just been filled in by the probe -- pick the codec after,
+    # so the auto-codec sizing sees it too.
     codec = choose_codec(
         settings,
         duration_hint=duration_hint,
         cap_bytes=settings.transcribe_max_upload_bytes,
     )
-    fmt = pick_audio_format(formats)
-    real_url, extra_headers = _unwrap_proxied(fmt.url or "")
-    headers = {**(fmt.http_headers or {}), **extra_headers}
 
     socks_proxy = bool(settings.proxy_url) and not settings.proxy_url.startswith("http")
     can_window = (
-        fmt.protocol != "m3u8_native"
+        not is_hls
         and duration_hint is not None
         and duration_hint > 0
         and not socks_proxy
@@ -307,26 +324,29 @@ def pick_audio_format(formats: list[VideoFormat]) -> VideoFormat:
        stream makes ffmpeg download the whole *picture* just to drop it
        (``-vn``); a ``video_only`` stream has no audio to transcribe at all, so
        it's last and only used if nothing else exists.
-    2. **Smallest first**, by bitrate -- the size proxy, since every format of
-       one video shares its duration. Format/protocol (mp4 vs HLS vs …) does
-       NOT matter here: a smaller HLS beats a larger progressive. Unknown
-       bitrate sorts last so an unknown-size format never poses as "smallest";
-       resolution breaks ties and stands in when bitrate is missing.
-    3. **Progressive over HLS** only as the final tie-break (equal size) --
-       never to pick a bigger file -- because a single-file URL is one plain
-       Range-capable read the windowed extractor can parallelize.
+    2. **Progressive over HLS.** Second key, ABOVE size on purpose: only a
+       progressive (single-file, Range-capable) URL can run the fast windowed
+       path -- parallel cap-sized slices that sidestep per-connection CDN
+       throttling. HLS (``m3u8_native``) forces the slow single-pass download,
+       so it sorts last within its tier even when it's the smaller stream. A
+       slightly bigger progressive that downloads in parallel beats a small
+       HLS that dribbles through one throttled connection.
+    3. **Smallest first**, by bitrate -- the size proxy, since every format of
+       one video shares its duration. Unknown bitrate sorts last so an
+       unknown-size format never poses as "smallest"; resolution breaks ties
+       and stands in when bitrate is missing.
     """
     candidates = [f for f in formats if f.url]
     if not candidates:
         raise AudioError("No downloadable format available for this video")
 
-    def score(f: VideoFormat) -> tuple[int, float, int, int]:
+    def score(f: VideoFormat) -> tuple[int, int, float, int]:
         is_audio_only = f.resolution is None and not f.video_only
         tier = 0 if is_audio_only else (2 if f.video_only else 1)
+        is_hls = 1 if f.protocol == "m3u8_native" else 0  # progressive (0) first
         bitrate = f.tbr if (f.tbr and f.tbr > 0) else float("inf")
         resolution = f.resolution or 0
-        is_hls = 1 if f.protocol == "m3u8_native" else 0
-        return (tier, bitrate, resolution, is_hls)
+        return (tier, is_hls, bitrate, resolution)
 
     chosen = sorted(candidates, key=score)[0]
     # Prove the smallest audio source really is what we pull to disk -- shows
@@ -450,6 +470,60 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
         return float(stdout.decode().strip())
     except ValueError as exc:
         raise AudioError("Could not determine audio duration") from exc
+
+
+async def probe_duration_url(
+    url: str,
+    headers: dict[str, str] | None,
+    settings: Settings,
+    *,
+    hls: bool = False,
+) -> float | None:
+    """Best-effort probe of a REMOTE source's duration: ffprobe reads the URL's
+    container metadata directly (a few KB, never the media bytes) using the
+    same proxy/headers/rw-timeout ffmpeg would. Returns the duration in seconds,
+    or ``None`` on any failure -- a missing duration just means the caller falls
+    back to the single-pass path, so a failed probe must never fail the job.
+
+    This is what lets the fast windowed path run when the client didn't send a
+    ``durationSeconds`` (metadata not yet loaded, or a live/adaptive source):
+    without a duration there's nothing to slice windows out of.
+    """
+    args = [
+        "-v", "error",
+        *_url_input_args(url, headers, settings, hls=hls),
+        "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1",
+        url,
+    ]
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            settings.ffprobe_binary,
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except OSError as exc:
+        logger.warning("ffprobe not runnable for URL duration probe: %s", exc)
+        return None
+    try:
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_FFPROBE_TIMEOUT)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        logger.warning("ffprobe URL duration probe timed out -- planning without a duration")
+        return None
+    except asyncio.CancelledError:
+        proc.kill()
+        await proc.wait()
+        raise
+    if proc.returncode != 0:
+        return None
+    try:
+        duration = float(stdout.decode().strip())
+    except ValueError:
+        return None
+    return duration if duration > 0 else None
 
 
 async def _download_stream(

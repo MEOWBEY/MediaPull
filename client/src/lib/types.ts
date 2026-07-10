@@ -113,6 +113,9 @@ export interface Preferences {
 	showVideoOnlyFormats: boolean;
 	/** Open the subtitle search panel automatically once a track is ready. */
 	autoOpenSubtitlePanel: boolean;
+	/** Hide caption lines shorter than this many words from the subtitle
+	 *  panel only (the video track still shows every line). 0 = show all. */
+	subtitlePanelMinWords: number;
 	/** Which extraction endpoint the URL input routes to. `'auto'` (the
 	 *  default) tries video first and silently falls back to gallery if
 	 *  nothing comes back -- see `ExtractionController.extractLinks`. Force

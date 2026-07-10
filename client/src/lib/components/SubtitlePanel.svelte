@@ -2,6 +2,7 @@
 	import Captions from '@lucide/svelte/icons/captions';
 	import Download from '@lucide/svelte/icons/download';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
+	import LocateFixed from '@lucide/svelte/icons/locate-fixed';
 	import Search from '@lucide/svelte/icons/search';
 	import X from '@lucide/svelte/icons/x';
 
@@ -29,7 +30,8 @@
 		generating = false,
 		progress = 0,
 		stepLabel = '',
-		onCancel
+		onCancel,
+		minWords = 0
 	}: {
 		open: boolean;
 		segments: SubtitleSegment[];
@@ -47,14 +49,33 @@
 		stepLabel?: string;
 		/** Stops an in-flight Groq job -- shown next to the generating spinner. */
 		onCancel?: () => void;
+		/** Hide lines shorter than this many words from the panel only (the
+		 *  video's own captions are untouched). 0 = show every line. */
+		minWords?: number;
 	} = $props();
 
 	let filterQuery = $state('');
+	// The scroll container -- the "scroll to current line" button reaches into
+	// it to bring the highlighted row into view on demand.
+	let listEl = $state<HTMLDivElement | null>(null);
 
-	// No auto-scroll on purpose: the list never moves on its own. Earlier
-	// versions followed the playing caption with scrollIntoView plus a
-	// manual-scroll suspend heuristic, but clicks/taps still triggered
-	// surprise jumps -- the user scrolls, the active line is only highlighted.
+	// No *automatic* scroll on purpose: the list never moves on its own while
+	// playing (clicks/taps used to trigger surprise jumps). The active line is
+	// only highlighted -- but a header button now lets the user jump to it when
+	// they want, see `scrollToActive`.
+
+	function wordCount(text: string): number {
+		const trimmed = text.trim();
+
+		return trimmed ? trimmed.split(/\s+/).length : 0;
+	}
+
+	// Short-line filter: applied to the panel list ONLY. The video keeps every
+	// cue (it renders from the VTT track, not from this list), so single-word
+	// lines like "Justin" still show on the player -- just not here.
+	const visibleSegments = $derived(
+		minWords > 0 ? segments.filter((seg) => wordCount(seg.text) >= minWords) : segments
+	);
 
 	// Filter by text OR timestamp — typing "1:23" jumps you to lines around
 	// that time, typing words filters by content.
@@ -62,25 +83,49 @@
 		const q = filterQuery.trim().toLowerCase();
 
 		if (!q) {
-			return segments;
+			return visibleSegments;
 		}
 
-		return segments.filter(
+		return visibleSegments.filter(
 			(seg) => seg.text.toLowerCase().includes(q) || formatSecondsToTime(seg.start).includes(q)
 		);
 	});
 
-	// The segment currently under the playhead (highlighted only -- the list
-	// never auto-scrolls to it, see above).
-	const activeSeg = $derived(
-		segments.find((seg) => currentTime >= seg.start && currentTime <= seg.end) ?? null
-	);
+	// The segment currently under the playhead. During a silence gap (no cue
+	// spans `currentTime`) we keep the most recent line that has already started
+	// highlighted, instead of clearing it -- otherwise the green highlight
+	// flickers off every time the speaker pauses. Computed over the *visible*
+	// list so the highlighted row is always one that's actually shown.
+	const activeSeg = $derived.by(() => {
+		let candidate: SubtitleSegment | null = null;
+
+		for (const seg of visibleSegments) {
+			if (currentTime >= seg.start && currentTime <= seg.end) {
+				return seg;
+			}
+			// Segments are ordered by start time: once one starts in the future,
+			// no later one can be active or the current gap-fallback candidate.
+			if (seg.start > currentTime) {
+				break;
+			}
+			candidate = seg;
+		}
+
+		return candidate;
+	});
+
+	function scrollToActive() {
+		const el = listEl?.querySelector<HTMLElement>('[data-active="true"]');
+
+		el?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+	}
 </script>
 
 <Sheet.Root bind:open>
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
 		closeLabel={t('common.close')}
+		hideClose
 		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-4 sm:max-w-md sm:p-6 {desktop.matches
 			? ''
 			: 'h-[65vh] rounded-t-3xl'}"
@@ -89,18 +134,32 @@
 			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">
 				{t('subtitles.panel.title')}
 			</Sheet.Title>
-			{#if canDownload}
-				<Button
-					variant="outline"
-					size="icon"
-					onclick={onDownload}
-					class="h-9 w-9 shrink-0"
-					title={t('subtitles.download')}
-					aria-label={t('subtitles.download')}
-				>
-					<Download class="h-4 w-4" />
-				</Button>
-			{/if}
+			<div class="flex shrink-0 items-center gap-2">
+				{#if segments.length && activeSeg}
+					<Button
+						variant="outline"
+						size="icon"
+						onclick={scrollToActive}
+						class="h-9 w-9 shrink-0"
+						title={t('subtitles.panel.scrollToActive')}
+						aria-label={t('subtitles.panel.scrollToActive')}
+					>
+						<LocateFixed class="h-4 w-4" />
+					</Button>
+				{/if}
+				{#if canDownload}
+					<Button
+						variant="outline"
+						size="icon"
+						onclick={onDownload}
+						class="h-9 w-9 shrink-0"
+						title={t('subtitles.download')}
+						aria-label={t('subtitles.download')}
+					>
+						<Download class="h-4 w-4" />
+					</Button>
+				{/if}
+			</div>
 		</Sheet.Header>
 
 		{#if segments.length}
@@ -117,7 +176,15 @@
 				/>
 			</div>
 
-			<div class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pe-1">
+			<!-- GPU-promote the scroller (translateZ) and contain its paint so the
+			     row text doesn't rasterize blank-then-late during momentum scroll
+			     on mobile -- the browser keeps the painted layer instead of
+			     re-painting each frame. `overscroll-contain` stops the gesture
+			     from chaining to the page behind the sheet. -->
+			<div
+				bind:this={listEl}
+				class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pe-1 [contain:paint] [transform:translateZ(0)]"
+			>
 				{#each filteredSegments as seg (seg)}
 					<button
 						type="button"

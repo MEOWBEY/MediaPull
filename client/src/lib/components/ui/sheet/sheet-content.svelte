@@ -38,6 +38,7 @@
 		portalProps,
 		children,
 		closeLabel = 'Close',
+		hideClose = false,
 		...restProps
 	}: WithoutChildrenOrChild<SheetPrimitive.ContentProps> & {
 		portalProps?: SheetPrimitive.PortalProps;
@@ -46,6 +47,9 @@
 		/** Screen-reader label for the close button -- pass a translated
 		 *  string; this component has no i18n access of its own. */
 		closeLabel?: string;
+		/** Hide the corner close (X) button. The sheet still closes via the
+		 *  overlay tap / Esc -- some panels prefer a cleaner header without it. */
+		hideClose?: boolean;
 	} = $props();
 </script>
 
@@ -58,11 +62,13 @@
 		{...restProps}
 	>
 		{@render children?.()}
-		<SheetPrimitive.Close
-			class="ring-offset-background focus-visible:ring-ring rounded-xs focus-visible:outline-hidden absolute end-4 top-4 opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none"
-		>
-			<XIcon class="size-4" />
-			<span class="sr-only">{closeLabel}</span>
-		</SheetPrimitive.Close>
+		{#if !hideClose}
+			<SheetPrimitive.Close
+				class="ring-offset-background focus-visible:ring-ring rounded-xs focus-visible:outline-hidden absolute end-4 top-4 opacity-70 transition-opacity hover:opacity-100 focus-visible:ring-2 focus-visible:ring-offset-2 disabled:pointer-events-none"
+			>
+				<XIcon class="size-4" />
+				<span class="sr-only">{closeLabel}</span>
+			</SheetPrimitive.Close>
+		{/if}
 	</SheetPrimitive.Content>
 </SheetPrimitive.Portal>

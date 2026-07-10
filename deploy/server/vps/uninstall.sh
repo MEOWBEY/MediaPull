@@ -9,9 +9,10 @@
 #   sudo ./uninstall.sh --purge      # also wipe everything (asks to confirm)
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/opt/directstream}"
-SERVICE_USER="${SERVICE_USER:-directstream}"
-SERVICE="directstream"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_lib.sh"
+
+# Uninstall-specific settings (REPO_DIR/SERVICE_USER/SERVICE/CONFIG_FILE come
+# from _lib.sh). Defaults here are overridden by whatever install.sh recorded.
 DOMAIN="${DOMAIN:-}"
 CLIENT_MODE="${CLIENT_MODE:-none}"
 CLIENT_DOMAIN="${CLIENT_DOMAIN:-}"
@@ -21,19 +22,11 @@ PUBLIC_PORT="${PUBLIC_PORT:-80}"
 # don't know whether ufw was already on before install.sh ran on an older
 # install and don't want to claim otherwise.
 UFW_WAS_ACTIVE="${UFW_WAS_ACTIVE:-}"
-CONFIG_FILE="$REPO_DIR/.vps-deploy.env"
 PURGE=false
 [[ "${1:-}" == "--purge" ]] && PURGE=true
 
-if [[ -f "$CONFIG_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source <(grep -v '^\s*#' "$CONFIG_FILE")
-fi
-
-if [[ $EUID -ne 0 ]]; then
-  echo "Run as root (or with sudo)." >&2
-  exit 1
-fi
+require_root
+load_config
 
 echo "==> stopping and disabling the service"
 systemctl stop "$SERVICE" 2>/dev/null || true

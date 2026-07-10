@@ -7,7 +7,9 @@ Type=simple
 User=__SERVICE_USER__
 Group=__SERVICE_USER__
 WorkingDirectory=__REPO_DIR__/pot-provider/server
-ExecStart=/usr/bin/node build/main.js
+# --port is templated by install.sh/update.sh (default 4416). yt-dlp's plugin
+# is pointed at the same port via YOUTUBE_POT_BASE_URL in server/.env.
+ExecStart=/usr/bin/node build/main.js --port __POT_PORT__
 Restart=on-failure
 RestartSec=5
 

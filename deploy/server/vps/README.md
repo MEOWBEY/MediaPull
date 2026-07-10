@@ -21,9 +21,12 @@ routinely, remove if you ever need to:
 
 | Script | When | What it does |
 |---|---|---|
-| `install.sh` | once, on a fresh box | **interactive**: asks for a domain, a port, and whether to serve the client here too, then sets up packages, service user, clone, venv, systemd unit, nginx + TLS, firewall (and the client build, if you asked for it) |
-| `update.sh` | every deploy after that | pull latest code, reinstall deps, rebuild the client (if one was installed), restart, health-check |
+| `install.sh` | once, on a fresh box | **interactive**: asks for a domain, a port, whether to serve the client here too, and (for a private repo) a GitHub token, then sets up packages, service user, clone, venv, systemd unit, nginx + TLS, firewall (and the client build, if you asked for it) |
+| `update.sh` | every deploy after that | pull latest code, reinstall deps, rebuild the client (if one was installed), restart, health-check — **no prompts**, reusing the saved GitHub credential |
 | `uninstall.sh` | if you want it gone | stop/remove the service + nginx site(s) (add `--purge` to also wipe the repo/venv/user/cert) |
+
+All three share `_lib.sh` (git sync + auth, dependency installs, systemd
+templating, health checks); it's sourced automatically and never run directly.
 
 ## What is a "VPS", and what do these words mean?
 
@@ -102,7 +105,9 @@ It will ask you, in plain language:
      skipping the client for now)
 5. **Install the PO token provider for YouTube?** (default: yes) — see
    [YouTube PO tokens](#youtube-po-tokens) below for what this is and why
-   you almost always want it. Right after, you'll also get an optional
+   you almost always want it. If yes, it also asks **which port** the
+   provider should run on (default `4416`; only change it if that port is
+   already taken on the box). Right after, you'll also get an optional
    prompt for a **static PO token** — leave it blank unless you specifically
    have one; the automatic provider you just installed handles this for you.
 6. **Groq API key for auto-subtitles?** — optional, leave blank to skip.
@@ -134,9 +139,25 @@ sudo DOMAIN=api.example.com PORT=8000 CLIENT_MODE=same-domain bash install.sh
 doesn't already exist, clones the repo itself
 (`REPO_URL=... install.sh` to override which git remote/fork it pulls).
 
+**Private repo?** If the repository is private, `install.sh` asks once for a
+GitHub access token (a fine-grained or classic PAT with read access to the
+repo) and bakes it into the checkout's git remote — so `update.sh` and every
+future re-run authenticate silently instead of re-prompting for credentials.
+For a non-interactive run, pass it up front:
+
+```bash
+sudo GITHUB_TOKEN=ghp_xxx DOMAIN=api.example.com CLIENT_MODE=same-domain bash install.sh
+```
+
+A public repo needs none of this — just press Enter past the token prompt.
+(The bootstrap fetch shown above — `curl`/`git clone` — is itself
+unauthenticated, so for a private repo do that first step with a token too,
+e.g. `git clone https://ghp_xxx@github.com/OWNER/REPO.git /tmp/direct-stream`.)
+
 When it finishes, edit `/opt/directstream/server/.env` for anything beyond
 what it already set (cookies, proxy, YouTube player clients, Groq API key
-for auto-subtitles, …) and `sudo systemctl restart directstream`.
+for auto-subtitles, subtitle encoding via `TRANSCRIBE_MODE=auto|custom`, …)
+and `sudo systemctl restart directstream`.
 
 **From here on, use `update.sh` for every subsequent deploy** — see
 **Updating later** below. The manual steps below are what `install.sh`
@@ -260,11 +281,14 @@ token is already stale by the time you'd paste it in. The supported fix is a
 small companion service, [`bgutil-ytdlp-pot-provider`](https://github.com/Brainicism/bgutil-ytdlp-pot-provider),
 that fetches a fresh token automatically for every extraction.
 
-`install.sh` offers to set this up for you (question 4, defaults to yes):
-it installs a pip plugin that yt-dlp auto-detects, plus a small Node.js
-server running as its own systemd service (`directstream-pot`, listening on
-`127.0.0.1:4416` — nothing further to configure). If you skipped it, or want
-to check it's running:
+`install.sh` offers to set this up for you (defaults to yes): it installs a
+pip plugin that yt-dlp auto-detects, plus a small Node.js server running as
+its own systemd service (`directstream-pot`). It listens on `127.0.0.1:4416`
+by default — nothing further to configure. If you chose a **different port**
+at the prompt (because 4416 was taken), the installer runs the server on that
+port and sets `YOUTUBE_POT_BASE_URL=http://127.0.0.1:<port>` in `server/.env`
+so yt-dlp's plugin talks to it there. If you skipped it, or want to check
+it's running:
 
 ```bash
 sudo systemctl status directstream-pot
@@ -317,7 +341,8 @@ restart directstream`.
 
 Use the bundled script — it pulls, reinstalls dependencies, rebuilds the
 client (if `install.sh` set one up), restarts, and verifies `/health` in one
-go:
+go. It reuses the GitHub credential `install.sh` saved, so even for a private
+repo it never stops to ask for auth:
 
 ```bash
 sudo /opt/directstream/deploy/server/vps/update.sh

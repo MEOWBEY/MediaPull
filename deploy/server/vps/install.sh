@@ -18,16 +18,10 @@
 # once, use update.sh instead -- this script is provisioning, not deploying.
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-https://github.com/MEOWBEY/direct-stream.git}"
-REPO_DIR="${REPO_DIR:-/opt/directstream}"
-SERVICE_USER="${SERVICE_USER:-directstream}"
-SERVICE="directstream"
-CONFIG_FILE="$REPO_DIR/.vps-deploy.env"
-
-if [[ $EUID -ne 0 ]]; then
-  echo "Run as root (or with sudo)." >&2
-  exit 1
-fi
+# Shared constants (REPO_URL/REPO_DIR/SERVICE_USER/SERVICE/CONFIG_FILE) and the
+# git-auth / dependency / systemd helpers update.sh and uninstall.sh also use.
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_lib.sh"
+require_root
 
 # ---- interactive prompts (skipped for any var already set in the env) -----
 # Only prompts when connected to a real terminal (`sudo ./install.sh` run
@@ -111,22 +105,10 @@ fi
 # panels sharing it (a real VPS has hit ~90% CPU with nothing stopping this
 # service from taking it all). Applied to directstream.service below and
 # re-applied by update.sh every deploy (it re-templates the unit already).
-CPU_CORES="$(nproc 2>/dev/null || echo 1)"
-MEM_TOTAL_KB="$(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0)"
-MEM_TOTAL_MB=$(( MEM_TOTAL_KB / 1024 ))
-
-# 70% of total RAM -- leaves headroom for nginx/other services/panels on the
-# same box. Expressed in MB for systemd's MemoryMax=.
-MEMORY_MAX_MB=$(( MEM_TOTAL_MB * 70 / 100 ))
-[[ "$MEMORY_MAX_MB" -lt 1 ]] && MEMORY_MAX_MB=256
-MEMORY_MAX="${MEMORY_MAX_MB}M"
-
-# (cores - 1) * 100%, minimum 1 core's worth -- leaves roughly one core free
-# rather than letting gunicorn/yt-dlp/ffmpeg saturate every core on the box.
-CPU_QUOTA_CORES=$(( CPU_CORES - 1 ))
-[[ "$CPU_QUOTA_CORES" -lt 1 ]] && CPU_QUOTA_CORES=1
-CPU_QUOTA="$(( CPU_QUOTA_CORES * 100 ))%"
-
+# 70% of RAM and (cores-1) worth of CPU -- leaves headroom for nginx/other
+# panels on the same box. Computed in _lib.sh (shared with update.sh); also
+# exports CPU_CORES/MEM_TOTAL_MB for the small-box check below.
+detect_resource_limits
 echo "==> detected ${CPU_CORES} CPU core(s), ${MEM_TOTAL_MB}MB RAM -- capping the service at" \
      "MemoryMax=$MEMORY_MAX, CPUQuota=$CPU_QUOTA"
 
@@ -169,6 +151,13 @@ case "${INSTALL_POT_PROVIDER,,}" in
   n|no) INSTALL_POT_PROVIDER="no" ;;
   *) INSTALL_POT_PROVIDER="yes" ;;
 esac
+if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
+  # Local-only sidecar; 4416 is its default. Only worth changing if something
+  # else on the box already listens there. The app is pointed at whatever port
+  # you pick via YOUTUBE_POT_BASE_URL below.
+  ask POT_PORT "Port for the PO token provider (local sidecar)" "4416"
+fi
+POT_PORT="${POT_PORT:-4416}"
 
 echo
 echo "Auto-subtitles (speech-to-text via Groq's free Whisper API) need a Groq"
@@ -215,42 +204,40 @@ echo "==> creating service user '$SERVICE_USER' (if missing)"
 id -u "$SERVICE_USER" &>/dev/null || \
   useradd --system --create-home --shell /usr/sbin/nologin "$SERVICE_USER"
 
+# GitHub auth: only a PRIVATE repo needs it. Ask ONCE and persist it into the
+# checkout's remote (see persist_repo_auth), so this never re-prompts on a
+# re-run and update.sh never prompts at all -- fixing the "asks 3 times for
+# GitHub auth" problem. Skipped entirely when the checkout already has a saved
+# credential, or for a public repo (blank token).
+if [[ -d "$REPO_DIR/.git" ]] && remote_has_auth; then
+  echo "==> repo already has a saved GitHub credential -- not asking again"
+else
+  ask GITHUB_TOKEN "GitHub access token (only for a PRIVATE repo; blank if it's public)" ""
+fi
+
 echo "==> fetching the repo into $REPO_DIR"
 if [[ -d "$REPO_DIR/.git" ]]; then
-  # Re-running install.sh on a box that already has a checkout (e.g. to pick
-  # up a new release) used to just reuse whatever was cloned the first time,
-  # forever -- silently working from stale code with no error, until a step
-  # later on referenced a file/flag that didn't exist yet in that old
-  # checkout. Bring it current the same way update.sh does before relying on
-  # anything from it below.
-  # Run as SERVICE_USER, not root -- the checkout is normally owned by it
-  # (chown'd below on every run), and a root-owned git command against a
-  # directory owned by someone else trips git's "dubious ownership" guard.
-  branch="$(sudo -u "$SERVICE_USER" git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"
-  if [[ "$branch" == "HEAD" ]]; then
-    echo "    $REPO_DIR is in a detached HEAD state -- leaving it as-is." >&2
-    echo "    Run 'cd $REPO_DIR && git checkout main && git pull' yourself first for the latest code." >&2
-  else
-    echo "    already cloned -- pulling latest ($branch)"
-    sudo -u "$SERVICE_USER" git -C "$REPO_DIR" fetch origin
-    if ! sudo -u "$SERVICE_USER" git -C "$REPO_DIR" pull --ff-only origin "$branch"; then
-      echo "    WARNING: git pull failed (local edits or diverged history?) -- continuing with" >&2
-      echo "    the existing checkout as-is, which may be missing recent fixes." >&2
-    fi
-  fi
+  # Bring an existing checkout current (a re-run used to silently keep stale
+  # code). chown first so the service-user git commands can touch .git/config.
+  chown -R "$SERVICE_USER:$SERVICE_USER" "$REPO_DIR"
+  persist_repo_auth "${GITHUB_TOKEN:-}"
+  echo "    already cloned -- pulling latest"
+  sync_repo || echo "    continuing with the existing checkout as-is (may miss recent fixes)." >&2
 else
-  git clone "$REPO_URL" "$REPO_DIR"
+  GIT_TERMINAL_PROMPT=0 git clone "$(authed_url "$REPO_URL" "${GITHUB_TOKEN:-}")" "$REPO_DIR"
+  chown -R "$SERVICE_USER:$SERVICE_USER" "$REPO_DIR"
+  persist_repo_auth "${GITHUB_TOKEN:-}"
 fi
 chown -R "$SERVICE_USER:$SERVICE_USER" "$REPO_DIR"
 
 echo "==> setting up the Python venv"
 sudo -u "$SERVICE_USER" "$PYTHON_BIN" -m venv "$REPO_DIR/server/venv"
 sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade pip
-sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install -r "$REPO_DIR/server/requirements.txt"
+install_backend_deps
 # yt-dlp/gallery-dl move faster than this repo's pinned versions (sites like
 # YouTube/Instagram/X change often) -- always grab the latest release of both
 # on top of the pin, same as update.sh does on every subsequent update.
-sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade yt-dlp gallery-dl
+upgrade_scrapers
 
 # ---- YouTube PO token provider (optional) ----------------------------------
 # bgutil-ytdlp-pot-provider: a small Node.js companion service + a pip-
@@ -261,30 +248,17 @@ sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade yt-dlp
 # matters -- the two speak a version-checked protocol and reject each other
 # on a mismatch.
 if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
-  echo "==> installing the YouTube PO token provider"
-  sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade bgutil-ytdlp-pot-provider
-  # Read back whatever version pip actually resolved, so the server clone
-  # below matches it exactly rather than guessing/hardcoding a tag.
-  POT_VERSION="$(sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" show bgutil-ytdlp-pot-provider 2>/dev/null | sed -n 's/^Version: //p')"
-  if [[ -z "$POT_VERSION" ]]; then
+  echo "==> installing the YouTube PO token provider (port $POT_PORT)"
+  # sync_pot_provider_code (shared with update.sh) installs the pip plugin,
+  # resolves its version, and clones+builds the matching Node server tag.
+  if sync_pot_provider_code; then
+    sync_pot_service "$POT_PORT"
+    systemctl enable --now directstream-pot
+    echo "    PO token provider running as its own service (directstream-pot), port $POT_PORT"
+  else
     echo "    bgutil-ytdlp-pot-provider failed to install -- skipping the server half." >&2
     echo "    Set it up manually later: https://github.com/Brainicism/bgutil-ytdlp-pot-provider" >&2
-  else
-    POT_DIR="$REPO_DIR/pot-provider"
-    if [[ -d "$POT_DIR/.git" ]]; then
-      echo "    $POT_DIR already cloned, skipping"
-    else
-      sudo -u "$SERVICE_USER" git clone --single-branch --branch "$POT_VERSION" \
-        https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$POT_DIR"
-    fi
-    sudo -u "$SERVICE_USER" bash -c "cd '$POT_DIR/server' && npm ci && npx tsc"
-
-    sed "s#__REPO_DIR__#$REPO_DIR#; s#__SERVICE_USER__#$SERVICE_USER#" \
-      "$REPO_DIR/deploy/server/vps/directstream-pot.service" \
-      > /etc/systemd/system/directstream-pot.service
-    systemctl daemon-reload
-    systemctl enable --now directstream-pot
-    echo "    PO token provider running as its own service (directstream-pot), port 4416"
+    INSTALL_POT_PROVIDER="no"
   fi
 fi
 
@@ -296,14 +270,8 @@ if [[ ! -f "$REPO_DIR/server/.env" ]]; then
 else
   echo "==> server/.env already exists, leaving it alone"
   # ...except for settings the app no longer has: scrub retired keys so a
-  # re-run against an old install leaves a clean file (same list update.sh
-  # maintains for routine updates).
-  for key in TRANSCRIBE_CHUNK_SECONDS GROQ_CHUNK_CONCURRENCY; do
-    if grep -q "^${key}=" "$REPO_DIR/server/.env"; then
-      echo "    removing obsolete setting $key"
-      sudo -u "$SERVICE_USER" sed -i "/^${key}=/d" "$REPO_DIR/server/.env"
-    fi
-  done
+  # re-run against an old install leaves a clean file (shared with update.sh).
+  scrub_obsolete_env
 fi
 sudo -u "$SERVICE_USER" sed -i "s#^PORT=.*#PORT=$PORT#" "$REPO_DIR/server/.env"
 if [[ -n "$GROQ_API_KEY" ]]; then
@@ -311,6 +279,13 @@ if [[ -n "$GROQ_API_KEY" ]]; then
 fi
 if [[ -n "$YOUTUBE_PO_TOKEN" ]]; then
   sudo -u "$SERVICE_USER" sed -i "s#^YOUTUBE_PO_TOKEN=.*#YOUTUBE_PO_TOKEN=$YOUTUBE_PO_TOKEN#" "$REPO_DIR/server/.env"
+fi
+# Point yt-dlp's bgutil plugin at the provider's port (needed when it's not the
+# 4416 the plugin auto-detects; harmless to set explicitly either way).
+if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
+  sudo -u "$SERVICE_USER" sed -i \
+    "s#^YOUTUBE_POT_BASE_URL=.*#YOUTUBE_POT_BASE_URL=http://127.0.0.1:$POT_PORT#" \
+    "$REPO_DIR/server/.env"
 fi
 if [[ "$SMALL_BOX" == true ]]; then
   sudo -u "$SERVICE_USER" sed -i \
@@ -337,24 +312,18 @@ sudo -u "$SERVICE_USER" sed -i "s#^COOKIE_FILE=.*#COOKIE_FILE=$COOKIE_FILE_PATH#
 # ---- client (optional) -----------------------------------------------------
 CLIENT_DIR_SETTING=""
 if [[ "$CLIENT_MODE" == "same-domain" ]]; then
-  echo "==> building the client for combined single-origin serving"
-  sudo -u "$SERVICE_USER" bash -c "cd '$REPO_DIR/client' && npm ci && npm run build"
+  build_client same-domain
   CLIENT_DIR_SETTING="$REPO_DIR/client/build"
   sudo -u "$SERVICE_USER" sed -i "s#^CLIENT_DIR=.*#CLIENT_DIR=$CLIENT_DIR_SETTING#" "$REPO_DIR/server/.env"
 elif [[ "$CLIENT_MODE" == "subdomain" ]]; then
-  echo "==> building the client for its own subdomain ($CLIENT_DOMAIN)"
-  sudo -u "$SERVICE_USER" bash -c \
-    "cd '$REPO_DIR/client' && VITE_API_BASE_URL='https://$DOMAIN' npm ci && npm run build"
+  build_client subdomain "$DOMAIN"
   if [[ -n "$DOMAIN" ]]; then
     sudo -u "$SERVICE_USER" sed -i "s#^CORS_ORIGINS=.*#CORS_ORIGINS=https://$CLIENT_DOMAIN#" "$REPO_DIR/server/.env"
   fi
 fi
 
 echo "==> installing the systemd unit (port $PORT, MemoryMax=$MEMORY_MAX, CPUQuota=$CPU_QUOTA)"
-sed "s/__PORT__/$PORT/; s/__MEMORY_MAX__/$MEMORY_MAX/; s/__CPU_QUOTA__/$CPU_QUOTA/" \
-  "$REPO_DIR/deploy/server/vps/directstream.service" \
-  > /etc/systemd/system/directstream.service
-systemctl daemon-reload
+sync_systemd_unit "$PORT" "$MEMORY_MAX" "$CPU_QUOTA"
 systemctl enable --now "$SERVICE"
 
 if [[ -n "$DOMAIN" ]]; then
@@ -457,6 +426,7 @@ PUBLIC_PORT=${PUBLIC_PORT:-80}
 CLIENT_MODE=$CLIENT_MODE
 CLIENT_DOMAIN=${CLIENT_DOMAIN:-}
 INSTALL_POT_PROVIDER=$INSTALL_POT_PROVIDER
+POT_PORT=$POT_PORT
 UFW_WAS_ACTIVE=$UFW_WAS_ACTIVE
 MEMORY_MAX=$MEMORY_MAX
 CPU_QUOTA=$CPU_QUOTA
@@ -479,7 +449,7 @@ Done.
     systemctl restart $SERVICE
 EOF
 if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
-  echo "- PO token provider: enabled (systemd service directstream-pot, 127.0.0.1:4416)"
+  echo "- PO token provider: enabled (systemd service directstream-pot, 127.0.0.1:$POT_PORT)"
 else
   echo "- PO token provider: not installed -- YouTube extraction may get blocked more often"
 fi

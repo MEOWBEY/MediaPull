@@ -10,7 +10,7 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
-	import { copyUrlToClipboard, writeClipboard } from '$lib/clipboard';
+	import { copyUrlToClipboard } from '$lib/clipboard';
 	import SourceGroupCard from '$lib/components/SourceGroupCard.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import * as Dialog from '$lib/components/ui/dialog';
@@ -24,31 +24,12 @@
 
 	const { t } = i18n;
 
-	let {
-		isExtractBusy = false,
-		preferences
-	}: { isExtractBusy?: boolean; preferences: Preferences } = $props();
+	let { preferences }: { preferences: Preferences } = $props();
 
 	let galleries = $derived(appStore.galleries);
 
 	async function copyToClipboard(url: string) {
 		await copyUrlToClipboard(url, t);
-	}
-
-	async function copyAllLinks(gallery: GroupedGallery) {
-		const links = gallery.images.map((img) => img.url).filter(Boolean);
-
-		if (!links.length) {
-			toast.error(t('toast.noUrlCopy'));
-
-			return;
-		}
-
-		if (await writeClipboard(links.join('\n'))) {
-			toast.success(t('toast.copiedAll', { count: links.length }));
-		} else {
-			toast.error(t('toast.copyFailed'));
-		}
 	}
 
 	function exportTxtFor(gallery: GroupedGallery) {
@@ -217,7 +198,6 @@
 				<SourceGroupCard
 					sourceUrl={gallery.webpage_url ?? ''}
 					itemCount={gallery.images.length}
-					onCopyAll={() => copyAllLinks(gallery)}
 					onExportTxt={() => exportTxtFor(gallery)}
 					onRefresh={() => refreshGallery(gallery)}
 					refreshing={refreshTracker.isRefreshing(gallery)}
@@ -284,47 +264,6 @@
 			{/each}
 		</div>
 	</div>
-{/if}
-
-<!-- Loading skeleton -- mirrors the real card shell + auto-fit grid shape,
-     same spirit as VideoExtractList's skeleton. -->
-{#if isExtractBusy}
-	<section class="mb-10" role="status" aria-busy="true" aria-label={t('gallery.loading')}>
-		<span class="sr-only">{t('gallery.loading')}</span>
-
-		<div
-			class="grid gap-4 sm:gap-5 {preferences.layoutList === 'grid'
-				? 'grid-cols-1 lg:grid-cols-2'
-				: 'grid-cols-1'}"
-		>
-				<div
-					class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
-				>
-					<div
-						class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
-					>
-						<div class="bg-muted h-3.5 w-3.5 shrink-0 animate-pulse rounded-full"></div>
-						<div class="bg-muted h-3.5 w-40 max-w-full animate-pulse rounded"></div>
-						<div class="ms-auto flex shrink-0 items-center gap-1.5">
-							{#each [0, 1, 2, 3] as j (j)}
-								<div class="bg-muted h-7 w-7 animate-pulse rounded-full"></div>
-							{/each}
-						</div>
-					</div>
-
-					<div class="px-3.5 sm:px-0">
-						<div
-							class="grid gap-2"
-							style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));"
-						>
-							{#each [0, 1, 2, 3, 4, 5] as k (k)}
-								<div class="bg-muted aspect-square animate-pulse rounded-xl"></div>
-							{/each}
-						</div>
-					</div>
-				</div>
-		</div>
-	</section>
 {/if}
 
 <!-- Lightbox: click-to-enlarge with prev/next through the same gallery. -->

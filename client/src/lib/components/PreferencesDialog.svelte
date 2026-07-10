@@ -7,8 +7,10 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Languages from '@lucide/svelte/icons/languages';
 	import LayoutList from '@lucide/svelte/icons/layout-list';
+	import Minus from '@lucide/svelte/icons/minus';
 	import Monitor from '@lucide/svelte/icons/monitor';
 	import Palette from '@lucide/svelte/icons/palette';
+	import Plus from '@lucide/svelte/icons/plus';
 	import SortAsc from '@lucide/svelte/icons/sort-asc';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
@@ -121,6 +123,17 @@
 		}
 	] as const;
 
+	// Clamp the subtitle-panel minimum-word filter to a sane range. 0 disables
+	// the filter (every line shows); the ceiling just stops the stepper running
+	// away -- most caption lines are only a handful of words.
+	const MIN_WORDS_MAX = 12;
+
+	function setMinWords(next: number) {
+		appStore.updatePreferences({
+			subtitlePanelMinWords: Math.max(0, Math.min(MIN_WORDS_MAX, next))
+		});
+	}
+
 	function resetToDefaults() {
 		appStore.updatePreferences({
 			theme: 'system',
@@ -133,9 +146,10 @@
 			enableVideoMute: false,
 			enableVideoPreloadMetadata: false,
 			enableProxyForVideoExtract: true,
-			showHlsTypeDownloadButton: false,
+			showHlsTypeDownloadButton: true,
 			showVideoOnlyFormats: false,
-			autoOpenSubtitlePanel: false
+			autoOpenSubtitlePanel: false,
+			subtitlePanelMinWords: 0
 		});
 		toast.success(t('toast.prefsReset'));
 	}
@@ -150,6 +164,7 @@
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
 		closeLabel={t('common.close')}
+		hideClose
 		class="bg-background z-999999! w-full gap-0 overflow-y-auto p-4 sm:max-w-lg sm:p-6 {desktop.matches
 			? ''
 			: 'h-[65vh] rounded-t-3xl'}"
@@ -205,6 +220,53 @@
 					</div>
 				</section>
 			{/each}
+
+			<!-- Subtitle panel: minimum words per line. A stepper (not a Switch)
+			     since it's a numeric threshold; 0 means "show every line". Only
+			     filters the panel list -- the video itself keeps all captions. -->
+			<section class="bg-card rounded-lg border">
+				<div class="border-border/60 border-b p-3">
+					<h4 class="flex items-center gap-2 text-base font-semibold">
+						<Captions class="h-4 w-4 text-violet-600" />
+						{t('prefs.subtitlePanelSection')}
+					</h4>
+				</div>
+				<div class="p-3 sm:p-4">
+					<div class="bg-muted/60 flex items-start justify-between gap-3 rounded-lg p-3">
+						<div class="flex-1 pe-1">
+							<Label class="text-sm font-medium">{t('prefs.minWords.label')}</Label>
+							<p class="text-muted-foreground mt-1 text-xs">{t('prefs.minWords.desc')}</p>
+						</div>
+						<div class="flex shrink-0 items-center gap-2">
+							<Button
+								variant="outline"
+								size="icon"
+								class="h-9 w-9"
+								disabled={preferences.subtitlePanelMinWords <= 0}
+								onclick={() => setMinWords(preferences.subtitlePanelMinWords - 1)}
+								aria-label={t('prefs.minWords.decrease')}
+							>
+								<Minus class="h-4 w-4" />
+							</Button>
+							<span class="w-10 text-center text-sm font-semibold tabular-nums">
+								{preferences.subtitlePanelMinWords === 0
+									? t('prefs.minWords.off')
+									: preferences.subtitlePanelMinWords}
+							</span>
+							<Button
+								variant="outline"
+								size="icon"
+								class="h-9 w-9"
+								disabled={preferences.subtitlePanelMinWords >= MIN_WORDS_MAX}
+								onclick={() => setMinWords(preferences.subtitlePanelMinWords + 1)}
+								aria-label={t('prefs.minWords.increase')}
+							>
+								<Plus class="h-4 w-4" />
+							</Button>
+						</div>
+					</div>
+				</div>
+			</section>
 
 			<!-- Cookies / sign-in -->
 			<CookiesPanel />

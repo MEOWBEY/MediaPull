@@ -376,12 +376,19 @@ class Extractor:
         pass PO token(s) so a datacenter IP can clear bot-detection.
         """
         s = self._settings
+        args: dict[str, dict[str, list[str]]] = {}
         youtube: dict[str, list[str]] = {}
         if s.youtube_player_client_list:
             youtube["player_client"] = s.youtube_player_client_list
         if s.youtube_po_token_list:
             youtube["po_token"] = s.youtube_po_token_list
-        return {"youtube": youtube} if youtube else {}
+        if youtube:
+            args["youtube"] = youtube
+        # Point yt-dlp's bgutil HTTP plugin at a non-default provider port. Only
+        # needed when YOUTUBE_POT_BASE_URL is set (the plugin auto-detects 4416).
+        if s.youtube_pot_base_url.strip():
+            args["youtubepot-bgutilhttp"] = {"base_url": [s.youtube_pot_base_url.strip()]}
+        return args
 
     def _ytdlp_sync(self, url: str, generic: bool, cookies: str | None = None) -> VideoInfo:
         s = self._settings

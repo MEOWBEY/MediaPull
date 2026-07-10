@@ -517,13 +517,20 @@
 	// Two touch problems this handles, both rooted in the packaged skin's
 	// hardcoded behaviour:
 	//
-	// 1. First-tap-does-nothing: after interacting elsewhere (or an idle
-	//    auto-hide), the skin's internal "user active" state can be left stale,
-	//    so the next tap on a HIDDEN bar toggles straight back to hidden instead
-	//    of showing it -- the user has to tap again. We capture visibility at
-	//    touchstart and, if a tap that began while hidden didn't end up visible,
-	//    dispatch the skin's own activity event to force it open. A tap that
-	//    began while visible is left alone, so deliberate tap-to-hide still works.
+	// 1. Tap should only ever REVEAL the bar, never hide it -- hiding is the job
+	//    of the idle timer alone. The skin instead treats a tap as a *toggle*
+	//    (`toggleControls`: visible -> hide, hidden -> show), so tapping a video
+	//    whose bar is already up hides it -- producing the jarring up/down/up
+	//    dance as the user taps around. We can't override the toggle (the skin's
+	//    state object is frozen), so we neutralise the unwanted half at the DOM
+	//    level: whenever the bar is hidden *right after a tap* (within
+	//    TAP_HIDE_GUARD_MS), that's the toggle firing, not the idle timer (which
+	//    only trips seconds after the last activity), so we immediately re-show
+	//    it. Doing that from inside the MutationObserver callback (a microtask)
+	//    lands before the browser paints, so the bar never visibly blinks.
+	//    A separate backstop covers the opposite miss -- a tap on a hidden bar
+	//    that the skin fails to open (stale active-state) -- by force-opening if
+	//    the bar is still hidden once the skin has finished its own toggle.
 	//
 	// 2. Auto-hide too fast: the library hides controls a fixed 2s after the last
 	//    activity (hardcoded IDLE_DELAY in @videojs/core, not configurable). On
@@ -534,10 +541,14 @@
 	//    stretch the visible window to ~5s, the conventional mobile duration.
 	const TOUCH_KEEPALIVE_MS = 1500;
 	const TOUCH_KEEPALIVE_POKES = 2;
-	// How long to wait after a tap before deciding it failed to reveal the bar.
-	// Long enough for the skin to process its own toggle, short enough to feel
-	// instant.
-	const TOUCH_REVEAL_CHECK_MS = 120;
+	// A hide landing within this window after a tap is the skin's tap-toggle, not
+	// the idle timer, so it gets reversed. Must comfortably exceed the skin's
+	// 200ms double-tap window (see @videojs/core gesture/tap.js), which is how
+	// long the single-tap `toggleControls` action is deferred before it runs.
+	const TAP_HIDE_GUARD_MS = 350;
+	// Backstop for a tap on a hidden bar the skin never opened: re-check once the
+	// skin's own (double-tap-window-deferred) toggle has had time to run.
+	const TOUCH_REVEAL_CHECK_MS = 280;
 
 	function bindSkin(node: HTMLElement) {
 		let observer: MutationObserver | null = null;
@@ -545,6 +556,9 @@
 		let keepAliveTimer: ReturnType<typeof setTimeout> | null = null;
 		let revealTimer: ReturnType<typeof setTimeout> | null = null;
 		let visibleAtTouchStart = false;
+		// When the last tap ended -- lets the observer tell a tap-toggle hide
+		// (reverse it) from an idle-timer hide (allow it). See problem 1 above.
+		let lastTapEndAt = 0;
 		const controlsEl = () => node.shadowRoot?.querySelector('.media-controls');
 		const isControlsVisible = () => !!controlsEl()?.hasAttribute('data-visible');
 		const pokeActivity = () =>
@@ -559,7 +573,20 @@
 				return;
 			}
 
-			const sync = () => (controlsVisible = controls.hasAttribute('data-visible'));
+			const sync = () => {
+				const visible = controls.hasAttribute('data-visible');
+
+				// A hide right after a tap is the skin's tap-toggle, not the idle
+				// timer -- undo it so taps only ever reveal the bar. Re-showing here
+				// (a microtask) beats the next paint, so the bar doesn't blink.
+				if (controlsVisible && !visible && Date.now() - lastTapEndAt < TAP_HIDE_GUARD_MS) {
+					pokeActivity();
+
+					return;
+				}
+
+				controlsVisible = visible;
+			};
 
 			sync();
 			observer = new MutationObserver(sync);
@@ -588,6 +615,8 @@
 		};
 
 		const onTouchEnd = () => {
+			lastTapEndAt = Date.now();
+
 			if (keepAliveTimer) {
 				clearTimeout(keepAliveTimer);
 			}
@@ -869,4 +898,5 @@
 	generating={subtitles.isRunning}
 	progress={subtitles.progress}
 	stepLabel={subtitles.stepLabel}
+	minWords={preferences.subtitlePanelMinWords}
 />

@@ -14,9 +14,10 @@ export const DEFAULT_PREFERENCES: Preferences = {
 	enableVideoMute: false,
 	enableVideoPreloadMetadata: false,
 	showVideoThumbnail: true,
-	showHlsTypeDownloadButton: false,
+	showHlsTypeDownloadButton: true,
 	showVideoOnlyFormats: false,
 	autoOpenSubtitlePanel: false,
+	subtitlePanelMinWords: 0,
 	contentTypeMode: 'auto'
 };
 

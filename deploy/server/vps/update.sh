@@ -1,124 +1,49 @@
 #!/usr/bin/env bash
-# Zero-fuss update script for the backend (and client, if install.sh set one
-# up) on a VPS. Run as your own admin/sudo user (NOT the "directstream"
-# service user, which has no login shell and no sudo rights):
+# Routine "pull latest code and restart" for the backend (and client, if
+# install.sh set one up). Run as your own admin/sudo user (NOT the
+# "directstream" service user, which has no login shell):
 #   sudo /opt/directstream/deploy/server/vps/update.sh
+#
+# No prompts and no GitHub credentials needed: install.sh persisted the
+# authenticated remote into the checkout, so the git pull below just works.
+# (A fresh provisioning run is install.sh; this is the fast day-to-day path.)
 set -euo pipefail
 
-REPO_DIR="${REPO_DIR:-/opt/directstream}"
-SERVICE_USER="${SERVICE_USER:-directstream}"
-SERVICE="directstream"
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_lib.sh"
+
+require_root
+load_config
+
+# Defaults for anything a very old .vps-deploy.env didn't record.
 PORT="${PORT:-8000}"
 CLIENT_MODE="${CLIENT_MODE:-none}"
+DOMAIN="${DOMAIN:-}"
 INSTALL_POT_PROVIDER="${INSTALL_POT_PROVIDER:-no}"
-# Falls back to a fresh detection if this update is running against a
-# .vps-deploy.env written before resource limits existed (upgrade path).
-MEMORY_MAX="${MEMORY_MAX:-}"
-CPU_QUOTA="${CPU_QUOTA:-}"
-CONFIG_FILE="$REPO_DIR/.vps-deploy.env"
+POT_PORT="${POT_PORT:-4416}"
 
-# install.sh writes this with the answers you gave it, so update.sh doesn't
-# need REPO_DIR/PORT/etc re-specified every time -- env vars above still win
-# if you deliberately want to override one for this run.
-if [[ -f "$CONFIG_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source <(grep -v '^\s*#' "$CONFIG_FILE")
-fi
-
-cd "$REPO_DIR"
-
-branch="$(sudo -u "$SERVICE_USER" git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
-if [[ "$branch" == "HEAD" ]]; then
-  echo "==> this checkout is in a detached HEAD state (probably from a previous" >&2
-  echo "    rollback -- see the README's 'If an update breaks something' section)." >&2
-  echo "    Check out a real branch first, e.g.:" >&2
-  echo "      cd $REPO_DIR && sudo -u $SERVICE_USER git checkout main" >&2
-  exit 1
-fi
-
-echo "==> current commit: $(sudo -u "$SERVICE_USER" git -C "$REPO_DIR" rev-parse --short HEAD)"
-sudo -u "$SERVICE_USER" git -C "$REPO_DIR" fetch origin
-sudo -u "$SERVICE_USER" git -C "$REPO_DIR" pull --ff-only origin "$branch"
-echo "==> new commit:     $(sudo -u "$SERVICE_USER" git -C "$REPO_DIR" rev-parse --short HEAD)"
+sync_repo
 
 echo "==> installing backend dependencies"
-sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install -r "$REPO_DIR/server/requirements.txt"
+install_backend_deps
+scrub_obsolete_env
+upgrade_scrapers
 
-# Settings removed from the app in past releases -- scrub them from a
-# long-lived server/.env so it stays clean and nobody wastes time tuning a
-# knob that no longer exists. (The app itself ignores unknown keys, so this
-# is hygiene, not a fix.) Add to this list whenever a setting is retired.
-OBSOLETE_ENV_KEYS=(
-  TRANSCRIBE_CHUNK_SECONDS
-  GROQ_CHUNK_CONCURRENCY
-)
-if [[ -f "$REPO_DIR/server/.env" ]]; then
-  for key in "${OBSOLETE_ENV_KEYS[@]}"; do
-    if grep -q "^${key}=" "$REPO_DIR/server/.env"; then
-      echo "==> removing obsolete setting $key from server/.env"
-      sudo -u "$SERVICE_USER" sed -i "/^${key}=/d" "$REPO_DIR/server/.env"
-    fi
-  done
-fi
-
-# yt-dlp and gallery-dl fight a constant arms race against site changes
-# (YouTube/Instagram/X break scrapers often) -- the exact version pinned in
-# requirements.txt only moves when someone edits the app's code, which can
-# lag real fixes upstream by weeks. Always pull the latest release of both on
-# every update, on top of (not instead of) the pinned requirements above, so
-# "the extractor doesn't support this site anymore" gets fixed by an update
-# even between app releases.
-echo "==> upgrading yt-dlp and gallery-dl to their latest releases"
-sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade yt-dlp gallery-dl
-
-# The PO token provider's Python plugin and its Node.js server speak a
-# version-checked protocol -- both must move together, or yt-dlp's plugin
-# starts rejecting a now-mismatched server. Only touches anything if
-# install.sh set this up in the first place.
 if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
-  echo "==> upgrading the YouTube PO token provider"
-  sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade bgutil-ytdlp-pot-provider
-  POT_VERSION="$(sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" show bgutil-ytdlp-pot-provider 2>/dev/null | sed -n 's/^Version: //p')"
-  POT_DIR="$REPO_DIR/pot-provider"
-  if [[ -n "$POT_VERSION" && -d "$POT_DIR/.git" ]]; then
-    CURRENT_POT_TAG="$(sudo -u "$SERVICE_USER" git -C "$POT_DIR" describe --tags --exact-match 2>/dev/null || echo "")"
-    if [[ "$CURRENT_POT_TAG" != "$POT_VERSION" ]]; then
-      sudo -u "$SERVICE_USER" git -C "$POT_DIR" fetch --tags origin
-      sudo -u "$SERVICE_USER" git -C "$POT_DIR" checkout "$POT_VERSION"
-      sudo -u "$SERVICE_USER" bash -c "cd '$POT_DIR/server' && npm ci && npx tsc"
-    fi
+  echo "==> upgrading the YouTube PO token provider (port $POT_PORT)"
+  if sync_pot_provider_code; then
+    sync_pot_service "$POT_PORT"
     systemctl restart directstream-pot
-  fi
-fi
-
-if [[ "$CLIENT_MODE" != "none" ]]; then
-  echo "==> rebuilding the client ($CLIENT_MODE)"
-  if [[ "$CLIENT_MODE" == "subdomain" ]]; then
-    sudo -u "$SERVICE_USER" bash -c \
-      "cd '$REPO_DIR/client' && VITE_API_BASE_URL='https://${DOMAIN:-}' npm ci && npm run build"
   else
-    sudo -u "$SERVICE_USER" bash -c "cd '$REPO_DIR/client' && npm ci && npm run build"
+    echo "    PO token provider upgrade skipped (plugin not resolvable this run)." >&2
   fi
 fi
 
-if [[ -z "$MEMORY_MAX" || -z "$CPU_QUOTA" ]]; then
-  CORES="$(nproc 2>/dev/null || echo 1)"
-  MEM_TOTAL_MB=$(( $(awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null || echo 0) / 1024 ))
-  MEMORY_MAX="${MEMORY_MAX:-$(( MEM_TOTAL_MB * 70 / 100 ))M}"
-  QUOTA_CORES=$(( CORES - 1 )); [[ "$QUOTA_CORES" -lt 1 ]] && QUOTA_CORES=1
-  CPU_QUOTA="${CPU_QUOTA:-$(( QUOTA_CORES * 100 ))%}"
-fi
+build_client "$CLIENT_MODE" "$DOMAIN"
 
-echo "==> syncing the systemd unit (picks up template fixes a restart alone would miss)"
-sed "s/__PORT__/$PORT/; s/__MEMORY_MAX__/$MEMORY_MAX/; s/__CPU_QUOTA__/$CPU_QUOTA/" \
-  "$REPO_DIR/deploy/server/vps/directstream.service" \
-  > /etc/systemd/system/directstream.service
-systemctl daemon-reload
+# Reuse the caps install saved; fall back to a fresh detection only for an old
+# .vps-deploy.env written before resource limits existed.
+detect_resource_limits
+echo "==> syncing the systemd unit (MemoryMax=$MEMORY_MAX, CPUQuota=$CPU_QUOTA)"
+sync_systemd_unit "$PORT" "$MEMORY_MAX" "$CPU_QUOTA"
 
-echo "==> restarting service"
-systemctl restart "$SERVICE"
-sleep 2
-systemctl --no-pager status "$SERVICE"
-
-echo "==> health check"
-curl -fsS "http://127.0.0.1:$PORT/health" && echo " OK"
+restart_and_health "$PORT"
