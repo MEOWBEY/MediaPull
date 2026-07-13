@@ -70,7 +70,12 @@ function normalizeFormat(format: IncomingFormat, durationSec: number): VideoForm
 
 	return {
 		sourceVideoUrl: format.sourceVideoUrl ?? '',
-		proxiedVideoUrl: buildProxiedUrl(format.sourceVideoUrl, format.httpHeaders, format.protocol),
+		proxiedVideoUrl: buildProxiedUrl(
+			format.sourceVideoUrl,
+			format.httpHeaders,
+			format.protocol,
+			format.cookieToken
+		),
 		ext: format.ext ?? '',
 		tbr,
 		filesize,
@@ -176,7 +181,7 @@ function normalizeImage(image: IncomingGalleryImage): ImageAsset {
 	const sourceUrl = image.url ?? '';
 
 	return {
-		url: buildProxiedUrl(sourceUrl, image.httpHeaders, 'https') || sourceUrl,
+		url: buildProxiedUrl(sourceUrl, image.httpHeaders, 'https', image.cookieToken) || sourceUrl,
 		sourceUrl,
 		width: Number(image.width) || 0,
 		height: Number(image.height) || 0,

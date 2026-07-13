@@ -1,26 +1,30 @@
-# DirectStream — client
+# pullbox client
 
-The SvelteKit front-end for DirectStream: the UI, the in-browser HLS player, and
-the proxy/stream API routes.
+Svelte 5 frontend for pullbox. Paste a URL, get downloadable video/image
+links.
 
-See the [root README](../README.md) for the full overview, architecture, and setup
-for both the client and the FastAPI server.
-
-## Quick start
+## Setup
 
 ```bash
-npm install
-cp .env.example .env        # set SERVER_BASE_URL / CLIENT_BASE_URL
-npm run dev                 # http://localhost:5173
+npm install        # Node 18+
+cp .env.example .env   # edit API_ENDPOINT to point at your server
+npm run dev        # http://localhost:5173
 ```
 
-The client expects the FastAPI server (in `../server`) to be running. Client
-environment variables are documented in the root README.
+## Build for production
 
-## Scripts
+```bash
+npm run build      # → build/ directory
+```
 
-- `npm run dev` — start the dev server
-- `npm run build` — production build
-- `npm run preview` — preview the production build
-- `npm run check` — type-check with svelte-check
-- `npm run lint` / `npm run format` — lint and format
+Serve `build/` with any static file server (nginx, `python -m http.server`,
+`npx serve`, etc.).
+
+## Config
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `API_ENDPOINT` | `http://localhost:8000` | Backend URL |
+
+All other settings (cookies, subtitles toggle, quality preference) live in
+browser localStorage via the Settings panel.

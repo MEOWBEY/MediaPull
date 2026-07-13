@@ -51,7 +51,7 @@ export function buildVideosM3u(videos: GroupedVideo[], useProxyFor: ProxyResolve
 }
 
 /** Filesystem-safe slug from a title (for download filenames). */
-export function safeFilename(title: string | undefined, fallback = 'directstream'): string {
+export function safeFilename(title: string | undefined, fallback = 'pullbox'): string {
 	const slug = (title ?? '')
 		.replace(/[\\/:*?"<>|]+/g, '')
 		.trim()

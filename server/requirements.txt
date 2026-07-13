@@ -12,3 +12,7 @@ pydantic==2.13.4
 pydantic-settings==2.7.1
 gunicorn==26.0.0
 python-multipart==0.0.32
+
+# Test-only dependencies (not needed at runtime).
+pytest==9.1.1
+pytest-asyncio==1.4.0

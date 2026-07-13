@@ -29,6 +29,7 @@ function sameSource(
 	if (a.id && b.id) {
 		return a.id === b.id;
 	}
+
 	return false;
 }
 

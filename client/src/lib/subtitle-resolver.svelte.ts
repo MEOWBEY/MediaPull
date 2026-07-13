@@ -29,8 +29,12 @@ export class SubtitleResolver {
 	// from `isRunning` (the Groq job) since it never has a meaningful progress
 	// percentage.
 	resolvingExisting = $state(false);
+		/** URL currently being fetched (null when idle). Lets a double-click
+		 *  produce a gentle "already loading" toast instead of silently doing
+		 *  nothing — the user at least knows the first click was registered. */
+		private _resolvingUrl = $state<string | null>(null);
 
-	get track(): SubtitleTrackResult | null {
+		get track(): SubtitleTrackResult | null {
 		return this.existingTrack ?? this.transcription.track;
 	}
 
@@ -93,18 +97,25 @@ export class SubtitleResolver {
 	}
 
 	async useExisting(track: SubtitleTrack): Promise<boolean> {
-		// Guards against the card's Subtitles button feeling unresponsive: the
-		// fetch below can take a moment, and without this a second click before
-		// it resolves would fire a redundant parallel fetch instead of just
-		// waiting on the first one.
-		if (this.resolvingExisting) {
-			return false;
-		}
+			// Guards against the card's Subtitles button feeling unresponsive: the
+			// fetch below can take a moment, and without this a second click before
+			// it resolves would fire a redundant parallel fetch instead of just
+			// waiting on the first one. To avoid silent failure, we show a toast
+			// when a double-click is blocked — the user at least knows the first
+			// click was registered.
+			if (this.resolvingExisting) {
+				if (this._resolvingUrl !== track.url) {
+					toast.info(t('subtitles.info.alreadyLoading'));
+				}
+
+				return false;
+			}
 
 		let segments: SubtitleSegment[] = [];
 
 		this.resolvingExisting = true;
-		try {
+				this._resolvingUrl = track.url;
+				try {
 			// Our parser reads both WebVTT and SRT (they differ only in the cue
 			// decimal separator). YouTube's non-vtt formats (json3/srv3/ttml) are
 			// normalized to WebVTT server-side (see `_normalize_caption_url`), so
@@ -117,8 +128,9 @@ export class SubtitleResolver {
 				}
 			}
 		} finally {
-			this.resolvingExisting = false;
-		}
+					this.resolvingExisting = false;
+					this._resolvingUrl = null;
+				}
 
 		// A track with no usable cues is a failure, not a result: setting it
 		// anyway used to leave the button "green" while both the panel and the

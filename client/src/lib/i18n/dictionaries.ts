@@ -121,6 +121,7 @@ export const en = {
 	'subtitles.error.notConfigured': 'Auto-subtitles are not configured on this server.',
 	'subtitles.error.generic': 'Could not generate subtitles for this video.',
 	'subtitles.error.fetchFailed': 'Could not load this subtitle track. Try again.',
+	'subtitles.info.alreadyLoading': 'Already loading captions — please wait…',
 	// Pipeline stage labels. Keyed by the job's fine-grained `detail` sub-stage
 	// when present, else its coarse `status` (see `stageLabel` in transcribe.svelte).
 	'subtitles.stage.queued': 'Waiting to start…',
@@ -395,6 +396,7 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.error.notConfigured': 'زیرنویس خودکار روی این سرور تنظیم نشده است.',
 	'subtitles.error.generic': 'تولید زیرنویس برای این ویدیو ممکن نشد.',
 	'subtitles.error.fetchFailed': 'بارگذاری این زیرنویس ممکن نشد. دوباره تلاش کنید.',
+	'subtitles.info.alreadyLoading': 'زیرنویس در حال بارگذاری است — لطفاً منتظر بمانید…',
 	// Pipeline stage labels, keyed by the job's `status` field
 	'subtitles.stage.queued': 'در انتظار شروع…',
 	'subtitles.stage.planning': 'در حال آماده‌سازی…',

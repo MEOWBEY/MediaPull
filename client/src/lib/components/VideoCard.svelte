@@ -127,32 +127,20 @@
 	function downloadQuality(quality: VideoFormat) {
 		try {
 			const filename = `${video?.title}.${quality.resolution}.${quality.ext}`;
-			const link = document.createElement('a');
 
 			if (useProxy && quality.proxiedVideoUrl) {
-				// Proxy mode -> add ?download=1 so /proxy-video replies with
-				// Content-Disposition: attachment. The browser then SAVES the file
-				// (and never plays it inline) whether or not the proxy is
-				// same-origin -- fixing the "it just streams the video in a tab
-				// until I close it" behaviour on split client/API deployments.
 				const base = quality.proxiedVideoUrl;
 				const sep = base.includes('?') ? '&' : '?';
+				const url = `${base}${sep}download=1&filename=${encodeURIComponent(filename)}`;
 
-				// Rely on the proxy's `Content-Disposition: attachment` to force the
-				// save (see proxy.py). Deliberately NOT setting `link.download`: that
-				// forces the browser's built-in downloader and bypasses a download
-				// manager (IDM) the user may have hooked in. A plain click on an
-				// attachment URL lets the browser OR IDM take it, whichever is set up.
-				link.href = `${base}${sep}download=1&filename=${encodeURIComponent(filename)}`;
-				document.body.appendChild(link);
-				link.click();
-				link.remove();
+				// Navigate to the proxy URL — the server's Content-Disposition
+				// header triggers the browser's save dialog. No link.click()
+				// needed (and avoided — it starts downloading before the user
+				// picks a save location).
+
+				window.location.assign(url);
 				toast.success(t('toast.downloadStarted', { name: filename }));
 			} else {
-				// No-proxy mode -> the URL is the cross-origin source. Browsers
-				// IGNORE `download` cross-origin, so don't fake it: open the source
-				// as a plain link and let the browser / a download manager (IDM)
-				// handle it like any other direct link on the web.
 				const url = quality.sourceVideoUrl || quality.proxiedVideoUrl || '';
 
 				if (!url) {
@@ -161,12 +149,7 @@
 					return;
 				}
 
-				link.href = url;
-				link.target = '_blank';
-				link.rel = 'noopener';
-				document.body.appendChild(link);
-				link.click();
-				link.remove();
+				window.open(url, '_blank', 'noopener');
 			}
 		} catch {
 			toast.error(t('toast.downloadFailed'));

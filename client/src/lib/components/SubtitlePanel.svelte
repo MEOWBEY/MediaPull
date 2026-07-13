@@ -125,7 +125,6 @@
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
 		closeLabel={t('common.close')}
-		hideClose
 		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-4 sm:max-w-md sm:p-6 {desktop.matches
 			? ''
 			: 'h-[65vh] rounded-t-3xl'}"
@@ -189,7 +188,7 @@
 					<button
 						type="button"
 						data-active={seg === activeSeg}
-						class="hover:bg-muted data-[active=true]:bg-primary/10 data-[active=true]:text-primary flex w-full items-start gap-3 rounded-lg px-3 py-2 text-start transition-colors"
+						class="hover:bg-muted data-[active=true]:bg-primary/20 data-[active=true]:text-primary data-[active=true]:border-primary flex w-full items-start gap-3 rounded-lg border-s-2 border-transparent px-3 py-2 text-start transition-colors data-[active=true]:font-medium"
 						onclick={() => onSeek(seg.start)}
 					>
 						<span class="text-muted-foreground shrink-0 pt-0.5 text-xs font-medium tabular-nums">
@@ -212,7 +211,7 @@
 					{#if generating}
 						<!-- Progress is status, not a button: a bar + percentage + the
 						     pipeline stage, with cancel as its own explicit action. -->
-						<div class="w-full max-w-xs space-y-2">
+						<div class="w-full max-w-xs space-y-2" role="status" aria-live="polite">
 							<div class="bg-muted h-1.5 w-full overflow-hidden rounded-full">
 								<div
 									class="bg-primary h-full rounded-full transition-[width] duration-300"

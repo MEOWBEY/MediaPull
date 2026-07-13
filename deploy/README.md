@@ -1,107 +1,336 @@
-# Deploying DirectStream
+# Deploy Pullbox on your own server (VPS)
 
-This app is two independently-deployable pieces:
+Native install — no Docker — using **systemd** to keep the process alive and
+**nginx** (or Caddy) in front for the domain + HTTPS. `install.sh` sets up the
+backend **and**, if you want, the web client from the same box in one run.
 
-- **`client/`** — a SvelteKit **static SPA** (`adapter-static`). Just HTML/CSS/JS
-  once built; any static host works.
-- **`server/`** — a Python **FastAPI** backend that shells out to `yt-dlp`
-  and `ffmpeg` and needs a real, persistent process (not a short-lived
-  serverless function).
+Any VPS works (DigitalOcean, Hetzner, Linode, a home server, …). For a
+free-forever option, **Oracle Cloud's Always Free** tier is enough to run this.
 
-That split is why this folder is organized the same way:
+## What's in this folder
 
 ```
 deploy/
-├── client/     # static-hosting targets — client ONLY
-│   ├── vercel/
-│   ├── netlify/
-│   ├── cloudflare-pages/
-│   ├── deno-deploy/
-│   ├── railway/          # Railway can host either piece — see below
-│   └── render/
-└── server/     # backend targets — server ONLY (or combined w/ client baked in)
-    ├── docker/            # the single-process image every container platform builds
-    ├── railway/
-    ├── render/
-    ├── northflank/        # genuinely-free, always-on container host
-    ├── flyio/             # no ongoing free tier as of 2026 — see its README
-    └── vps/               # your own server — no Docker required
+  install.sh          provision a fresh box (interactive, run once)
+  update.sh           pull latest code + restart (run for every deploy after)
+  uninstall.sh        stop/remove the service (--purge wipes everything)
+  lib.sh              shared helpers, sourced by the three scripts above
+  systemd/
+    pullbox.service       backend unit (templated: port, user, resource caps)
+    pullbox-pot.service   YouTube PO-token sidecar unit
+  nginx/
+    backend.conf.example  reverse proxy for the API
+    client.conf.example   static server for the client (subdomain mode only)
+  caddy/
+    Caddyfile.example     Caddy alternative to nginx (hand-install)
 ```
 
-**Some platforms genuinely can't run the backend at all**: Vercel, Netlify,
-Cloudflare Pages, and Deno Deploy are all serverless/edge/static runtimes —
-none of them support a persistent process invoking `ffmpeg`/`yt-dlp` as
-subprocesses. That's not a config problem to work around; use them for the
-client only, and host the API somewhere in `deploy/server/`.
+The three scripts cover the whole lifecycle:
 
-## Two ways to run it
-
-1. **Combined, single process** (simplest): `deploy/server/docker/` bakes
-   the built client into the same image as the API, served from one origin.
-   No CORS, one thing to deploy. Works on Railway, Render, Northflank,
-   Fly.io, or your own VPS.
-2. **Split**: client on a static host (`deploy/client/...`), backend
-   elsewhere (`deploy/server/...`), talking cross-origin via
-   `VITE_API_BASE_URL` (client, build-time) and `CORS_ORIGINS` (server,
-   runtime). More moving parts, but lets you use free static-hosting CDNs
-   for the client and pick whichever backend host suits you.
-
-Docker is offered as **one option**, not the only one — where a platform has
-a genuine native (non-Docker) path that doesn't compromise on
-functionality, it's documented too (Railway's Nixpacks for the backend;
-Render's, Vercel's, Netlify's, and Cloudflare Pages' native static-site
-builders for the client).
-
-## Decision matrix
-
-| Platform | Client | Backend | Docker required? | Notes |
-|---|---|---|---|---|
-| [Vercel](client/vercel/) | ✅ | ❌ | No | Static only |
-| [Netlify](client/netlify/) | ✅ | ❌ | No | Static only |
-| [Cloudflare Pages](client/cloudflare-pages/) | ✅ | ❌ | No | Static only |
-| [Deno Deploy](client/deno-deploy/) | ⚠️ possible, not recommended | ❌ never | No | Edge JS/TS runtime only — can't run Python/ffmpeg at all |
-| [Railway](server/railway/) / [client](client/railway/) | ✅ (native, separate service) | ✅ (Docker **or** native Nixpacks) | Optional | Trial-credit "free" (~$5 once, then ~$1/mo) — not really always-on-free |
-| [Render](server/render/) / [client](client/render/) | ✅ (native Static Site, always-on) | ✅ (Docker only — native runtime can't install `ffmpeg`) | Backend: yes. Client: no | Backend free plan spins down after ~15 min idle |
-| [Northflank](server/northflank/) | ❌ (backend-focused; combined image also works) | ✅ (Docker) | Yes | **Always-on** free container, no card-gated trial clock — best "actually free" PaaS option in 2026 |
-| [Fly.io](server/flyio/) | ❌ (backend-focused) | ✅ (Docker) | Yes (inherent to Fly) | **No ongoing free tier since Oct 2024** — short trial only, then pay-as-you-go (~$2–5/mo); legacy accounts grandfathered |
-| [Your own VPS](server/vps/) / [client](client/vps/) | ✅ | ✅ | No (systemd + nginx/Caddy); Docker Compose offered as an alternative | Most control, works with any provider incl. free-tier VMs (e.g. Oracle Cloud Always Free — see note below) |
-
-## Recommended paths
-
-- **Want the least setup, one place, one URL, and it to actually be free:**
-  `deploy/server/docker/` (with `CLIENT_DIR` baked in) deployed to
-  **Northflank** — always-on, no spin-down, no trial clock.
-- **Want it on a free static CDN + a real backend host:** client on
-  Cloudflare Pages/Vercel/Netlify, backend on Northflank or Railway (native
-  Nixpacks, no Docker).
-- **Want full control and don't mind the setup:** a small VPS via
-  `deploy/server/vps/` — one **interactive** `install.sh` sets up the
-  backend AND (if you want) the client together, asking a few plain-language
-  questions (domain, port, how to serve the client) instead of requiring
-  you to know which env vars to set. Comes with `update.sh`/`uninstall.sh`
-  for the rest of the lifecycle. Oracle Cloud's Always Free Ampere shape
-  works, though Oracle quietly halved that allowance (4 OCPU/24GB → 2
-  OCPU/12GB) in June 2026 with no announcement — still enough for this app,
-  just no longer as generous. Any other free-tier or ~$5/mo VPS provider
-  (Hetzner, DigitalOcean, etc.) works identically.
-- **Avoid for the backend:** Fly.io and Railway, if "free" specifically
-  matters to you — both have moved to trial-credit/pay-as-you-go models.
-  They're still fine choices if you're paying or already have credits.
-
-## Required environment variables, either way
-
-| Where | Variable | Purpose |
+| Script | When | What it does |
 |---|---|---|
-| Server | `CORS_ORIGINS` | Comma-separated origins allowed to call the API. Set to the client's real domain in production — don't leave it at `*`. |
-| Client (build-time) | `VITE_API_BASE_URL` | Backend origin the built client calls. Leave **unset** for combined/same-origin deploys; set it to the backend's URL for split deploys. |
+| `install.sh` | once, fresh box | **interactive**: asks for domain, port, whether to serve the client here, and (private repo) a GitHub token, then sets up packages, service user, clone, venv, systemd unit, nginx + TLS, firewall (and the client build, if asked) |
+| `update.sh` | every deploy after | pull code, reinstall deps, upgrade yt-dlp/gallery-dl, rebuild the client, restart, health-check — **no prompts** |
+| `uninstall.sh` | to remove it | stop/remove service + nginx site(s); `--purge` also wipes repo/venv/user/cert |
 
-See `server/.env.example` and `server/.env.production.example` for the full
-list of backend knobs (cookies, proxy, YouTube player clients,
-impersonation, cache, etc.) — all optional, all default to sane values.
+## Glossary (skip if you know this)
 
-## Security note (applies everywhere)
+- **VPS**: a small remote Linux computer you rent monthly, reached over SSH.
+- **systemd service**: how Linux keeps a program running, restarts it on crash,
+  and starts it on boot. `install.sh` configures this.
+- **nginx / Caddy**: a *reverse proxy* in front of the app — handles your domain
+  and HTTPS, forwards requests to the app on `127.0.0.1`.
+- **DNS A record**: points your domain (e.g. `api.example.com`) at the VPS IP.
+  Set it wherever you bought the domain, *before* running certbot.
+- **certbot / TLS**: the free Let's Encrypt tool that gets you the HTTPS padlock.
+  `install.sh` runs it once your domain resolves to the server.
 
-`GET /proxy-video` fetches arbitrary user-supplied URLs with no host
-allow-list, so a public deployment is exposed to SSRF-style abuse. Run it
-behind auth/a firewall/VPN, or add a host allow-list, before exposing it
-broadly — see the root [`README.md`](../README.md#security-note).
+## Quick install (recommended)
+
+SSH into a fresh server and run the one installer script — it clones the full
+project itself, so you don't need the repo on the server beforehand:
+
+```bash
+ssh root@YOUR_SERVER_IP
+curl -fsSL https://raw.githubusercontent.com/MEOWBEY/direct-stream/main/deploy/install.sh -o install.sh
+sudo bash install.sh
+```
+
+> Running it as a **saved file** (not piped straight into `bash`) is what keeps
+> it interactive. `curl … | bash` has no keyboard attached, so it silently uses
+> defaults instead of asking the questions below.
+
+Prefer to review the code first, or deploying a fork? Clone, then run from
+inside:
+
+```bash
+git clone https://github.com/MEOWBEY/direct-stream.git /tmp/pullbox
+sudo bash /tmp/pullbox/deploy/install.sh
+```
+
+(`/tmp/pullbox` is just a throwaway copy to launch the installer;
+`install.sh` clones its own permanent copy into `/opt/pullbox` regardless.)
+
+### What it asks
+
+1. **API domain** (e.g. `api.example.com`) — blank skips HTTPS/nginx and runs
+   on `127.0.0.1` only (fine for testing).
+2. **Backend port** (default `8000`) — only matters if that port's taken.
+3. **Public reverse-proxy port** (only if you gave a domain; default `80`) —
+   the port *visitors* hit. If it's already in use, the installer detects it
+   and asks for another rather than clobbering another service's config.
+4. **How to serve the web client**: same domain (simplest), a separate
+   subdomain on this box, or not here (hosting elsewhere / skipping).
+5. **Install the YouTube PO-token provider?** (default yes) — see
+   [YouTube PO tokens](#youtube-po-tokens). Also asks its port (default `4416`).
+6. **Groq API key** for auto-subtitles — optional, free at
+   [console.groq.com](https://console.groq.com); can be added later.
+
+Answers are saved to `/opt/pullbox/.vps-deploy.env`, so `update.sh` /
+`uninstall.sh` never re-ask.
+
+### Non-interactive / scripted
+
+Set the vars up front and nothing is asked:
+
+```bash
+sudo DOMAIN=api.example.com PORT=8000 CLIENT_MODE=same-domain bash install.sh
+```
+
+`CLIENT_MODE` ∈ `same-domain` | `subdomain` | `none` (add
+`CLIENT_DOMAIN=app.example.com` with `subdomain`). `install.sh` is idempotent
+— safe to re-run. Override the git remote with `REPO_URL=…`.
+
+### Private repo
+
+`install.sh` asks once for a GitHub token (a PAT with read access) and bakes it
+into the checkout's remote, so `update.sh` and re-runs authenticate silently.
+Non-interactive:
+
+```bash
+sudo GITHUB_TOKEN=ghp_xxx DOMAIN=api.example.com CLIENT_MODE=same-domain bash install.sh
+```
+
+A public repo needs none of this. Note the bootstrap `curl`/`git clone` above
+is itself unauthenticated — for a private repo, clone that first step with a
+token too (`git clone https://ghp_xxx@github.com/OWNER/REPO.git /tmp/pullbox`).
+
+When it finishes, edit `/opt/pullbox/server/.env` for anything beyond what it
+set, then `sudo systemctl restart pullbox`.
+
+## Manual install, step by step
+
+What `install.sh` automates — read this to customize or if the script doesn't
+fit your distro.
+
+### 1. System packages
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-venv ffmpeg nginx git curl
+```
+
+(3.10+ is fine — nothing needs a specific minor version.)
+
+### 2. Service user + clone
+
+```bash
+sudo useradd --system --create-home --shell /usr/sbin/nologin pullbox
+sudo -u pullbox git clone https://github.com/MEOWBEY/direct-stream.git /opt/pullbox
+```
+
+### 3. Python environment
+
+```bash
+cd /opt/pullbox/server
+sudo -u pullbox python3 -m venv venv
+sudo -u pullbox ./venv/bin/pip install -r requirements.txt
+sudo -u pullbox cp .env.production.example .env
+sudo -u pullbox nano .env
+```
+
+For a production box, in `.env`:
+- `CORS_ORIGINS=https://your-client-domain.example` — pin it, don't leave `*`.
+  (With `*`, the app disables credentialed CORS, because browsers reject
+  `Access-Control-Allow-Origin: *` together with credentials.)
+- `COOKIE_FILE=/opt/pullbox/server/cookies.txt` if using server-side cookies
+  (`chmod 600`, owned by `pullbox`).
+- `PROXY_ALLOWED_HOSTS=googlevideo.com,cdninstagram.com,fbcdn.net,…` if you
+  expose the box publicly — see [Security](#security).
+- Leave `PORT` alone here; the bound port comes from the systemd unit (step 4).
+
+### 4. systemd service
+
+The unit uses `__…__` placeholders; fill them in (skip `sed` values you want at
+their default):
+
+```bash
+sed 's#__REPO_DIR__#/opt/pullbox#g; s/__SERVICE_USER__/pullbox/g; s/__PORT__/8000/; s/__MEMORY_MAX__/1024M/; s/__CPU_QUOTA__/100%/' \
+  /opt/pullbox/deploy/systemd/pullbox.service \
+  | sudo tee /etc/systemd/system/pullbox.service > /dev/null
+sudo systemctl daemon-reload
+sudo systemctl enable --now pullbox
+sudo systemctl status pullbox
+journalctl -u pullbox -f
+```
+
+### 5. Reverse proxy + domain + TLS
+
+Point your domain's A/AAAA record at the server IP first, then:
+
+**nginx:**
+```bash
+sed 's/api.example.com/YOUR_DOMAIN/; s/__PORT__/8000/; s/__PUBLIC_PORT__/80/' \
+  /opt/pullbox/deploy/nginx/backend.conf.example \
+  | sudo tee /etc/nginx/sites-available/pullbox-api > /dev/null
+sudo ln -s /etc/nginx/sites-available/pullbox-api /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d YOUR_DOMAIN
+```
+
+**Caddy (automatic HTTPS, no certbot):**
+```bash
+sed 's/api.example.com/YOUR_DOMAIN/; s/__PORT__/8000/' \
+  /opt/pullbox/deploy/caddy/Caddyfile.example \
+  | sudo tee /etc/caddy/Caddyfile > /dev/null
+sudo systemctl reload caddy
+```
+
+### 6. Firewall
+
+```bash
+sudo ufw allow OpenSSH
+sudo ufw allow 'Nginx Full'   # or: sudo ufw allow 80,443/tcp   (Caddy)
+sudo ufw enable
+```
+
+### 7. Verify
+
+```bash
+curl https://YOUR_DOMAIN/health
+```
+
+`ffmpegAvailable` / `galleryDlAvailable` should both be `true` — if not, see
+[Troubleshooting](#troubleshooting).
+
+## YouTube PO tokens
+
+YouTube increasingly blocks extraction from datacenter/cloud IPs (what a VPS
+is) with *"Sign in to confirm you're not a bot"*, or refuses age-restricted
+videos even with cookies. The fix is a **PO token** — a per-video
+proof-of-not-a-bot token yt-dlp attaches to the request.
+
+Hand-copying a token from a browser **no longer works** (YouTube binds tokens
+to the video ID). The supported fix is the companion service
+[`bgutil-ytdlp-pot-provider`](https://github.com/Brainicism/bgutil-ytdlp-pot-provider),
+which fetches a fresh token per extraction.
+
+`install.sh` sets this up (default yes): a pip plugin yt-dlp auto-detects, plus
+a small Node server running as its own systemd service (`pullbox-pot`) on
+`127.0.0.1:4416`. If you chose a different port, it sets
+`YOUTUBE_POT_BASE_URL=http://127.0.0.1:<port>` in `.env` accordingly. Check it:
+
+```bash
+sudo systemctl status pullbox-pot
+journalctl -u pullbox-pot -n 50
+```
+
+`update.sh` keeps the plugin and server version-matched (they speak a
+version-checked protocol — letting them drift breaks the plugin).
+
+## Server-wide cookies
+
+Most of X/Twitter and private/login-only Instagram refuse to serve content
+**at all** without a session — no PO token fixes that. `install.sh` sets up
+`server/cookies.txt` (from `server/cookies.example.txt`) and points
+`COOKIE_FILE` at it:
+
+```bash
+sudo nano /opt/pullbox/server/cookies.txt
+```
+
+Paste Netscape-format `cookies.txt` — export with
+["Get cookies.txt LOCALLY"](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc),
+ideally from a **throwaway account**. Save, then `sudo systemctl restart
+pullbox`. This file is never touched by `update.sh`/`uninstall.sh`.
+
+## Resource limits
+
+`install.sh` detects CPU cores + RAM and caps the service (`MemoryMax=` /
+`CPUQuota=` — roughly 70% of RAM, all-but-one core), leaving headroom for nginx
+and anything else on the box. On a small box (≤2 vCPU or ≤2GB RAM) it also sets
+`TRANSCRIBE_MAX_CONCURRENT_JOBS=1` and `TRANSCRIBE_WORKERS=1` (those run the
+CPU-heavy ffmpeg work).
+
+These caps are re-applied on every `update.sh` (it re-templates the unit from
+`.vps-deploy.env`), so editing the installed
+`/etc/systemd/system/pullbox.service` is overwritten next update. For a
+permanent override use `systemctl edit pullbox` (a drop-in), then
+`systemctl daemon-reload && systemctl restart pullbox`.
+
+## Updating later
+
+```bash
+sudo /opt/pullbox/deploy/update.sh
+```
+
+Pulls, reinstalls deps, upgrades yt-dlp/gallery-dl, rebuilds the client (if
+installed), restarts, and checks `/health` — reusing the saved GitHub
+credential, so even a private repo never re-prompts.
+
+**Rollback** if an update breaks something (systemd only cares that the files on
+disk are valid, not which commit):
+
+```bash
+cd /opt/pullbox
+sudo -u pullbox git log --oneline -5
+sudo -u pullbox git checkout <good-commit-hash>
+sudo -u pullbox server/venv/bin/pip install -r server/requirements.txt
+sudo systemctl restart pullbox
+```
+
+Return to the tip with `git checkout <branch>` afterward (running `update.sh`
+on a detached HEAD refuses and tells you this). Tail logs with
+`journalctl -u pullbox -f`.
+
+## Removing it later
+
+```bash
+sudo /opt/pullbox/deploy/uninstall.sh            # stop + remove service/nginx, keep data
+sudo /opt/pullbox/deploy/uninstall.sh --purge    # + wipe repo, venv, user, TLS cert(s)
+```
+
+`uninstall.sh` reads your saved domain/client answers automatically. `--purge`
+asks for an explicit `YES` before deleting the repo and the service user.
+
+## Security
+
+`GET /proxy-video` fetches user-supplied URLs. The proxy blocks internal
+targets (loopback, RFC-1918, link-local, IPv4-mapped IPv6) and re-checks the
+host on every redirect hop and against resolved DNS, so basic SSRF is covered.
+Still, for a public box you should also:
+
+- Set `PROXY_ALLOWED_HOSTS` to the media CDNs you actually use, so the proxy
+  won't fetch arbitrary hosts, **or** set `PROXY_ENABLED=false` to disable it.
+- Put auth / a firewall / a VPN in front if it isn't meant to be public.
+
+Auth cookies are never placed in proxy URLs (the client exchanges them for an
+opaque short-lived token via `POST /proxy-token`), so copied/QR/shared links
+don't leak sessions.
+
+## Troubleshooting
+
+- **`ffmpegAvailable: false` on `/health`**: ffmpeg is only used by
+  auto-subtitles, so this goes unnoticed until someone generates them.
+  `install.sh` installs ffmpeg via apt; if you skipped/moved it, set
+  `FFMPEG_BINARY`/`FFPROBE_BINARY` in `.env` to the absolute path and restart.
+- **"This site or URL isn't supported" on a link that used to work**: the
+  pinned `yt-dlp`/`gallery-dl` is behind. `update.sh` always upgrades both to
+  latest — run it even without new app code.
+- **X/Twitter "No images found"**: most X content needs a session — see
+  [Server-wide cookies](#server-wide-cookies).
+- **"Unknown or expired job" on subtitles**: caused by running >1 worker (the
+  in-memory job store isn't shared across processes). Confirm
+  `pullbox.service`'s `--workers` is `1` and restart.

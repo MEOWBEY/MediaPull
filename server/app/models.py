@@ -177,11 +177,22 @@ class GalleryResponse(BaseModel):
     cached: bool = False
 
 
+class ProxyTokenRequest(BaseModel):
+    """Client exchanges a source's auth cookies for an opaque token so the
+    cookies never ride in the proxy URL (which gets copied / QR'd / shared)."""
+
+    cookies: str = Field(max_length=262_144)
+
+
+class ProxyTokenResponse(BaseModel):
+    token: str
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     status: str = "healthy"
-    service: str = "directstream"
+    service: str = "pullbox"
     version: str
     timestamp: str
     # Surfaced so deploy tooling (install.sh's verification step, uptime

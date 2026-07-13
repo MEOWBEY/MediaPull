@@ -7,6 +7,7 @@
 import { toast } from 'svelte-sonner';
 
 import { ApiError, post, postGallery } from '$lib/api/client';
+import { resolveGalleryCookieTokens, resolveVideoCookieTokens } from '$lib/api/proxy-token';
 import { TTLCache } from '$lib/cache';
 import { i18n } from '$lib/i18n/index.svelte';
 import { appStore } from '$lib/stores/app-state.svelte';
@@ -206,6 +207,7 @@ export class ExtractionController {
 			const added = appStore.addVideoExtractResultsToStore(cached, {
 				allowDuplicate: opts.forceRefresh
 			});
+
 			if (!opts.silent) {
 				toast.success(
 					added
@@ -220,8 +222,19 @@ export class ExtractionController {
 		return this.run({
 			silent: opts.silent,
 			silentError: opts.silentError,
-			task: (signal) =>
-				post<IncomingVideo>('/extract-videos', cookies ? { url, cookies } : { url }, { signal }),
+			task: async (signal) => {
+				const video = await post<IncomingVideo>(
+					'/extract-videos',
+					cookies ? { url, cookies } : { url },
+					{ signal }
+				);
+
+				// Swap any auth cookies for opaque tokens before the result is
+				// cached or turned into (shareable) proxy URLs.
+				await resolveVideoCookieTokens(video);
+
+				return video;
+			},
 			onSuccess: (video) => {
 				extractCache.set(cacheKey, video);
 				const added = appStore.addVideoExtractResultsToStore(video, {
@@ -231,6 +244,7 @@ export class ExtractionController {
 				if (!opts.silent) {
 					if (!added) {
 						toast.success(t('toast.alreadyInLibrary'));
+
 						return;
 					}
 					const count = video?.formats?.length ?? 0;
@@ -264,6 +278,7 @@ export class ExtractionController {
 			const added = appStore.addGalleryExtractResultsToStore(cached, {
 				allowDuplicate: opts.forceRefresh
 			});
+
 			if (!opts.silent) {
 				toast.success(
 					added
@@ -277,10 +292,17 @@ export class ExtractionController {
 
 		return this.run({
 			silent: opts.silent,
-			task: (signal) =>
-				postGallery<IncomingGallery>('/extract-gallery', cookies ? { url, cookies } : { url }, {
-					signal
-				}),
+			task: async (signal) => {
+				const gallery = await postGallery<IncomingGallery>(
+					'/extract-gallery',
+					cookies ? { url, cookies } : { url },
+					{ signal }
+				);
+
+				await resolveGalleryCookieTokens(gallery);
+
+				return gallery;
+			},
 			onSuccess: (gallery) => {
 				galleryExtractCache.set(cacheKey, gallery);
 				const added = appStore.addGalleryExtractResultsToStore(gallery, {
@@ -290,6 +312,7 @@ export class ExtractionController {
 				if (!opts.silent) {
 					if (!added) {
 						toast.success(t('toast.alreadyInLibrary'));
+
 						return;
 					}
 					const count = gallery?.images?.length ?? 0;
@@ -333,8 +356,18 @@ export class ExtractionController {
 		appStore.isVideoExtractRunning = true;
 		appStore.videoExtractError = null;
 
+		const signal = this.controller?.signal;
+
+		if (!signal) {
+			// start() always sets controller before this runs, but guard defensively.
+			appStore.isVideoExtractRunning = false;
+			this.stop();
+
+			return false;
+		}
+
 		try {
-			const result = await config.task(this.controller!.signal);
+			const result = await config.task(signal);
 
 			if (this.controller?.signal.aborted) {
 				return false;
@@ -368,6 +401,10 @@ export class ExtractionController {
 	}
 
 	private start(): void {
+		// Single-flight: abort any request still in flight before starting a new
+		// one, so a rapid re-paste / retry doesn't leak the prior fetch (it would
+		// run to the 3-min server timeout and confuse the running flag).
+		this.controller?.abort();
 		this.controller = new AbortController();
 		this.elapsedSeconds = 0;
 		this.timer = setInterval(() => this.elapsedSeconds++, 1000);

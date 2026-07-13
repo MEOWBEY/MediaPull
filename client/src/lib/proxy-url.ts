@@ -37,11 +37,18 @@ function pick(headers: Headers, ...names: string[]): string {
 	return '';
 }
 
-/** `sourceUrl` + upstream headers → `${API_BASE_URL}/proxy-video?...`. */
+/**
+ * `sourceUrl` + upstream headers → `${API_BASE_URL}/proxy-video?...`.
+ *
+ * Auth cookies are NEVER placed in the URL — they'd leak through copy/QR/share
+ * links. Instead the caller passes `cookieToken` (minted via `POST /proxy-token`,
+ * see `$lib/api/proxy-token`) and the proxy resolves it server-side.
+ */
 export function buildProxiedUrl(
 	sourceUrl: string | undefined,
 	httpHeaders: Headers,
-	protocol: string | undefined
+	protocol: string | undefined,
+	cookieToken?: string | null
 ): string {
 	if (!sourceUrl) {return '';}
 
@@ -52,11 +59,10 @@ export function buildProxiedUrl(
 
 	const userAgent = pick(httpHeaders, 'User-Agent', 'user-agent');
 	const referer = pick(httpHeaders, 'Referer', 'referer');
-	const cookies = pick(httpHeaders, 'Cookie', 'cookie');
 
 	if (userAgent) {params.set('userAgent', userAgent);}
 	if (referer) {params.set('referer', referer);}
-	if (cookies) {params.set('cookies', cookies);}
+	if (cookieToken) {params.set('ctok', cookieToken);}
 
 	return `${proxyOrigin()}/proxy-video?${params.toString()}`;
 }

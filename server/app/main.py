@@ -1,4 +1,4 @@
-"""DirectStream API — application factory and routes."""
+"""Pullbox API — application factory and routes."""
 
 from __future__ import annotations
 
@@ -31,6 +31,8 @@ from .models import (
     GalleryInfo,
     GalleryResponse,
     HealthResponse,
+    ProxyTokenRequest,
+    ProxyTokenResponse,
     TranscribeRequest,
     TranscribeResult,
     TranscribeStartResponse,
@@ -55,7 +57,7 @@ def _configure_logging() -> None:
     root.handlers = [handler]
 
 
-logger = logging.getLogger("directstream")
+logger = logging.getLogger("pullbox")
 
 
 def _resolve_client_dir() -> Path | None:
@@ -118,7 +120,7 @@ async def lifespan(app: FastAPI):
             logger.warning("gallery_dl Python package is not installed -- /extract-gallery will fail")
     else:
         app.state.gallery_dl_available = _check_binary("gallery-dl", settings.gallery_dl_binary)
-    logger.info("DirectStream API %s ready", __version__)
+    logger.info("Pullbox API %s ready", __version__)
     try:
         yield
     finally:
@@ -127,22 +129,28 @@ async def lifespan(app: FastAPI):
         await app.state.proxy.aclose()
         if app.state.transcriber is not None:
             await app.state.transcriber.aclose()
-        logger.info("DirectStream API shut down")
+        logger.info("Pullbox API shut down")
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="DirectStream API",
+        title="Pullbox API",
         description="Extract direct video links and metadata from any webpage.",
         version=__version__,
         debug=settings.debug,
         lifespan=lifespan,
     )
 
+    origins = settings.cors_origins
+    wildcard = "*" in origins
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_origins=origins,
+        # Browsers reject `Access-Control-Allow-Origin: *` together with
+        # credentials (the response is dropped), so credentialed cross-origin
+        # requests fail silently under the wildcard default. Only enable
+        # credentials when the operator pinned an explicit origin list.
+        allow_credentials=not wildcard and len(origins) > 0,
         allow_methods=["GET", "POST", "DELETE"],
         allow_headers=["*"],
     )
@@ -226,6 +234,14 @@ def create_app() -> FastAPI:
     async def proxy_video(request: Request) -> Response:
         return await app.state.proxy.handle(request)
 
+    @app.post("/proxy-token", response_model=ProxyTokenResponse)
+    async def proxy_token(payload: ProxyTokenRequest) -> ProxyTokenResponse:
+        # Exchange a source's auth cookies for a short-lived opaque token so the
+        # cookies stay out of the (copyable / shareable) proxy URL.
+        return ProxyTokenResponse(
+            token=app.state.proxy.create_cookie_token(payload.cookies)
+        )
+
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
         return HealthResponse(
@@ -241,7 +257,7 @@ def create_app() -> FastAPI:
     # (/transcribe/{id}/events); GET below still exists as a plain one-shot
     # status check (and a fallback for any client that can't hold an SSE
     # connection open). Only viable single-worker (already required -- see
-    # the comment in directstream.service -- so there's no cross-worker
+    # the comment in pullbox.service -- so there's no cross-worker
     # fan-out to worry about for the in-memory subscriber queues below).
 
     def _build_status(job: TranscriptionJob) -> TranscribeStatus:

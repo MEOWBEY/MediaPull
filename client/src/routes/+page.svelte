@@ -89,7 +89,7 @@
 </script>
 
 <svelte:head>
-	<title>DirectStream — Extract direct video links from any page</title>
+	<title>Pullbox — Extract direct video links from any page</title>
 	<meta
 		name="description"
 		content="Paste a webpage URL to extract direct video links via yt-dlp and HTML scraping, then preview with the built-in player, download, or stream through an optional proxy."

@@ -1,5 +1,0 @@
-# Native (non-Docker) static-site serving for the FRONTEND service on Railway.
-# Copy this file to client/Procfile and set that service's Root Directory to
-# "client". Nixpacks auto-detects the Node/npm build; this just defines the
-# start command that serves the built SPA with client-side-routing fallback.
-web: npm run build && npx serve -s build -l $PORT

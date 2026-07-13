@@ -1,0 +1,43 @@
+# Reverse proxy for the Pullbox BACKEND (api.example.com). If you also serve
+# the web client from this box, see ./client.conf.example for its server block
+# -- they live side by side in the same nginx install.
+#
+# install.sh fills this in and installs it for you. To do it by hand, install
+# at /etc/nginx/sites-available/pullbox-api, then:
+#   ln -s /etc/nginx/sites-available/pullbox-api /etc/nginx/sites-enabled/
+#   nginx -t && systemctl reload nginx
+# TLS: run certbot afterwards (see README.md) -- it edits this file in place
+# to add the listen 443/ssl_certificate directives.
+
+server {
+    listen __PUBLIC_PORT__;
+    listen [::]:__PUBLIC_PORT__;
+    server_name api.example.com;
+
+    client_max_body_size 25m;
+
+    location /health {
+        proxy_pass http://127.0.0.1:__PORT__;
+        access_log off;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:__PORT__;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # /extract-videos and /proxy-video can run long (extraction,
+        # streaming through the proxy) -- don't cut them off at nginx's
+        # 60s defaults.
+        proxy_connect_timeout 30s;
+        proxy_send_timeout    300s;
+        proxy_read_timeout    300s;
+
+        # /proxy-video streams media through -- buffering would defeat
+        # range/seek support and double the memory per request.
+        proxy_buffering off;
+    }
+}

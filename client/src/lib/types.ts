@@ -1,4 +1,4 @@
-/** Shared domain types for the DirectStream client. Single source of truth. */
+/** Shared domain types for the Pullbox client. Single source of truth. */
 
 export type MediaType =
 	| 'video/mp4'
@@ -89,6 +89,10 @@ export interface IncomingFormat {
 	format_id?: string;
 	resolution?: number | string;
 	videoOnly?: boolean;
+	/** Opaque token standing in for this format's auth cookies, minted by
+	 *  `resolveVideoCookieTokens` so cookies never enter the (shareable) proxy
+	 *  URL. Attached client-side after extraction; absent when no cookies apply. */
+	cookieToken?: string;
 }
 
 export interface IncomingVideo {
@@ -133,6 +137,8 @@ export interface IncomingGalleryImage {
 	filesize?: number;
 	ext?: string;
 	httpHeaders?: Record<string, string> | null;
+	/** Opaque cookie token (see `IncomingFormat.cookieToken`). */
+	cookieToken?: string;
 }
 
 export interface IncomingGallery {

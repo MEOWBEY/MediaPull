@@ -1,11 +1,4 @@
-"""In-memory job store for the auto-subtitle (transcription) pipeline.
-
-Same "no persistence anywhere" philosophy as ``cache.py`` -- a server
-restart mid-job loses it, which is acceptable for this hobby-scale app that
-already has zero persistence elsewhere. Job mutation semantics (progress
-ticks updated in place as the pipeline runs) don't fit ``TTLCache``'s
-copy-on-set model, so this is a small bespoke store rather than a subclass.
-"""
+"""In-memory job store for the auto-subtitle (transcription) pipeline."""
 
 from __future__ import annotations
 
@@ -29,26 +22,23 @@ from .audio import (
 from .config import Settings
 from .models import VideoFormat
 from .subtitles import merge_chunks, to_srt, to_vtt
-from .transcribe.base import Segment, Transcriber, TranscriptionResult
+from .transcribe.base import Transcriber, TranscriptionResult
 from .transcribe.groq_engine import GroqError
 from .waveform import WaveformError, extract_peaks_chunks
 
-logger = logging.getLogger("directstream.jobs")
+logger = logging.getLogger("pullbox.jobs")
 
-# queued -> downloading -> chunking -> transcribing -> finalizing -> done | error | cancelled
+_QUEUED, _DOWNLOADING, _CHUNKING, _TRANSCRIBING, _FINALIZING = (
+    "queued",
+    "downloading",
+    "chunking",
+    "transcribing",
+    "finalizing",
+)
 _TERMINAL_STATUSES = ("done", "error", "cancelled")
 
 
 def _return_freed_memory_to_os() -> None:
-    """Ask glibc to hand freed heap arenas back to the OS after a job.
-
-    A transcription job briefly allocates large transient buffers (per-chunk
-    audio bytes for the Groq upload, PCM decode blocks for the waveform).
-    CPython frees them promptly, but glibc's allocator keeps the arenas mapped
-    -- so process RSS climbs job-over-job and only drops on a restart, which is
-    exactly the "RAM goes up but never down" symptom. ``malloc_trim(0)`` returns
-    the now-empty arenas. glibc/Linux only; a silent no-op on musl/macOS/Windows.
-    """
     try:
         import ctypes
 
@@ -63,12 +53,7 @@ class TranscriptionJob:
     status: str = "queued"
     progress: float = 0.0
     step_label: str = "Queued"
-    # Fine-grained sub-stage code (planning / downloading_source / extracting /
-    # compressing / transcribing / building_subtitles / waveform) -- the client
-    # maps it to localized text. More specific than `status`.
     detail: str | None = None
-    # Chunk counters exposed on the wire so the client can render/localize
-    # its own "x of y" stage text instead of parsing `step_label`.
     chunks_done: int = 0
     chunks_total: int = 0
     language: str | None = None
@@ -90,13 +75,7 @@ class JobStore:
         self._tasks: dict[str, asyncio.Task] = {}
         self._subscribers: dict[str, set[asyncio.Queue[TranscriptionJob]]] = {}
         self._lock = asyncio.Lock()
-        # Bounds concurrent transcription jobs across all clients -- each one
-        # pins a Groq-rate-limited pipeline plus local ffmpeg CPU work.
         self.semaphore = asyncio.Semaphore(settings.transcribe_max_concurrent_jobs)
-        # Bounds concurrent CPU-bound steps (ffmpeg transcode + waveform)
-        # independent of how many jobs are merely waiting on a Groq network
-        # round-trip, so a small VPS doesn't run several ffmpeg transcodes
-        # at once.
         self.cpu_semaphore = asyncio.Semaphore(settings.transcribe_workers)
 
     async def create(self) -> TranscriptionJob:
@@ -117,18 +96,10 @@ class JobStore:
                 return
             for key, value in fields.items():
                 setattr(job, key, value)
-            # Fan out to every open SSE connection for this job (see
-            # `subscribe` below) -- put_nowait is safe here since each
-            # subscriber's queue is unbounded and read-then-discarded by a
-            # single consuming loop, never blocking the pipeline that's
-            # calling `update`.
             for queue in self._subscribers.get(job_id, ()):
                 queue.put_nowait(job)
 
     async def subscribe(self, job_id: str) -> asyncio.Queue[TranscriptionJob]:
-        """Registers a queue that receives every future `update()` for this
-        job -- used by the SSE endpoint. Caller must `unsubscribe` when done
-        (e.g. in a `finally`) or the queue leaks for the job's lifetime."""
         queue: asyncio.Queue[TranscriptionJob] = asyncio.Queue()
         async with self._lock:
             self._subscribers.setdefault(job_id, set()).add(queue)
@@ -148,14 +119,6 @@ class JobStore:
             self._tasks[job_id] = task
 
     async def cancel(self, job_id: str) -> bool:
-        """Request cancellation of a running job's task.
-
-        Returns False when the job is unknown or already terminal (nothing to
-        cancel -- 404-worthy from the caller's perspective); True when the job
-        existed and cancellation was requested, whether or not a task was
-        actually found still running (it may already be between awaits and
-        about to finish on its own).
-        """
         async with self._lock:
             job = self._jobs.get(job_id)
             if job is None or job.is_terminal:
@@ -177,9 +140,6 @@ class JobStore:
             self._subscribers.pop(jid, None)
 
 
-# How the whole job's progress bar is divided between stages. Acquisition
-# (network download + ffmpeg transcode, now with real sub-progress) dominates
-# a long video's wall clock; Groq itself is fast.
 _ACQUIRE_START, _ACQUIRE_END = 0.02, 0.55
 _CHUNK_END = 0.58
 _TRANSCRIBE_END = 0.96
@@ -193,22 +153,13 @@ async def run_transcription_job(
     transcriber: Transcriber,
     duration_hint: float | None = None,
 ) -> None:
-    """The whole pipeline for one job: acquire audio (one ffmpeg pass off the
-    source URL wherever possible) -> chunk if needed -> transcribe chunks in
-    parallel across the Groq key pool, with the waveform extracted
-    concurrently since it only needs the audio track -> merge -> SRT/VTT.
-
-    Progress is continuous, not stage-jumps: acquisition reports ffmpeg's
-    out_time (or download bytes) against the video's duration, and each
-    transcribed chunk ticks the bar forward.
-    """
     work_dir = create_work_dir()
 
     async def _pipeline() -> None:
         async with store.semaphore:
             await store.update(
                 job_id,
-                status="downloading",
+                status=_DOWNLOADING,
                 step_label="Acquiring audio…",
                 detail="planning",
                 progress=_ACQUIRE_START,
@@ -216,22 +167,19 @@ async def run_transcription_job(
 
             plan = await plan_acquisition(formats, settings, duration_hint=duration_hint)
 
-            # ----- shared finalize (both acquisition paths end here) --------
             async def _finalize(
                 chunks: list[AudioChunk],
                 finished: list[TranscriptionResult],
                 waveform_task: asyncio.Task,
             ) -> None:
                 total = len(chunks)
-                segments_by_chunk: list[tuple[float, list[Segment]]] = [
+                segments_by_chunk = [
                     (chunks[i].offset_seconds, finished[i].segments) for i in range(total)
                 ]
-                # Chunk 0 is deterministically the start of the video -- report
-                # its detected language regardless of which chunk finished first.
-                language = finished[0].language
+                language = finished[0].language if finished else "en"
                 await store.update(
                     job_id,
-                    status="finalizing",
+                    status=_FINALIZING,
                     step_label="Generating subtitles…",
                     detail="building_subtitles",
                     progress=_TRANSCRIBE_END,
@@ -239,12 +187,11 @@ async def run_transcription_job(
                 merged = merge_chunks(segments_by_chunk)
                 vtt_text = to_vtt(merged)
                 srt_text = to_srt(merged)
-                # The waveform PCM decode is usually the last thing still
-                # running here -- surface it as its own stage instead of a
-                # silent wait on "Generating subtitles…".
                 if not waveform_task.done():
                     await store.update(
-                        job_id, status="finalizing", step_label="Building waveform…",
+                        job_id,
+                        status=_FINALIZING,
+                        step_label="Building waveform…",
                         detail="waveform",
                     )
                 waveform = await waveform_task
@@ -259,26 +206,17 @@ async def run_transcription_job(
                     waveform=waveform,
                 )
 
-            # ================= fast parallel-window path ====================
-            # Returns True if it ran the job to completion, False if the direct
-            # read is unusable (anti-bot TLS on window 0) -> caller falls back.
-            async def _run_windowed(windows) -> bool:
+            async def _run_windowed(windows: list) -> bool:
                 total = len(windows)
                 extract_sem = asyncio.Semaphore(settings.transcribe_extract_parallelism)
                 chunk_sem = asyncio.Semaphore(transcriber.max_concurrency)
-                win_frac = [0.0] * total  # intra-window ffmpeg out_time fraction
+                win_frac = [0.0] * total
                 extracted = 0
                 transcribed = 0
                 chunks: list[AudioChunk | None] = [None] * total
                 results: list[TranscriptionResult | None] = [None] * total
-                # Every task spawned below is tracked here so a cancel/timeout
-                # (or any failure) at ANY await tears down every one of them --
-                # otherwise an orphaned extract task keeps its ffmpeg child
-                # downloading after the job is already gone.
                 spawned: list[asyncio.Task] = []
 
-                # One continuous bar across the overlapped extract+transcribe
-                # span: extraction and transcription each count for half.
                 async def _report() -> None:
                     span = _TRANSCRIBE_END - _ACQUIRE_START
                     last = -1.0
@@ -297,8 +235,12 @@ async def run_transcription_job(
                         try:
                             async with extract_sem, store.cpu_semaphore:
                                 chunk = await extract_window(
-                                    plan.url, plan.headers, work_dir, settings,
-                                    plan.codec, windows[i],
+                                    plan.url,
+                                    plan.headers,
+                                    work_dir,
+                                    settings,
+                                    plan.codec,
+                                    windows[i],
                                     on_progress=lambda f, i=i: win_frac.__setitem__(i, min(f, 1.0)),
                                 )
                             break
@@ -312,13 +254,26 @@ async def run_transcription_job(
                     extracted += 1
                     await store.update(
                         job_id,
-                        status="downloading",
+                        status=_DOWNLOADING,
                         step_label=f"Extracting audio… ({extracted} of {total})"
                         if total > 1
                         else "Extracting audio…",
                         detail="extracting",
                     )
                     return chunk
+
+                extract_tasks: list[asyncio.Task] = []
+
+                async def _waveform() -> list[float] | None:
+                    try:
+                        done = await asyncio.gather(*extract_tasks)
+                        async with store.cpu_semaphore:
+                            return await extract_peaks_chunks(
+                                [c.path for c in done], settings
+                            )
+                    except (WaveformError, AudioError) as exc:
+                        logger.warning("waveform extraction failed for job %s: %s", job_id, exc)
+                        return None
 
                 async def _transcribe(i: int) -> None:
                     nonlocal transcribed
@@ -328,7 +283,7 @@ async def run_transcription_job(
                     transcribed += 1
                     await store.update(
                         job_id,
-                        status="transcribing",
+                        status=_TRANSCRIBING,
                         step_label=f"Transcribing… ({transcribed} of {total} done)"
                         if total > 1
                         else "Transcribing…",
@@ -337,69 +292,63 @@ async def run_transcription_job(
                         chunks_total=total,
                     )
 
-                # Waveform decodes the finished chunk files (after all windows
-                # land) concurrently with the Groq round-trips. Non-fatal.
-                async def _waveform() -> list[float] | None:
-                    try:
-                        done = await asyncio.gather(*extract_tasks)
-                        async with store.cpu_semaphore:
-                            return await extract_peaks_chunks([c.path for c in done], settings)
-                    except (WaveformError, AudioError) as exc:
-                        logger.warning("waveform extraction failed for job %s: %s", job_id, exc)
-                        return None
-
-                extract_tasks = [asyncio.create_task(_extract(i)) for i in range(total)]
-                spawned += extract_tasks
+                # Probe window 0 first to avoid spawning N tasks that would all
+                # fail on the same anti-bot TLS rejection.
+                probe_task = asyncio.create_task(_extract(0))
+                spawned.append(probe_task)
                 try:
-                    # Commit to the parallel path only if window 0's direct read
-                    # works -- an anti-bot TLS rejection is deterministic per
-                    # host, so one failure means every window would fail. Bail
-                    # cleanly so the caller runs the impersonating single pass.
-                    try:
-                        await extract_tasks[0]
-                    except AudioError as exc:
-                        logger.warning(
-                            "windowed extract failed on first window (%s) -- "
-                            "falling back to single-pass",
-                            str(exc)[:200],
-                        )
-                        return False  # finally tears the rest down + cleans files
+                    await probe_task
+                except AudioError as exc:
+                    logger.warning(
+                        "windowed extract failed on first window (%s) -- falling back to single-pass",
+                        str(exc)[:200],
+                    )
+                    return False
 
-                    waveform_task = asyncio.create_task(_waveform())
-                    reporter = asyncio.create_task(_report())
-                    spawned += [waveform_task, reporter]
-                    await store.update(job_id, chunks_done=0, chunks_total=total)
+                extract_tasks = [probe_task] + [
+                    asyncio.create_task(_extract(i)) for i in range(1, total)
+                ]
+                spawned.extend(extract_tasks[1:])
 
-                    transcribe_tasks = [asyncio.create_task(_transcribe(i)) for i in range(total)]
-                    spawned += transcribe_tasks
+                waveform_task = asyncio.create_task(_waveform())
+                reporter = asyncio.create_task(_report())
+                spawned += [waveform_task, reporter]
+                await store.update(job_id, chunks_done=0, chunks_total=total)
+
+                transcribe_tasks = [
+                    asyncio.create_task(_transcribe(i)) for i in range(total)
+                ]
+                spawned += transcribe_tasks
+
+                try:
                     await asyncio.gather(*transcribe_tasks)
-
-                    reporter.cancel()
-                    await asyncio.gather(reporter, return_exceptions=True)
-
-                    finished = [r for r in results if r is not None]
-                    assert len(finished) == total, "a transcription slot was left unfilled"
-                    ordered_chunks = [c for c in chunks if c is not None]
-                    await _finalize(ordered_chunks, finished, waveform_task)
-                    return True
                 finally:
-                    # Runs on success (already-done tasks ignore cancel), on
-                    # failure, AND on cancel/timeout -- guarantees no extract/
-                    # transcribe/reporter/waveform task (and its ffmpeg child)
-                    # is left running once we leave this frame.
+                    # Teardown on success, failure, AND cancel/timeout — guarantees
+                    # no extract/transcribe/reporter/waveform task (and its
+                    # ffmpeg child) outlives this frame.
                     for t in spawned:
-                        t.cancel()
+                        if not t.done():
+                            t.cancel()
                     await asyncio.gather(*spawned, return_exceptions=True)
-                    # Drop partial/leftover chunk files (matters for the
-                    # fallback so its chunker doesn't pick them up).
                     if not results or any(r is None for r in results):
                         for leftover in work_dir.glob(f"chunk_*.{plan.codec.ext}"):
                             leftover.unlink(missing_ok=True)
 
-            # ================= single-pass fallback path ====================
+                finished = [r for r in results if r is not None]
+                if len(finished) != total:
+                    raise GroqError(
+                        f"Transcription incomplete: {len(finished)}/{total} chunks "
+                        "returned no result — the Groq API may have dropped a request"
+                    )
+                ordered_chunks = [c for c in chunks if c is not None]
+                await _finalize(ordered_chunks, finished, waveform_task)
+                return True
+
             async def _run_single_pass() -> None:
                 await store.update(
-                    job_id, status="downloading", step_label="Downloading source…",
+                    job_id,
+                    status=_DOWNLOADING,
+                    step_label="Downloading source…",
                     detail="downloading_source",
                 )
                 acquire_frac = 0.0
@@ -422,16 +371,22 @@ async def run_transcription_job(
                 try:
                     async with store.cpu_semaphore:
                         audio_path = await acquire_audio(
-                            formats, settings, work_dir,
-                            duration_hint=duration_hint, on_progress=_on_acquire,
+                            formats,
+                            settings,
+                            work_dir,
+                            duration_hint=duration_hint,
+                            on_progress=_on_acquire,
                         )
                 finally:
                     reporter.cancel()
                     await asyncio.gather(reporter, return_exceptions=True)
 
                 await store.update(
-                    job_id, status="chunking", step_label="Preparing audio…",
-                    detail="compressing", progress=_ACQUIRE_END,
+                    job_id,
+                    status=_CHUNKING,
+                    step_label="Preparing audio…",
+                    detail="compressing",
+                    progress=_ACQUIRE_END,
                 )
                 duration = await probe_duration(audio_path, settings.ffprobe_binary)
                 chunks = await chunk_audio(audio_path, work_dir, settings, duration=duration)
@@ -440,7 +395,9 @@ async def run_transcription_job(
                 async def _waveform() -> list[float] | None:
                     try:
                         async with store.cpu_semaphore:
-                            return await extract_peaks_chunks([c.path for c in chunks], settings)
+                            return await extract_peaks_chunks(
+                                [c.path for c in chunks], settings
+                            )
                     except (WaveformError, AudioError) as exc:
                         logger.warning("waveform extraction failed for job %s: %s", job_id, exc)
                         return None
@@ -460,7 +417,7 @@ async def run_transcription_job(
                     span = _TRANSCRIBE_END - _CHUNK_END
                     await store.update(
                         job_id,
-                        status="transcribing",
+                        status=_TRANSCRIBING,
                         step_label=f"Transcribing... ({completed} of {total} done)"
                         if total > 1
                         else "Transcribing…",
@@ -472,8 +429,12 @@ async def run_transcription_job(
 
                 try:
                     await store.update(
-                        job_id, status="transcribing", step_label="Transcribing…",
-                        detail="transcribing", chunks_done=0, chunks_total=total,
+                        job_id,
+                        status=_TRANSCRIBING,
+                        step_label="Transcribing…",
+                        detail="transcribing",
+                        chunks_done=0,
+                        chunks_total=total,
                     )
                     chunk_tasks = [asyncio.create_task(_transcribe_one(i)) for i in range(total)]
                     try:
@@ -484,43 +445,57 @@ async def run_transcription_job(
                         await asyncio.gather(*chunk_tasks, return_exceptions=True)
                         raise
                     finished: list[TranscriptionResult] = [r for r in results if r is not None]
-                    assert len(finished) == total, "gather() completed with an unfilled result slot"
+                    if len(finished) != total:
+                        raise GroqError(
+                            f"Transcription incomplete: {len(finished)}/{total} chunks "
+                            "returned no result on the single-pass path"
+                        )
                     await _finalize(chunks, finished, waveform_task)
                 except BaseException:
                     waveform_task.cancel()
                     await asyncio.gather(waveform_task, return_exceptions=True)
                     raise
 
-            # Prefer the parallel windows; fall back to a single pass if the
-            # source is HLS/unknown-duration (no windows) or if the direct read
-            # is rejected on the first window.
-            if plan.windows is not None and await _run_windowed(plan.windows):
-                return
-            await _run_single_pass()
+            try:
+                if plan.windows is not None:
+                    ok = await _run_windowed(plan.windows)
+                    if ok:
+                        return
+                await _run_single_pass()
+            finally:
+                cleanup_work_dir(work_dir)
+                _return_freed_memory_to_os()
 
     try:
         await asyncio.wait_for(_pipeline(), timeout=settings.transcribe_job_timeout)
-    except TimeoutError:
-        logger.warning("transcription job %s timed out", job_id)
+    except asyncio.CancelledError:
+        logger.info("transcription job %s cancelled", job_id)
+        await store.update(job_id, status="cancelled", step_label="Cancelled", progress=1.0)
+    except asyncio.TimeoutError:
+        # wait_for cancels _pipeline(), so its finally blocks still tear down
+        # every spawned task and ffmpeg child. Report the cap as an error.
+        logger.warning(
+            "transcription job %s exceeded %ss wall-clock cap -- killed",
+            job_id,
+            settings.transcribe_job_timeout,
+        )
         await store.update(
             job_id,
             status="error",
-            error=f"Job timed out after {settings.transcribe_job_timeout}s",
-            step_label="Failed",
+            step_label="Timed out",
+            progress=1.0,
+            error=(
+                f"Transcription exceeded the {settings.transcribe_job_timeout}s time "
+                "limit and was stopped. Try a shorter source or raise "
+                "TRANSCRIBE_JOB_TIMEOUT."
+            ),
         )
-    except asyncio.CancelledError:
-        logger.info("transcription job %s cancelled", job_id)
-        await store.update(job_id, status="cancelled", step_label="Cancelled", error=None)
-    except (AudioError, GroqError) as exc:
-        logger.warning("transcription job %s failed: %s", job_id, exc)
-        await store.update(job_id, status="error", error=str(exc), step_label="Failed")
-    except Exception:  # noqa: BLE001 - surface any unexpected failure cleanly
-        logger.exception("transcription job %s failed unexpectedly", job_id)
+    except Exception as exc:
+        logger.exception("transcription job %s failed", job_id)
         await store.update(
-            job_id, status="error", error="Unexpected server error", step_label="Failed"
+            job_id,
+            status="error",
+            step_label="Error",
+            progress=1.0,
+            error=str(exc) or type(exc).__name__,
         )
-    finally:
-        cleanup_work_dir(work_dir)
-        # Return this job's freed transient buffers to the OS so RSS doesn't
-        # creep upward job-over-job (see _return_freed_memory_to_os).
-        _return_freed_memory_to_os()

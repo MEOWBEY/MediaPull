@@ -10,7 +10,7 @@
 </script>
 
 <svelte:head>
-	<title>Error {page.status} | DirectStream</title>
+	<title>Error {page.status} | Pullbox</title>
 	<meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 

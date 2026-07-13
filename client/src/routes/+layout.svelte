@@ -47,7 +47,7 @@
 						class="ds-gradient-text font-heading text-base font-extrabold tracking-tight sm:text-xl"
 						id="site-title"
 					>
-						DirectStream
+						Pullbox
 					</h1>
 				</a>
 
@@ -98,7 +98,7 @@
 				</a>
 			</div>
 			<div class="hidden text-right md:block">
-				<span class="font-medium">{new Date().getFullYear()} DirectStream</span>
+				<span class="font-medium">{new Date().getFullYear()} Pullbox</span>
 			</div>
 		</div>
 	</footer>
