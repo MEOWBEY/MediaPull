@@ -25,7 +25,7 @@ async def test_job_times_out_and_is_marked_error(monkeypatch):
     settings = Settings()
     settings.transcribe_job_timeout = 1  # 1s cap
 
-    async def fake_plan_acquisition(formats, settings, duration_hint=None):
+    async def fake_plan_acquisition(formats, settings, duration_hint=None, **_kwargs):
         class _Plan:
             windows = None  # force the single-pass path
 

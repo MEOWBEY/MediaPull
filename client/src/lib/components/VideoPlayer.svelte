@@ -4,6 +4,7 @@
 	import { onDestroy, onMount, tick, untrack } from 'svelte';
 	import { toast } from 'svelte-sonner';
 
+	import DialogueMapBar from '$lib/components/DialogueMapBar.svelte';
 	import QualityMenu from '$lib/components/QualityMenu.svelte';
 	import SubtitlePanel from '$lib/components/SubtitlePanel.svelte';
 	import { Button } from '$lib/components/ui/button';
@@ -143,6 +144,14 @@
 	let hadTrack = false;
 
 	const activeSubtitleTrack = $derived(subtitles.track);
+	const dialogueMapPeaks = $derived(activeSubtitleTrack?.dialogueMap ?? null);
+	const mediaDuration = $derived(
+		videoEl && Number.isFinite(videoEl.duration) && videoEl.duration > 0
+			? videoEl.duration
+			: Number(duration) > 0
+				? Number(duration)
+				: 0
+	);
 
 	// Report resolved-track changes up so the parent can persist them
 	// alongside the card (survives refresh; removed automatically when the
@@ -184,17 +193,14 @@
 		});
 	});
 
-	// Drive the subtitle panel's "now playing" position. Only runs while the
-	// panel is actually open and a track exists -- no cost for videos nobody
-	// has subtitled, or while the panel is closed/the video is paused (a
-	// `timeupdate` listener only fires while time is actually advancing,
-	// unlike a raw rAF loop, which used to burn a tick 60x/sec regardless of
-	// visibility or playback state). Re-runs whenever `videoEl` itself
-	// changes (e.g. a format-group tab switch remounts the element), since
-	// it's `$state` -- otherwise this would keep driving a torn-down element
-	// after switching tabs.
+	// Drive the subtitle panel's "now playing" position and dialogue-map
+	// playhead. Runs while a track exists and (panel open OR map present).
 	$effect(() => {
-		if (!activeSubtitleTrack || !videoEl || !subtitlePanelOpen) {
+		const needTime =
+			Boolean(activeSubtitleTrack) &&
+			Boolean(videoEl) &&
+			(subtitlePanelOpen || Boolean(dialogueMapPeaks?.length));
+		if (!needTime || !videoEl) {
 			return;
 		}
 
@@ -829,6 +835,20 @@
 					{/if}
 				</video-minimal-skin>
 			</video-player>
+			{#if dialogueMapPeaks?.length && mediaDuration > 0}
+				<DialogueMapBar
+					peaks={dialogueMapPeaks}
+					durationSeconds={mediaDuration}
+					currentTime={playerCurrentTime}
+					visible={controlsVisible || subtitlePanelOpen}
+					onSeek={(seconds) => {
+						if (videoEl) {
+							videoEl.currentTime = seconds;
+							playerCurrentTime = seconds;
+						}
+					}}
+				/>
+			{/if}
 		{/if}
 
 		{#if hasError || !usable.length}

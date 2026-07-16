@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from .audio import (
@@ -24,7 +25,7 @@ from .models import VideoFormat
 from .subtitles import merge_chunks, to_srt, to_vtt
 from .transcribe.base import Transcriber, TranscriptionResult
 from .transcribe.groq_engine import GroqError
-from .waveform import WaveformError, extract_peaks_chunks
+from .dialogue_map import DialogueMapError, extract_peaks_chunks
 
 logger = logging.getLogger("pullbox.jobs")
 
@@ -59,7 +60,7 @@ class TranscriptionJob:
     language: str | None = None
     vtt_text: str | None = None
     srt_text: str | None = None
-    waveform: list[float] | None = None
+    dialogue_map: list[float] | None = None
     error: str | None = None
     created_at: float = field(default_factory=time.monotonic)
 
@@ -81,6 +82,11 @@ class JobStore:
     async def create(self) -> TranscriptionJob:
         async with self._lock:
             self._sweep_expired_locked()
+            max_jobs = self._settings.transcribe_max_jobs_stored
+            if len(self._jobs) >= max_jobs:
+                raise RuntimeError(
+                    f"Too many transcription jobs in memory (max {max_jobs}); try again later"
+                )
             job = TranscriptionJob(id=uuid.uuid4().hex)
             self._jobs[job.id] = job
             return job
@@ -152,6 +158,7 @@ async def run_transcription_job(
     store: JobStore,
     transcriber: Transcriber,
     duration_hint: float | None = None,
+    resolve_cookie_token: Callable[[str], str] | None = None,
 ) -> None:
     work_dir = create_work_dir()
 
@@ -165,12 +172,17 @@ async def run_transcription_job(
                 progress=_ACQUIRE_START,
             )
 
-            plan = await plan_acquisition(formats, settings, duration_hint=duration_hint)
+            plan = await plan_acquisition(
+                formats,
+                settings,
+                duration_hint=duration_hint,
+                resolve_cookie_token=resolve_cookie_token,
+            )
 
             async def _finalize(
                 chunks: list[AudioChunk],
                 finished: list[TranscriptionResult],
-                waveform_task: asyncio.Task,
+                dialogue_map_task: asyncio.Task,
             ) -> None:
                 total = len(chunks)
                 segments_by_chunk = [
@@ -187,14 +199,14 @@ async def run_transcription_job(
                 merged = merge_chunks(segments_by_chunk)
                 vtt_text = to_vtt(merged)
                 srt_text = to_srt(merged)
-                if not waveform_task.done():
+                if not dialogue_map_task.done():
                     await store.update(
                         job_id,
                         status=_FINALIZING,
-                        step_label="Building waveform…",
-                        detail="waveform",
+                        step_label="Building dialogue map…",
+                        detail="dialogue_map",
                     )
-                waveform = await waveform_task
+                dialogue_map = await dialogue_map_task
                 await store.update(
                     job_id,
                     status="done",
@@ -203,7 +215,7 @@ async def run_transcription_job(
                     language=language or "en",
                     vtt_text=vtt_text,
                     srt_text=srt_text,
-                    waveform=waveform,
+                    dialogue_map=dialogue_map,
                 )
 
             async def _run_windowed(windows: list) -> bool:
@@ -264,15 +276,15 @@ async def run_transcription_job(
 
                 extract_tasks: list[asyncio.Task] = []
 
-                async def _waveform() -> list[float] | None:
+                async def _dialogue_map() -> list[float] | None:
                     try:
                         done = await asyncio.gather(*extract_tasks)
                         async with store.cpu_semaphore:
                             return await extract_peaks_chunks(
                                 [c.path for c in done], settings
                             )
-                    except (WaveformError, AudioError) as exc:
-                        logger.warning("waveform extraction failed for job %s: %s", job_id, exc)
+                    except (DialogueMapError, AudioError) as exc:
+                        logger.warning("dialogue map extraction failed for job %s: %s", job_id, exc)
                         return None
 
                 async def _transcribe(i: int) -> None:
@@ -310,9 +322,9 @@ async def run_transcription_job(
                 ]
                 spawned.extend(extract_tasks[1:])
 
-                waveform_task = asyncio.create_task(_waveform())
+                dialogue_map_task = asyncio.create_task(_dialogue_map())
                 reporter = asyncio.create_task(_report())
-                spawned += [waveform_task, reporter]
+                spawned += [dialogue_map_task, reporter]
                 await store.update(job_id, chunks_done=0, chunks_total=total)
 
                 transcribe_tasks = [
@@ -324,7 +336,7 @@ async def run_transcription_job(
                     await asyncio.gather(*transcribe_tasks)
                 finally:
                     # Teardown on success, failure, AND cancel/timeout — guarantees
-                    # no extract/transcribe/reporter/waveform task (and its
+                    # no extract/transcribe/reporter/dialogue_map task (and its
                     # ffmpeg child) outlives this frame.
                     for t in spawned:
                         if not t.done():
@@ -341,7 +353,7 @@ async def run_transcription_job(
                         "returned no result — the Groq API may have dropped a request"
                     )
                 ordered_chunks = [c for c in chunks if c is not None]
-                await _finalize(ordered_chunks, finished, waveform_task)
+                await _finalize(ordered_chunks, finished, dialogue_map_task)
                 return True
 
             async def _run_single_pass() -> None:
@@ -376,6 +388,7 @@ async def run_transcription_job(
                             work_dir,
                             duration_hint=duration_hint,
                             on_progress=_on_acquire,
+                            resolve_cookie_token=resolve_cookie_token,
                         )
                 finally:
                     reporter.cancel()
@@ -392,17 +405,17 @@ async def run_transcription_job(
                 chunks = await chunk_audio(audio_path, work_dir, settings, duration=duration)
                 await store.update(job_id, progress=_CHUNK_END)
 
-                async def _waveform() -> list[float] | None:
+                async def _dialogue_map() -> list[float] | None:
                     try:
                         async with store.cpu_semaphore:
                             return await extract_peaks_chunks(
                                 [c.path for c in chunks], settings
                             )
-                    except (WaveformError, AudioError) as exc:
-                        logger.warning("waveform extraction failed for job %s: %s", job_id, exc)
+                    except (DialogueMapError, AudioError) as exc:
+                        logger.warning("dialogue map extraction failed for job %s: %s", job_id, exc)
                         return None
 
-                waveform_task = asyncio.create_task(_waveform())
+                dialogue_map_task = asyncio.create_task(_dialogue_map())
 
                 total = len(chunks)
                 results: list[TranscriptionResult | None] = [None] * total
@@ -450,10 +463,10 @@ async def run_transcription_job(
                             f"Transcription incomplete: {len(finished)}/{total} chunks "
                             "returned no result on the single-pass path"
                         )
-                    await _finalize(chunks, finished, waveform_task)
+                    await _finalize(chunks, finished, dialogue_map_task)
                 except BaseException:
-                    waveform_task.cancel()
-                    await asyncio.gather(waveform_task, return_exceptions=True)
+                    dialogue_map_task.cancel()
+                    await asyncio.gather(dialogue_map_task, return_exceptions=True)
                     raise
 
             try:
@@ -492,10 +505,20 @@ async def run_transcription_job(
         )
     except Exception as exc:
         logger.exception("transcription job %s failed", job_id)
+        # AudioError/DialogueMapError/GroqError always carry an actionable message
+        # (see their raise sites) -- str(exc) is empty here only for a raw,
+        # unanticipated exception bubbling up from a dependency. Showing the
+        # bare class name (e.g. "NotImplementedError") to the user is useless;
+        # a generic-but-honest message beats that while the log line above
+        # still has the real traceback for debugging.
+        error = str(exc) or (
+            f"Transcription failed unexpectedly ({type(exc).__name__}). "
+            "Please try again or use a different video."
+        )
         await store.update(
             job_id,
             status="error",
             step_label="Error",
             progress=1.0,
-            error=str(exc) or type(exc).__name__,
+            error=error,
         )

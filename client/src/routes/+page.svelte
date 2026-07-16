@@ -60,6 +60,10 @@
 		const isDesktop = window.matchMedia('(pointer: fine)').matches;
 
 		if (isDesktop || !hasResults) {focusInput(false);}
+
+		// Library proxy URLs embed short-lived ctok values — refresh them when
+		// the user still has cookies for those hosts.
+		void appStore.remintLibraryProxyTokens();
 	});
 
 	$effect(() => {

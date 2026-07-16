@@ -95,3 +95,34 @@ export function segmentsToVttUrl(segments: SubtitleSegment[]): string {
 
 	return URL.createObjectURL(new Blob([lines.join('\n')], { type: 'text/vtt' }));
 }
+
+function formatSrtTime(seconds: number): string {
+	const ms = Math.max(0, Math.round(seconds * 1000));
+	const hh = Math.floor(ms / 3_600_000);
+	const mm = Math.floor((ms % 3_600_000) / 60_000);
+	const ss = Math.floor((ms % 60_000) / 1000);
+	const mmm = ms % 1000;
+
+	return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')},${String(mmm).padStart(3, '0')}`;
+}
+
+/** Serialize segments to SRT text (comma millis, numbered cues). */
+export function segmentsToSrt(segments: SubtitleSegment[]): string {
+	const blocks: string[] = [];
+
+	segments.forEach((seg, i) => {
+		blocks.push(String(i + 1));
+		blocks.push(`${formatSrtTime(seg.start)} --> ${formatSrtTime(seg.end)}`);
+		blocks.push(seg.text);
+		blocks.push('');
+	});
+
+	return blocks.join('\n');
+}
+
+/** Durable same-origin SRT blob URL — survives job TTL / server restart. */
+export function segmentsToSrtUrl(segments: SubtitleSegment[]): string {
+	return URL.createObjectURL(
+		new Blob([segmentsToSrt(segments)], { type: 'application/x-subrip' })
+	);
+}

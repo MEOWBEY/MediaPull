@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from .config import Settings
 
-logger = logging.getLogger("directstream.net_common")
+logger = logging.getLogger("pullbox.net_common")
 
 
 class CookiePool:
@@ -170,8 +170,15 @@ def normalize_cookies(raw: str, url: str) -> str | None:
 
     # Netscape/Mozilla format already (rows are tab-separated). Ensure the
     # magic header line is present — MozillaCookieJar refuses files without it.
+    # Also guarantee it's on its own line: some exports concat the header
+    # directly onto the first row without a separating newline.
     if "\t" in text:
-        return text if text.lstrip().startswith("#") else "# Netscape HTTP Cookie File\n" + text
+        if not text.lstrip().startswith("#"):
+            text = "# Netscape HTTP Cookie File\n" + text
+        elif not text.startswith("#"):
+            # Header exists but is preceded by whitespace — re-normalize.
+            text = "# Netscape HTTP Cookie File\n" + text
+        return text
 
     # Header-style cookies: "Cookie: a=b; c=d" or just "a=b; c=d".
     if text.lower().startswith("cookie:"):

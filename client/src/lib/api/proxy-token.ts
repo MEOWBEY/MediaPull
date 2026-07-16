@@ -90,32 +90,49 @@ async function mintTokensFor(
 	return result;
 }
 
-/** Resolve cookie tokens for every format of a freshly extracted video, in
- *  place. After this, no format's httpHeaders carries a raw cookie; formats
- *  whose cookie was tokenized gain a `cookieToken`. */
-export async function resolveVideoCookieTokens(video: IncomingVideo): Promise<void> {
-	const formats = (video.formats ?? []).filter(Boolean);
-	const tokens = await mintTokensFor(formats.map((f) => f.httpHeaders));
+/**
+ * Attach one Settings-cookies token to every item, then mint any leftover
+ * Cookie headers (rare after server-side strip). Prefer *cookiesText* — that
+ * is what the user pasted for this host; extract JSON no longer carries
+ * Cookie (session leak fix).
+ */
+async function applyCookieTokens(
+	items: Array<{ httpHeaders?: Record<string, string> | null; cookieToken?: string }>,
+	cookiesText?: string | null
+): Promise<void> {
+	let shared = '';
 
-	for (const format of formats) {
-		const token = format.httpHeaders ? tokens.get(format.httpHeaders) : undefined;
+	if (cookiesText?.trim()) {
+		shared = await createProxyToken(cookiesText.trim());
+	}
+
+	const tokens = await mintTokensFor(items.map((item) => item.httpHeaders));
+
+	for (const item of items) {
+		const fromHeaders = item.httpHeaders ? tokens.get(item.httpHeaders) : undefined;
+		const token = fromHeaders || shared;
 
 		if (token) {
-			format.cookieToken = token;
+			item.cookieToken = token;
 		}
+		stripCookie(item.httpHeaders);
 	}
 }
 
+/** Resolve cookie tokens for every format of a freshly extracted video, in
+ *  place. After this, no format's httpHeaders carries a raw cookie; formats
+ *  whose cookie was tokenized gain a `cookieToken`. */
+export async function resolveVideoCookieTokens(
+	video: IncomingVideo,
+	cookiesText?: string | null
+): Promise<void> {
+	await applyCookieTokens((video.formats ?? []).filter(Boolean), cookiesText);
+}
+
 /** Gallery equivalent of `resolveVideoCookieTokens`. */
-export async function resolveGalleryCookieTokens(gallery: IncomingGallery): Promise<void> {
-	const images = (gallery.images ?? []).filter(Boolean);
-	const tokens = await mintTokensFor(images.map((img) => img.httpHeaders));
-
-	for (const image of images) {
-		const token = image.httpHeaders ? tokens.get(image.httpHeaders) : undefined;
-
-		if (token) {
-			image.cookieToken = token;
-		}
-	}
+export async function resolveGalleryCookieTokens(
+	gallery: IncomingGallery,
+	cookiesText?: string | null
+): Promise<void> {
+	await applyCookieTokens((gallery.images ?? []).filter(Boolean), cookiesText);
 }

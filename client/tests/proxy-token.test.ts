@@ -49,6 +49,19 @@ describe('resolveVideoCookieTokens', () => {
 		expect(video.formats?.[0].cookieToken).toBeUndefined();
 	});
 
+	it('mints from Settings cookies text when headers have no Cookie', async () => {
+		postJson.mockResolvedValue({ token: 'FROM-SETTINGS' });
+
+		const video: IncomingVideo = {
+			formats: [{ sourceVideoUrl: 'https://a/1.mp4', httpHeaders: { Referer: 'r' } }]
+		};
+
+		await resolveVideoCookieTokens(video, 'session=abc');
+
+		expect(postJson).toHaveBeenCalledWith('/proxy-token', { cookies: 'session=abc' });
+		expect(video.formats?.[0].cookieToken).toBe('FROM-SETTINGS');
+	});
+
 	it('leaves no raw cookie even if the token exchange fails', async () => {
 		postJson.mockRejectedValue(new Error('network'));
 

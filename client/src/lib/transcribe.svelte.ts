@@ -11,7 +11,7 @@ import { toast } from 'svelte-sonner';
 import { cancelTranscription, startTranscription, type TranscribeSource } from '$lib/api/transcribe';
 import { resolveApiUrl } from '$lib/config';
 import { i18n } from '$lib/i18n/index.svelte';
-import { fetchAndParseVtt } from '$lib/subtitle-utils';
+import { fetchAndParseVtt, segmentsToSrtUrl, segmentsToVttUrl } from '$lib/subtitle-utils';
 import type { SubtitleTrackResult, TranscribeStatus } from '$lib/types';
 
 export type { SubtitleTrackResult } from '$lib/types';
@@ -58,7 +58,7 @@ function stageLabel(status: TranscribeStatus): string {
 
 	// Prefer the fine-grained `detail` sub-stage when the server sends one --
 	// it's more specific than `status` (e.g. extracting vs downloading_source,
-	// building_subtitles vs waveform). Falls back to `status` on older servers.
+	// building_subtitles vs dialogue_map). Falls back to `status` on older servers.
 	switch (status.detail) {
 		case 'planning':
 			return t('subtitles.stage.planning');
@@ -73,8 +73,9 @@ function stageLabel(status: TranscribeStatus): string {
 			return t('subtitles.stage.compressing');
 		case 'building_subtitles':
 			return t('subtitles.stage.finalizing');
-		case 'waveform':
-			return t('subtitles.stage.waveform');
+		case 'dialogue_map':
+		case 'waveform': // legacy detail string
+			return t('subtitles.stage.dialogueMap');
 	}
 
 	switch (status.status) {
@@ -216,14 +217,42 @@ export class TranscriptionController {
 							this.stopStream();
 
 							const { language } = status.result;
-							const vttUrl = resolveApiUrl(status.result.vttUrl);
-							const srtUrl = resolveApiUrl(status.result.srtUrl);
+							const serverVttUrl = resolveApiUrl(status.result.vttUrl);
+							const serverSrtUrl = resolveApiUrl(status.result.srtUrl);
+							const dialogueMap =
+								status.result.dialogueMap ?? status.result.waveform ?? null;
 
-							// Subtitles still render via the native <track src> even if
-							// this fetch-for-the-panel step fails.
-							fetchAndParseVtt(vttUrl)
-								.then((segments) => resolve({ language, segments, vttUrl, srtUrl }))
-								.catch(() => resolve({ language, segments: [], vttUrl, srtUrl }));
+							// Prefer durable blob URLs built from segments so download
+							// and player tracks survive job TTL / server restart.
+							fetchAndParseVtt(serverVttUrl)
+								.then((segments) => {
+									if (segments.length) {
+										resolve({
+											language,
+											segments,
+											vttUrl: segmentsToVttUrl(segments),
+											srtUrl: segmentsToSrtUrl(segments),
+											dialogueMap
+										});
+										return;
+									}
+									resolve({
+										language,
+										segments,
+										vttUrl: serverVttUrl,
+										srtUrl: serverSrtUrl,
+										dialogueMap
+									});
+								})
+								.catch(() =>
+									resolve({
+										language,
+										segments: [],
+										vttUrl: serverVttUrl,
+										srtUrl: serverSrtUrl,
+										dialogueMap
+									})
+								);
 						}
 					};
 

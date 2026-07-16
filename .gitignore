@@ -4,6 +4,9 @@
 # ── Claude Code / agent local files (personal, machine-specific) ──
 .claude/
 claude
+.agents/
+.grok/
+skills-lock.json
 
 # ── Environment files (also ignored per-package) ──
 .env
@@ -13,6 +16,7 @@ claude
 
 # ── Server-side default cookies (personal, contains login session data) ──
 server/cookies.txt
+server/cookies.txt.*
 !server/cookies.example.txt
 
 # ── OS cruft ──

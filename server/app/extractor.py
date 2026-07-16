@@ -34,7 +34,7 @@ from .net_common import (
     normalize_cookies,
 )
 
-logger = logging.getLogger("directstream.extractor")
+logger = logging.getLogger("pullbox.extractor")
 
 VIDEO_EXTENSIONS = (
     ".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".m4v", ".3gp", ".ts",
@@ -157,8 +157,10 @@ def is_direct_video(url: str) -> bool:
 
 def is_valid_url(url: str) -> bool:
     try:
-        parsed = urlparse(url)
-        return bool(parsed.netloc and parsed.scheme in ("http", "https"))
+        from .ssrf import assert_public_http_url
+
+        assert_public_http_url(url)
+        return True
     except ValueError:
         return False
 
@@ -292,14 +294,26 @@ class Extractor:
             async with sem:
                 verdicts[url] = await self._probe_ok(url, headers)
 
-        # One probe per unique URL.
+        # Prefer higher-resolution / higher-bitrate formats for the limited
+        # probe budget; unprobed URLs are kept (same as uncertain probes).
+        ranked = sorted(
+            (f for f in formats if f.url),
+            key=lambda f: (f.resolution or 0, f.tbr or 0.0),
+            reverse=True,
+        )
         seen: dict[str, dict | None] = {}
-        for fmt in formats:
-            if fmt.url and fmt.url not in seen:
+        for fmt in ranked:
+            if fmt.url not in seen:
                 seen[fmt.url] = fmt.http_headers
+            if len(seen) >= self._settings.validate_max_formats:
+                break
         await asyncio.gather(*(check(u, h) for u, h in seen.items()))
 
-        kept = [f for f in formats if f.url and verdicts.get(f.url, True)]
+        kept = [
+            f
+            for f in formats
+            if f.url and (f.url not in verdicts or verdicts.get(f.url, True))
+        ]
         dropped = len(formats) - len(kept)
         if dropped:
             logger.info("validation dropped %d/%d dead formats", dropped, len(formats))
@@ -327,7 +341,7 @@ class Extractor:
                 url,
                 headers={**headers, "Range": "bytes=0-1"},
                 allow_redirects=True,
-                stream=True,
+                stream=False,  # 2-byte probe — stream=True + immediate close leaks curl conns
                 **kwargs,
             )
             status = resp.status_code

@@ -19,7 +19,7 @@ cd pullbox
 ```bash
 cd server
 pip install -r requirements.txt
-cp .env.example .env        # edit .env — at minimum set a SECRET_KEY
+cp .env.example .env        # optional: CORS_ORIGINS, GROQ_API_KEY, COOKIE_FILE, …
 ```
 
 **Client** (Node.js 18+):
@@ -27,7 +27,8 @@ cp .env.example .env        # edit .env — at minimum set a SECRET_KEY
 ```bash
 cd client
 npm install
-npm run build
+cp .env.example .env        # leave VITE_API_BASE_URL empty in dev (Vite proxies)
+npm run build               # production static build → client/build
 ```
 
 ### 2. Run
@@ -35,15 +36,16 @@ npm run build
 ```bash
 # Terminal 1 — backend
 cd server
-python -m app
+uvicorn app.main:app --reload
+# or: python run.py
 
-# Terminal 2 — frontend (or serve the build/ directory via nginx/etc.)
+# Terminal 2 — frontend
 cd client
 npm run dev
 ```
 
-The frontend runs on `http://localhost:5173` by default and expects the backend
-at `http://localhost:8000` (both configurable).
+Open http://localhost:5173 — the Vite dev server proxies API routes to
+http://localhost:8000 (including `/proxy-token`).
 
 ### 3. Use it
 
@@ -61,10 +63,10 @@ enable **Subtitles** in the UI.
 ```
 browser ──▶ SvelteKit client ──▶ FastAPI backend ──▶ yt-dlp / gallery-dl
                     │                    │
-                    │                    ├─ /extract-videos, /extract-gallery  (link extraction)
-                    │                    ├─ /proxy-video    (streams media with the right headers)
-                    │                    ├─ /proxy-token    (swaps auth cookies for an opaque token)
-                    └────────────────────┴─ /transcribe     (optional Groq Whisper subtitles)
+                    │                    ├─ /extract-videos, /extract-gallery
+                    │                    ├─ /proxy-video    (media + headers)
+                    │                    ├─ /proxy-token    (cookies → opaque ctok)
+                    └────────────────────┴─ /transcribe     (optional Groq Whisper)
 ```
 
 - The client never talks to source sites directly — the backend extracts links
@@ -76,12 +78,36 @@ browser ──▶ SvelteKit client ──▶ FastAPI backend ──▶ yt-dlp / 
 - Auth cookies are exchanged for a short-lived token before they enter any proxy
   URL, so copied/QR/shared links never leak a session.
 
+## Testing
+
+```bash
+# Server
+cd server
+ruff check app/
+pytest -q
+
+# Client
+cd client
+npm run check
+npm run lint
+npm test
+```
+
 ## Documentation
 
 - **[Server setup](server/README.md)** — backend configuration, env vars, security
 - **[Client setup](client/README.md)** — frontend build, routing, dev mode
 - **[Deployment](deploy/README.md)** — run it on your own VPS (systemd + nginx/Caddy)
 - **[Known issues](KNOWN_ISSUES.md)** — bug-tracker style list
+- **[Plans](plans/README.md)** — improve/production roadmap
+
+## Production notes
+
+- Pin `CORS_ORIGINS` to your real frontend origin(s) (not `*`) if you need
+  credentialed cross-origin requests.
+- For a public VPS, set `PROXY_ALLOWED_HOSTS` to known media CDNs so the media
+  proxy is not an open relay.
+- Keep `yt-dlp` updated when YouTube extraction breaks.
 
 ## License
 

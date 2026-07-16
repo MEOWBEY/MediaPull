@@ -1,4 +1,4 @@
-"""Waveform peak extraction for the player's dialogue-map seek bar.
+"""Dialogue-map peak extraction for the player's seek bar.
 
 Decodes the same mono/16kHz audio track already produced for Whisper to raw
 PCM once, and downsamples to ~1 peak per 100ms -- cheap enough to run once
@@ -12,11 +12,14 @@ from __future__ import annotations
 import array
 import asyncio
 import logging
+import subprocess
+import sys
 from pathlib import Path
 
+from . import proc_util
 from .config import Settings
 
-logger = logging.getLogger("directstream.waveform")
+logger = logging.getLogger("pullbox.dialogue_map")
 
 _SAMPLE_RATE = 16000
 _WINDOW_MS = 100
@@ -26,7 +29,7 @@ _SAMPLES_PER_WINDOW = int(_SAMPLE_RATE * _WINDOW_MS / 1000)
 _FFMPEG_DECODE_TIMEOUT = 60
 
 
-class WaveformError(Exception):
+class DialogueMapError(Exception):
     pass
 
 
@@ -68,35 +71,35 @@ async def _decode_peaks(audio_path: Path, settings: Settings) -> list[float]:
     materializes as one giant buffer. Peaks are computed per whole-window block
     off the event loop; only a ~1MB block is resident at a time."""
     try:
-        proc = await asyncio.create_subprocess_exec(
-            settings.ffmpeg_binary,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(audio_path),
-            "-f",
-            "s16le",
-            "-ac",
-            "1",
-            "-ar",
-            str(_SAMPLE_RATE),
-            "-",
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-            limit=_READ_BLOCK * 4,  # StreamReader buffer high-water mark
+        proc = await proc_util.spawn(
+            [
+                settings.ffmpeg_binary,
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                str(audio_path),
+                "-f",
+                "s16le",
+                "-ac",
+                "1",
+                "-ar",
+                str(_SAMPLE_RATE),
+                "-",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except OSError as exc:
         logger.error("ffmpeg binary %r is not runnable: %s", settings.ffmpeg_binary, exc)
-        raise WaveformError(f"ffmpeg is not installed or not on PATH ({settings.ffmpeg_binary!r})") from exc
+        raise DialogueMapError(f"ffmpeg is not installed or not on PATH ({settings.ffmpeg_binary!r})") from exc
 
-    peaks: list[float] = []
-    buf = bytearray()
-
-    async def _pump() -> None:
+    def _pump_stdout() -> list[float]:
         assert proc.stdout is not None
+        peaks: list[float] = []
+        buf = bytearray()
         while True:
-            block = await proc.stdout.read(_READ_BLOCK)
+            block = proc.stdout.read(_READ_BLOCK)
             if not block:
                 break
             buf.extend(block)
@@ -107,52 +110,50 @@ async def _decode_peaks(audio_path: Path, settings: Settings) -> list[float]:
             if whole:
                 block_bytes = bytes(buf[:whole])
                 del buf[:whole]
-                peaks.extend(await asyncio.to_thread(_peaks_from_bytes, block_bytes))
+                peaks.extend(_peaks_from_bytes(block_bytes))
         # Trailing partial window (audio not landing on a 100ms boundary).
         if buf:
-            peaks.extend(await asyncio.to_thread(_peaks_from_bytes, bytes(buf)))
-            buf.clear()
+            peaks.extend(_peaks_from_bytes(bytes(buf)))
+        return peaks
 
-    async def _consume() -> bytes:
+    def _pump_stderr() -> bytes:
         assert proc.stderr is not None
-        _, stderr = await asyncio.gather(_pump(), proc.stderr.read())
-        await proc.wait()
-        return stderr
+        return proc.stderr.read()
+
+    async def _consume() -> tuple[list[float], bytes]:
+        # stdout/stderr are drained concurrently (each in its own thread) --
+        # sequentially would risk a deadlock if one pipe fills while only the
+        # other is being read.
+        peaks, stderr = await asyncio.gather(
+            asyncio.to_thread(_pump_stdout), asyncio.to_thread(_pump_stderr)
+        )
+        await asyncio.to_thread(proc.wait)
+        return peaks, stderr
 
     try:
-        stderr = await asyncio.wait_for(_consume(), timeout=_FFMPEG_DECODE_TIMEOUT)
-    except asyncio.TimeoutError as exc:
-        proc.kill()
-        await proc.wait()
-        raise WaveformError("ffmpeg PCM decode timed out") from exc
-    except asyncio.CancelledError:
-        # Don't leave the decode child running as an orphan if this job gets
-        # cancelled/times out while waiting on it.
-        proc.kill()
-        await proc.wait()
-        raise
+        peaks, stderr = await proc_util.guarded(_consume, proc=proc, timeout=_FFMPEG_DECODE_TIMEOUT)
+    except TimeoutError as exc:
+        raise DialogueMapError("ffmpeg PCM decode timed out") from exc
     if proc.returncode != 0:
-        raise WaveformError(
+        raise DialogueMapError(
             f"ffmpeg PCM decode failed: {stderr.decode(errors='ignore')[-500:].strip()}"
         )
     return peaks
 
-
 def _peaks_from_bytes(raw: bytes) -> list[float]:
-    """Per-100ms peak amplitudes for one block of s16le PCM. Pure-Python scan,
-    run off the event loop via ``asyncio.to_thread`` -- a long track makes this
-    slow enough to block all other request handling if run inline. s16le is
-    little-endian 16-bit signed, matching ``array('h')`` on the x86_64/ARM64
-    targets this app deploys to."""
+    """Per-100ms peak amplitudes for one block of s16le PCM."""
     usable_len = (len(raw) // 2) * 2
     samples = array.array("h")
     samples.frombytes(raw[:usable_len])
+    if sys.byteorder == "big":
+        samples.byteswap()
     peaks: list[float] = []
-    for i in range(0, len(samples), _SAMPLES_PER_WINDOW):
-        window = samples[i : i + _SAMPLES_PER_WINDOW]
-        if not window:
-            continue
-        peaks.append(max(abs(s) for s in window) / 32768.0)
+    n = len(samples)
+    step = _SAMPLES_PER_WINDOW
+    for i in range(0, n, step):
+        chunk = samples[i : i + step]
+        if chunk:
+            peaks.append(max(map(abs, chunk)) / 32768.0)
     return peaks
 
 

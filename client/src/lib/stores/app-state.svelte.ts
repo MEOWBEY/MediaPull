@@ -101,6 +101,11 @@ class AppStore {
 	getStats(): { extracted: number; galleries: number } {
 		return this.library.stats;
 	}
+
+	/** Re-mint proxy cookie tokens for library items (call once on app load). */
+	async remintLibraryProxyTokens(): Promise<void> {
+		await this.library.remintProxyTokens(this.cookieStore);
+	}
 }
 
 export const appStore = new AppStore();

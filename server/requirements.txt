@@ -13,6 +13,7 @@ pydantic-settings==2.7.1
 gunicorn==26.0.0
 python-multipart==0.0.32
 
-# Test-only dependencies (not needed at runtime).
+# Test / lint (not needed at runtime in production images).
 pytest==9.1.1
 pytest-asyncio==1.4.0
+ruff==0.14.0

@@ -83,6 +83,156 @@ async def test_resolve_and_check_allows_public(proxy, monkeypatch):
     assert await proxy._resolve_and_check("https://example.com/x") is True
 
 
+# ----- DNS verdict cache (per-HLS-segment resolution reuse) -------------
+
+
+@pytest.mark.asyncio
+async def test_resolve_verdict_is_cached_across_calls(proxy, monkeypatch):
+    """The second call for the same host (e.g. the next HLS segment) reuses the
+    cached resolution instead of resolving again."""
+    calls = {"n": 0}
+
+    def counting_getaddrinfo(host, port):
+        calls["n"] += 1
+        return [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(proxy_mod.socket, "getaddrinfo", counting_getaddrinfo)
+    assert await proxy._resolve_and_check("https://cdn.example.com/seg1.ts") is True
+    assert await proxy._resolve_and_check("https://cdn.example.com/seg2.ts") is True
+    assert calls["n"] == 1  # resolved once, second segment served from cache
+
+
+@pytest.mark.asyncio
+async def test_resolve_cache_expires(proxy, monkeypatch):
+    def fake_getaddrinfo(host, port):
+        return [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(proxy_mod.socket, "getaddrinfo", fake_getaddrinfo)
+    proxy._dns_ttl = 0.0  # every entry is already expired
+    assert await proxy._resolve_and_check("https://cdn.example.com/a.ts") is True
+    # A now-expired entry must not be trusted -- forces a fresh resolve.
+    hostname = "cdn.example.com"
+    assert proxy._dns_verdict_cache[hostname][1] <= proxy_mod.time.monotonic()
+
+
+@pytest.mark.asyncio
+async def test_allowlist_still_enforced_despite_dns_cache(monkeypatch):
+    """Caching the *resolution* must not cache away the allow-list guard: a
+    disallowed host is rejected by _check_host before DNS is ever consulted."""
+    p = ProxyService(Settings())
+    p._allowed_hosts = ["googlevideo.com"]
+
+    def boom(host, port):  # pragma: no cover - must never run
+        raise AssertionError("getaddrinfo should not be reached for a blocked host")
+
+    monkeypatch.setattr(proxy_mod.socket, "getaddrinfo", boom)
+    assert await p._resolve_and_check("https://evil.example/x") is False
+
+
+@pytest.mark.asyncio
+async def test_resolve_failure_not_cached(proxy, monkeypatch):
+    """A transient resolver failure returns False but is NOT cached, so a
+    following request re-resolves rather than being pinned to blocked."""
+    import socket as _socket
+
+    state = {"fail": True}
+
+    def flaky_getaddrinfo(host, port):
+        if state["fail"]:
+            raise _socket.gaierror("temporary failure")
+        return [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(proxy_mod.socket, "getaddrinfo", flaky_getaddrinfo)
+    assert await proxy._resolve_and_check("https://cdn.example.com/x.ts") is False
+    state["fail"] = False
+    assert await proxy._resolve_and_check("https://cdn.example.com/x.ts") is True
+
+
+# ----- byte-stream response headers (Content-Encoding correctness) ------
+
+
+class _FakeUpstream:
+    """Minimal stand-in for a curl_cffi streaming response. curl_cffi
+    transparently decompresses, so ``aiter_content`` yields DECODED bytes even
+    when the upstream advertised ``Content-Encoding: gzip``."""
+
+    def __init__(self, headers: dict[str, str], body: bytes, status: int = 200):
+        self.headers = headers
+        self.status_code = status
+        self._body = body
+
+    async def aiter_content(self):
+        yield self._body
+
+    async def aclose(self):
+        pass
+
+
+class _FakeRequest:
+    def __init__(self):
+        self.headers = {}
+
+    async def is_disconnected(self):
+        return False
+
+
+@pytest.mark.asyncio
+async def test_stream_drops_stale_gzip_encoding(proxy, monkeypatch):
+    """YouTube/Vimeo gzip their timedtext captions and report the COMPRESSED
+    length. curl_cffi hands us the decoded body, so forwarding the upstream
+    ``Content-Encoding: gzip`` (and compressed ``Content-Length``) made the
+    browser try to gunzip plain text -> decode error -> empty subtitle track.
+    The proxy must strip both and stream identity."""
+    decoded = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n"
+    upstream = _FakeUpstream(
+        headers={
+            "content-type": "text/vtt; charset=UTF-8",
+            "content-encoding": "gzip",
+            "content-length": "1074",  # compressed size -- a lie about the body
+        },
+        body=decoded,
+    )
+
+    async def fake_get_checked(url, *, stream, headers):
+        return upstream
+
+    monkeypatch.setattr(proxy, "_get_checked", fake_get_checked)
+
+    resp = await proxy._handle_stream(_FakeRequest(), "https://youtube.com/api/timedtext", {})
+
+    assert resp.headers["content-encoding"] == "identity"
+    # The compressed Content-Length must not be forwarded (it describes gzip bytes).
+    assert "content-length" not in {k.lower() for k in resp.headers}
+    # And the streamed body is the real, decoded VTT.
+    chunks = [c async for c in resp.body_iterator]
+    assert b"".join(chunks) == decoded
+
+
+@pytest.mark.asyncio
+async def test_stream_keeps_length_for_identity_body(proxy, monkeypatch):
+    """An uncompressed response keeps its real Content-Length so Range/seek on
+    video still works -- only compressed responses lose it."""
+    body = b"\x00\x01\x02\x03"
+    upstream = _FakeUpstream(
+        headers={
+            "content-type": "video/mp4",
+            "content-length": "4",
+            "accept-ranges": "bytes",
+        },
+        body=body,
+    )
+
+    async def fake_get_checked(url, *, stream, headers):
+        return upstream
+
+    monkeypatch.setattr(proxy, "_get_checked", fake_get_checked)
+
+    resp = await proxy._handle_stream(_FakeRequest(), "https://cdn.example.com/v.mp4", {})
+
+    assert resp.headers["content-encoding"] == "identity"
+    assert resp.headers["content-length"] == "4"  # preserved for seeking
+
+
 # ----- ephemeral cookie token ------------------------------------------
 
 

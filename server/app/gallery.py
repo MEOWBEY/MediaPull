@@ -22,10 +22,10 @@ from urllib.parse import urlparse
 
 from .config import Settings
 from .extractor import ExtractionError, classify_extraction_error, is_valid_url
-from .models import GalleryImage, GalleryInfo
+from .models import GalleryImage, GalleryInfo, GalleryWarning
 from .net_common import cookie_tempfile, get_cookie_pool, normalize_cookies
 
-logger = logging.getLogger("directstream.gallery")
+logger = logging.getLogger("pullbox.gallery")
 
 # classify_extraction_error's needles are tuned for yt-dlp's error vocabulary
 # ("confirm you're not a bot", etc.), which gallery-dl's stderr essentially
@@ -38,6 +38,35 @@ _GENERIC_GALLERY_MESSAGE = (
     "Image extraction failed. The source may require cookies (Settings → Cookies), "
     "block automated access, or be temporarily unavailable."
 )
+
+
+def _warnings_from_stderr(stderr: str, *, truncated: bool) -> list[GalleryWarning]:
+    """Map gallery-dl stderr phrases to soft client-facing warning codes."""
+    text = (stderr or "").lower()
+    warnings: list[GalleryWarning] = []
+    seen: set[str] = set()
+
+    def add(code: str, message: str) -> None:
+        if code in seen:
+            return
+        seen.add(code)
+        warnings.append(GalleryWarning(code=code, message=message))
+
+    if any(n in text for n in ("login", "log in", "sign in", "authentication", "401", "403")):
+        add(
+            "login",
+            "Some images may require cookies (Settings → Cookies).",
+        )
+    if any(n in text for n in ("rate", "429", "too many", "throttl")):
+        add("rate_limit", "The site is rate-limiting requests.")
+    if any(n in text for n in ("watermark", "lower", "preview", "thumbnail", "degrad")):
+        add(
+            "quality",
+            "Image quality may be reduced without fresh cookies.",
+        )
+    if truncated:
+        add("truncated", "Gallery was truncated to the server maximum.")
+    return warnings
 
 
 class GalleryExtractor:
@@ -120,18 +149,24 @@ class GalleryExtractor:
             except subprocess.TimeoutExpired as exc:
                 raise ExtractionError("Gallery extraction timed out", status=504) from exc
 
-        if proc.returncode != 0 and not proc.stdout.strip():
-            status, message = classify_extraction_error(RuntimeError(proc.stderr))
-            # Same account-rotation contract as the yt-dlp path: a block
-            # earned on a pool account rests that account for a while.
-            if pool_cookie and status in (401, 403, 429):
-                get_cookie_pool(s).report_block(pool_cookie)
-            if message == _GENERIC_EXTRACTION_MESSAGE:
-                message = _GENERIC_GALLERY_MESSAGE
-            raise ExtractionError(message, status=status)
-
         images, skipped = self._parse_dump_json(proc.stdout)
-        if not images:
+
+        # Prefer stderr classification whenever the run failed or produced no
+        # images — partial/non-JSON stdout used to surface as a misleading
+        # "No images found" 422 instead of login/rate-limit guidance.
+        if proc.returncode != 0 or not images:
+            if proc.returncode != 0 or (proc.stderr or "").strip():
+                status, message = classify_extraction_error(
+                    RuntimeError(proc.stderr or proc.stdout or "gallery-dl failed")
+                )
+                if pool_cookie and status in (401, 403, 429):
+                    get_cookie_pool(s).report_block(pool_cookie)
+                if message == _GENERIC_EXTRACTION_MESSAGE:
+                    message = _GENERIC_GALLERY_MESSAGE
+                # Successful exit + empty listing is a real "no images" case.
+                if proc.returncode == 0 and not (proc.stderr or "").strip():
+                    raise ExtractionError("No images found at this URL", status=422)
+                raise ExtractionError(message, status=status)
             raise ExtractionError("No images found at this URL", status=422)
 
         if skipped:
@@ -142,10 +177,26 @@ class GalleryExtractor:
                 url,
             )
 
+        max_images = s.gallery_max_images
+        truncated = False
+        if len(images) > max_images:
+            omitted = len(images) - max_images
+            images = images[:max_images]
+            skipped += omitted
+            truncated = True
+            logger.info(
+                "gallery truncated to %d images (%d omitted) for %s",
+                max_images,
+                omitted,
+                url,
+            )
+
         # Instagram/X CDN URLs are frequently Referer- or session-gated; the
         # webpage itself is the Referer a real browser would send. The client
         # routes images through the same `/proxy-video` the player uses so
         # this actually gets applied (an <img> tag can't set headers itself).
+        # Session cookies are minted client-side from Settings → Cookies via
+        # ctok (never returned in extract JSON).
         headers = {"Referer": url}
         for image in images:
             image.http_headers = headers
@@ -155,23 +206,33 @@ class GalleryExtractor:
             webpage_url=url,
             images=images,
             skipped=skipped,
+            warnings=_warnings_from_stderr(proc.stderr or "", truncated=truncated),
         )
 
     @staticmethod
     def _guess_title(images: list[GalleryImage], url: str) -> str:
         return urlparse(url).path.rsplit("/", 1)[-1] or urlparse(url).netloc
 
+    # gallery-dl's `-j` dump is a JSON array of message tuples, each tagged by
+    # a leading kind code (see gallery_dl.extractor.message.Message). Only
+    # Url (3) is an actual image; -1 is a genuine per-item failure. Every
+    # other kind -- Directory (2) foremost, emitted once per gallery with the
+    # post's metadata and no url -- is normal protocol chatter, not a failed
+    # item, and must not be counted as one.
+    _KIND_URL = 3
+    _KIND_ERROR = -1
+
     @classmethod
     def _parse_dump_json(cls, stdout: str) -> tuple[list[GalleryImage], int]:
         """Parse `gallery-dl -j` output into a flat image list.
 
-        Output shape varies by gallery-dl version but is consistently a JSON
-        array of `[status, url, metadata]` entries (metadata optional/last).
         Per-item failures come back as `(-1, {"error": ..., "message": ...})`
-        (no url) -- counted in the returned ``skipped`` total and logged by
-        the caller rather than silently vanishing, since a gallery that's
-        half-failed (common on Instagram/X without fresh cookies) should look
-        different from one that fully succeeded.
+        -- counted in the returned ``skipped`` total and logged by the caller
+        rather than silently vanishing, since a gallery that's half-failed
+        (common on Instagram/X without fresh cookies) should look different
+        from one that fully succeeded. Non-image protocol messages (notably
+        the one `Directory` entry every dump starts with) are neither images
+        nor failures and are ignored entirely.
         """
         text = stdout.strip()
         if not text:
@@ -189,6 +250,12 @@ class GalleryExtractor:
         images: list[GalleryImage] = []
         skipped = 0
         for entry in data:
+            kind = entry[0] if isinstance(entry, (list, tuple)) and entry else None
+            if kind == cls._KIND_ERROR:
+                skipped += 1
+                continue
+            if kind != cls._KIND_URL:
+                continue
             image = cls._entry_to_image(entry)
             if image is not None:
                 images.append(image)

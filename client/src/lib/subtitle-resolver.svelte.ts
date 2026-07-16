@@ -12,7 +12,7 @@ import { toast } from 'svelte-sonner';
 
 import type { TranscribeSource } from '$lib/api/transcribe';
 import { i18n } from '$lib/i18n/index.svelte';
-import { fetchAndParseVtt, segmentsToVttUrl } from '$lib/subtitle-utils';
+import { fetchAndParseVtt, segmentsToSrtUrl, segmentsToVttUrl } from '$lib/subtitle-utils';
 import { TranscriptionController } from '$lib/transcribe.svelte';
 import type { SubtitleSegment, SubtitleTrack, SubtitleTrackResult } from '$lib/types';
 
@@ -68,10 +68,15 @@ export class SubtitleResolver {
 		}
 
 		// Blob URLs only exist in the browser -- during SSR keep the track
-		// as-is (the browser-side mount re-restores it anyway).
+		// as-is (the browser-side mount re-restores it anyway). Rebuild both
+		// VTT and SRT so download/player survive job TTL expiry.
 		this.transcription.track =
 			track.segments.length && typeof window !== 'undefined'
-				? { ...track, vttUrl: segmentsToVttUrl(track.segments) }
+				? {
+						...track,
+						vttUrl: segmentsToVttUrl(track.segments),
+						srtUrl: segmentsToSrtUrl(track.segments)
+					}
 				: track;
 	}
 

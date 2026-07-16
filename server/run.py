@@ -6,7 +6,7 @@ from app.config import settings
 def main() -> None:
     import uvicorn
 
-    print(f"Starting DirectStream API on {settings.host}:{settings.port}")
+    print(f"Starting Pullbox API on {settings.host}:{settings.port}")
     uvicorn.run(
         "app.main:app",
         host=settings.host,

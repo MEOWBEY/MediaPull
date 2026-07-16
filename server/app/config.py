@@ -80,6 +80,9 @@ class Settings(BaseSettings):
     validate_formats: bool = Field(default=True)
     validate_timeout: int = Field(default=6, ge=1)  # per-probe, seconds
     validate_concurrency: int = Field(default=10, ge=1, le=50)
+    # Cap how many unique format URLs get a live probe (top by resolution/tbr).
+    # Unprobed formats stay in the list — same as an "uncertain" probe.
+    validate_max_formats: int = Field(default=8, ge=1, le=200, alias="VALIDATE_MAX_FORMATS")
 
     # Thread pool for blocking yt-dlp work
     extract_workers: int = Field(default=4, ge=1, le=32)
@@ -87,6 +90,15 @@ class Settings(BaseSettings):
     # In-memory result cache
     cache_ttl: int = Field(default=300, ge=0)
     cache_max_entries: int = Field(default=512, ge=0)
+
+    # Admission control (single-worker public deploys)
+    extract_max_in_flight: int = Field(default=8, ge=1, le=64, alias="EXTRACT_MAX_IN_FLIGHT")
+    transcribe_max_jobs_stored: int = Field(
+        default=64, ge=1, le=1000, alias="TRANSCRIBE_MAX_JOBS_STORED"
+    )
+    proxy_cookie_token_max: int = Field(
+        default=2048, ge=16, le=100_000, alias="PROXY_COOKIE_TOKEN_MAX"
+    )
 
     # ----- Auto-generated subtitles (Groq Whisper speech-to-text) ---------
     # Transcription only -- speech becomes text in whatever language it was
@@ -109,7 +121,7 @@ class Settings(BaseSettings):
     # Whole-job wall-clock cap; a stuck/very slow job is killed and reported
     # as an error rather than running forever.
     transcribe_job_timeout: int = Field(default=900, ge=60, le=3600, alias="TRANSCRIBE_JOB_TIMEOUT")
-    # Bounds concurrent CPU-heavy pipeline steps (audio transcode + waveform
+    # Bounds concurrent CPU-heavy pipeline steps (audio transcode + dialogue map
     # extraction) separately from transcribe_max_concurrent_jobs, which only
     # gates overall job admission -- without this a small VPS could end up
     # running several ffmpeg transcodes at once even though it's fine to have
@@ -175,6 +187,8 @@ class Settings(BaseSettings):
     gallery_dl_timeout: int = Field(default=45, ge=5)
     gallery_dl_workers: int = Field(default=3, ge=1, le=20)
     gallery_dl_binary: str = Field(default="gallery-dl")
+    # Hard cap on images returned per gallery extract (large albums).
+    gallery_max_images: int = Field(default=200, ge=1, le=5000, alias="GALLERY_MAX_IMAGES")
 
     # ----- ffmpeg/ffprobe (transcription pipeline only) --------------------
     # Bare names rely on the running process's PATH, which is NOT always the
@@ -183,6 +197,17 @@ class Settings(BaseSettings):
     # these at an absolute path if `/health` reports either as unavailable.
     ffmpeg_binary: str = Field(default="ffmpeg", alias="FFMPEG_BINARY")
     ffprobe_binary: str = Field(default="ffprobe", alias="FFPROBE_BINARY")
+
+    # ----- Proxy security ---------------------------------------------------
+    # The media proxy (GET /proxy-video) fetches arbitrary user-supplied URLs.
+    # Without a host allow-list this is open to SSRF abuse on a public deploy.
+    # Set PROXY_ALLOWED_HOSTS to a comma-separated list of allowed destination
+    # hostnames (e.g. "googlevideo.com,cdninstagram.com,fbcdn.net") to restrict
+    # proxying to known media CDNs. PROXY_ENABLED=false disables the proxy
+    # entirely — the client falls back to direct (non-proxied) playback, which
+    # works for most sites except those that gate on Referer/Cookie headers.
+    proxy_enabled: bool = Field(default=True, alias="PROXY_ENABLED")
+    proxy_allowed_hosts_raw: str = Field(default="", alias="PROXY_ALLOWED_HOSTS")
 
     user_agent: str = Field(
         default="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -220,6 +245,11 @@ class Settings(BaseSettings):
     @property
     def youtube_po_token_list(self) -> list[str]:
         return [t.strip() for t in self.youtube_po_token.split(",") if t.strip()]
+
+    @property
+    def proxy_allowed_hosts(self) -> list[str]:
+        """Proxy destination hostnames from PROXY_ALLOWED_HOSTS; empty = allow all."""
+        return [h.strip().lower() for h in self.proxy_allowed_hosts_raw.split(",") if h.strip()]
 
 
 @lru_cache(maxsize=1)

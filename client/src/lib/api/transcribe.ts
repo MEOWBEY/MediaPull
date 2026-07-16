@@ -35,11 +35,10 @@ interface BackendFormat {
 }
 
 /**
- * Send each quality's *proxied* URL, not the raw source. `/proxy-video`
- * already replays the right Referer/Cookie/User-Agent (baked into its query
- * string by `buildProxiedUrl`), so the backend's audio download can GET it
- * directly with no extra headers -- reusing the proxy instead of
- * duplicating impersonation logic.
+ * Send each quality's *proxied* URL, not the raw source. The server unwraps
+ * `/proxy-video?...` for a direct origin fetch (avoids double-hop + HLS rewrite
+ * issues), restores Referer/User-Agent from the query, and resolves opaque
+ * `ctok` tokens back to Cookie headers via ProxyService.
  */
 function toBackendFormats(source: TranscribeSource): BackendFormat[] {
 	return (source.qualities ?? [])

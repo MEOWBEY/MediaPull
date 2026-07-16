@@ -19,6 +19,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from . import __version__
+from .audio import close_download_session
 from .cache import TTLCache
 from .config import settings
 from .extractor import ExtractionError, Extractor
@@ -129,6 +130,9 @@ async def lifespan(app: FastAPI):
         await app.state.proxy.aclose()
         if app.state.transcriber is not None:
             await app.state.transcriber.aclose()
+        # Close the shared audio-download session (lazily created on the
+        # impersonated-download fallback path; no-op if never used).
+        await close_download_session()
         logger.info("Pullbox API shut down")
 
 
@@ -160,6 +164,10 @@ def create_app() -> FastAPI:
     # origin after the browser cancelled -- burning bandwidth for nobody.
     app.add_middleware(LogContextMiddleware)
 
+    # Caps concurrent extract work so a burst cannot queue unbounded thread-pool
+    # jobs (and hold ASGI connections open) on a public VPS.
+    extract_slots = asyncio.Semaphore(settings.extract_max_in_flight)
+
     @app.exception_handler(ExtractionError)
     async def _extraction_error(_: Request, exc: ExtractionError) -> JSONResponse:
         logger.warning("extraction failed (%s): %s", exc.status, exc)
@@ -190,10 +198,17 @@ def create_app() -> FastAPI:
 
         logger.info("extracting: %s (cookies=%s)", url, "yes" if cookies else "no")
         try:
-            video = await app.state.extractor.extract(url, cookies=cookies)
-        except ValueError as exc:
-            logger.warning("invalid extract-videos request for %s: %s", url, exc)
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
+        except TimeoutError as exc:
+            raise HTTPException(status_code=503, detail="Server busy, try again") from exc
+        try:
+            try:
+                video = await app.state.extractor.extract(url, cookies=cookies)
+            except ValueError as exc:
+                logger.warning("invalid extract-videos request for %s: %s", url, exc)
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            extract_slots.release()
 
         await cache.set(cache_key, video)
         return ExtractResponse(
@@ -220,10 +235,17 @@ def create_app() -> FastAPI:
 
         logger.info("extracting gallery: %s (cookies=%s)", url, "yes" if cookies else "no")
         try:
-            gallery = await app.state.gallery_extractor.extract(url, cookies=cookies)
-        except ValueError as exc:
-            logger.warning("invalid extract-gallery request for %s: %s", url, exc)
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
+            await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
+        except TimeoutError as exc:
+            raise HTTPException(status_code=503, detail="Server busy, try again") from exc
+        try:
+            try:
+                gallery = await app.state.gallery_extractor.extract(url, cookies=cookies)
+            except ValueError as exc:
+                logger.warning("invalid extract-gallery request for %s: %s", url, exc)
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+        finally:
+            extract_slots.release()
 
         await cache.set(cache_key, gallery)
         return GalleryResponse(
@@ -267,7 +289,7 @@ def create_app() -> FastAPI:
                 language=job.language or "en",
                 vtt_url=f"/transcribe/{job.id}/subtitle.vtt",
                 srt_url=f"/transcribe/{job.id}/subtitle.srt",
-                waveform=job.waveform,
+                dialogue_map=job.dialogue_map,
             )
 
         return TranscribeStatus(
@@ -289,7 +311,10 @@ def create_app() -> FastAPI:
                 status_code=503, detail="Auto-subtitles are not configured on this server"
             )
 
-        job = await app.state.jobs.create()
+        try:
+            job = await app.state.jobs.create()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         task = asyncio.create_task(
             run_transcription_job(
                 job.id,
@@ -298,6 +323,7 @@ def create_app() -> FastAPI:
                 app.state.jobs,
                 app.state.transcriber,
                 duration_hint=payload.duration_seconds,
+                resolve_cookie_token=app.state.proxy.resolve_cookie_token,
             )
         )
         await app.state.jobs.set_task(job.id, task)

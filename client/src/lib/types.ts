@@ -149,6 +149,8 @@ export interface IncomingGallery {
 	 *  a partially-failed gallery (common on Instagram/X without cookies)
 	 *  looks different from a fully successful one. */
 	skippedCount?: number;
+	/** Soft notices (login needed, degraded quality, truncated, …). */
+	warnings?: GalleryWarning[];
 }
 
 /** A normalized image ready for rendering/download. The client builds `url`
@@ -171,6 +173,7 @@ export interface GroupedGallery {
 	/** Entries gallery-dl couldn't extract for this source (see
 	 *  `IncomingGallery.skippedCount`). */
 	skippedCount?: number;
+	warnings?: GalleryWarning[];
 }
 
 /** One subtitle line with its timing. */
@@ -190,6 +193,14 @@ export interface SubtitleTrackResult {
 	segments: SubtitleSegment[];
 	vttUrl?: string;
 	srtUrl?: string;
+	/** Normalized 0..1 peaks (~1 per 100ms) for the dialogue-map seek bar. */
+	dialogueMap?: number[] | null;
+}
+
+/** One non-fatal gallery extract notice (quality, login, rate-limit, …). */
+export interface GalleryWarning {
+	code: string;
+	message: string;
 }
 
 /** Wire shape of `GET /transcribe/{jobId}` (NOT wrapped in `ApiEnvelope` —
@@ -208,7 +219,8 @@ export interface TranscribeStatus {
 		| 'compressing'
 		| 'transcribing'
 		| 'building_subtitles'
-		| 'waveform'
+		| 'dialogue_map'
+		| 'waveform' // legacy server detail
 		| null;
 	/** Transcription chunk counters (0 until that stage) — the client builds
 	 *  its own localized "x of y" stage text from these. */
@@ -219,7 +231,9 @@ export interface TranscribeStatus {
 		language: string;
 		vttUrl: string;
 		srtUrl: string;
-		waveform: number[] | null;
+		dialogueMap?: number[] | null;
+		/** @deprecated server used to send this name */
+		waveform?: number[] | null;
 	} | null;
 }
 

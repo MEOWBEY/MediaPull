@@ -25,7 +25,7 @@ import httpx
 from ..config import Settings
 from .base import Segment, TranscriptionResult
 
-logger = logging.getLogger("directstream.transcribe.groq")
+logger = logging.getLogger("pullbox.transcribe.groq")
 
 _BASE_URL = "https://api.groq.com/openai/v1"
 _TRANSCRIPTIONS_URL = f"{_BASE_URL}/audio/transcriptions"
@@ -177,7 +177,7 @@ class GroqTranscriber:
     # ----- Whisper (transcribe) ------------------------------------------
 
     async def transcribe(self, audio_path: Path) -> TranscriptionResult:
-        audio_bytes = audio_path.read_bytes()
+        audio_bytes = await asyncio.to_thread(audio_path.read_bytes)
         max_upload = _max_upload_bytes(self._settings)
         if len(audio_bytes) > max_upload:
             raise GroqError(

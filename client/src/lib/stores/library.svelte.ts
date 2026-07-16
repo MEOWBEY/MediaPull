@@ -1,4 +1,6 @@
 import { browser } from '$app/environment';
+import { createProxyToken } from '$lib/api/proxy-token';
+import { buildProxiedUrl } from '$lib/proxy-url';
 import { groupGalleriesBySource, groupVideosByQuality, maxFilesize, maxResolution } from '$lib/transform';
 import type {
 	GroupedGallery,
@@ -9,6 +11,7 @@ import type {
 	SubtitleTrackResult
 } from '$lib/types';
 
+import type { CookieStore } from './cookies.svelte';
 import type { PreferencesStore } from './preferences.svelte';
 
 const MAX_ENTRIES = 50;
@@ -192,6 +195,75 @@ export class LibraryStore {
 			}
 		} catch (error) {
 			console.warn('Failed to load library:', error);
+		}
+	}
+
+	/**
+	 * Re-mint short-lived proxy cookie tokens for library items that have
+	 * Settings cookies for their host. Persisted `ctok` values die after ~1h
+	 * or a server restart; this rebuilds proxied URLs on app load.
+	 */
+	async remintProxyTokens(cookies: CookieStore): Promise<void> {
+		if (!browser) {
+			return;
+		}
+
+		let videosChanged = false;
+		for (const video of this.extractResults) {
+			const page = video.webpage_url;
+			if (!page) {
+				continue;
+			}
+			const text = cookies.matchFor(page);
+			if (!text) {
+				continue;
+			}
+			const token = await createProxyToken(text);
+			if (!token) {
+				continue;
+			}
+			const headers = { Referer: page };
+			for (const group of video.formatGroups ?? []) {
+				for (const q of group.qualities ?? []) {
+					if (!q.sourceVideoUrl) {
+						continue;
+					}
+					q.proxiedVideoUrl =
+						buildProxiedUrl(q.sourceVideoUrl, headers, q.protocol, token) || q.proxiedVideoUrl;
+					videosChanged = true;
+				}
+			}
+		}
+
+		let galleriesChanged = false;
+		for (const gallery of this.galleryResults) {
+			const page = gallery.webpage_url;
+			if (!page) {
+				continue;
+			}
+			const text = cookies.matchFor(page);
+			if (!text) {
+				continue;
+			}
+			const token = await createProxyToken(text);
+			if (!token) {
+				continue;
+			}
+			const headers = { Referer: page };
+			for (const image of gallery.images ?? []) {
+				if (!image.sourceUrl) {
+					continue;
+				}
+				image.url = buildProxiedUrl(image.sourceUrl, headers, 'https', token) || image.url;
+				galleriesChanged = true;
+			}
+		}
+
+		if (videosChanged) {
+			this.persist(KEY_EXTRACT, this.extractResults);
+		}
+		if (galleriesChanged) {
+			this.persist(KEY_GALLERIES, this.galleryResults);
 		}
 	}
 

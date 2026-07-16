@@ -15,16 +15,15 @@ import type { IncomingGallery, IncomingVideo } from '$lib/types';
 
 const { t } = i18n;
 
+// Memory-only — the library store is the durable copy (avoids dual localStorage).
 const extractCache = new TTLCache<IncomingVideo>({
 	ttl: 5 * 60 * 1000,
-	maxEntries: 50,
-	persistKey: 'cache:extract'
+	maxEntries: 50
 });
 
 const galleryExtractCache = new TTLCache<IncomingGallery>({
 	ttl: 5 * 60 * 1000,
-	maxEntries: 50,
-	persistKey: 'cache:extract-gallery'
+	maxEntries: 50
 });
 
 function normalizeUrl(raw: string): string | null {
@@ -165,26 +164,98 @@ export class ExtractionController {
 			: this.extractVideoLinks(rawUrl, opts);
 	}
 
-	/** Auto-detect: try video first (the more common case), and only if that
-	 *  comes back empty/fails, silently retry as a gallery -- no error toast/
-	 *  alert for the first attempt, since failing over is the expected path
-	 *  for an image-only page, not a real error. */
+	/** Hosts/paths that are almost always image galleries — try gallery first
+	 *  so we skip a full failed video extract on Pinterest/Imgur/etc. */
+	private looksLikeGalleryUrl(rawUrl: string): boolean {
+		try {
+			const u = new URL(rawUrl.trim());
+			const host = u.hostname.toLowerCase().replace(/^www\./, '');
+			const path = u.pathname.toLowerCase();
+			if (
+				host.includes('pinterest.') ||
+				host === 'imgur.com' ||
+				host.endsWith('.imgur.com') ||
+				host.includes('flickr.com') ||
+				host.includes('vsco.co') ||
+				host.includes('deviantart.com')
+			) {
+				return true;
+			}
+			if (path.includes('/gallery') || path.includes('/album') || path.includes('/a/')) {
+				// Instagram /p/ and /reel/ are often video — only treat clear gallery paths.
+				if (host.includes('instagram.com') || host.includes('youtube.com')) {
+					return false;
+				}
+				return true;
+			}
+			return false;
+		} catch {
+			return false;
+		}
+	}
+
+	/** Auto-detect: video first (common case), gallery fallback — unless the URL
+	 *  looks like a pure gallery host, then reverse the order. First-attempt
+	 *  failures are silent (failover is expected for the wrong content type). */
 	private async extractAuto(
 		rawUrl: string,
 		opts: { silent?: boolean; forceRefresh?: boolean } = {}
 	): Promise<boolean> {
-		const gotVideo = await this.extractVideoLinks(rawUrl, { ...opts, silentError: true });
+		const galleryFirst = this.looksLikeGalleryUrl(rawUrl);
+		const order: Array<'video' | 'gallery'> = galleryFirst
+			? ['gallery', 'video']
+			: ['video', 'gallery'];
 
-		if (gotVideo) {
-			return true;
+		let firstError: string | null = null;
+		let secondError: string | null = null;
+
+		for (let i = 0; i < order.length; i++) {
+			const kind = order[i];
+			const onError = (message: string) => {
+				if (i === 0) {
+					firstError = message;
+				} else {
+					secondError = message;
+				}
+			};
+			const ok =
+				kind === 'gallery'
+					? await this.extractGalleryLinks(rawUrl, {
+							...opts,
+							silentError: true,
+							onError
+						})
+					: await this.extractVideoLinks(rawUrl, {
+							...opts,
+							silentError: true,
+							onError
+						});
+			if (ok) {
+				return true;
+			}
 		}
 
-		return this.extractGalleryLinks(rawUrl, opts);
+		// Prefer the video-path error when present (usually more specific).
+		const message =
+			(galleryFirst ? secondError ?? firstError : firstError ?? secondError) ??
+			t('toast.unknownError');
+
+		if (!opts.silent) {
+			appStore.videoExtractError = message;
+			toast.error(message);
+		}
+
+		return false;
 	}
 
 	private async extractVideoLinks(
 		rawUrl: string,
-		opts: { silent?: boolean; silentError?: boolean; forceRefresh?: boolean } = {}
+		opts: {
+			silent?: boolean;
+			silentError?: boolean;
+			forceRefresh?: boolean;
+			onError?: (message: string) => void;
+		} = {}
 	): Promise<boolean> {
 		const url = normalizeUrl(rawUrl);
 
@@ -222,6 +293,7 @@ export class ExtractionController {
 		return this.run({
 			silent: opts.silent,
 			silentError: opts.silentError,
+			onError: opts.onError,
 			task: async (signal) => {
 				const video = await post<IncomingVideo>(
 					'/extract-videos',
@@ -229,9 +301,10 @@ export class ExtractionController {
 					{ signal }
 				);
 
-				// Swap any auth cookies for opaque tokens before the result is
-				// cached or turned into (shareable) proxy URLs.
-				await resolveVideoCookieTokens(video);
+				// Mint ctok from Settings cookies (extract JSON no longer
+				// carries Cookie headers — that leaked sessions on multi-user
+				// deploys). Attach tokens before cache / proxy URL build.
+				await resolveVideoCookieTokens(video, cookies);
 
 				return video;
 			},
@@ -257,7 +330,12 @@ export class ExtractionController {
 
 	private async extractGalleryLinks(
 		rawUrl: string,
-		opts: { silent?: boolean; forceRefresh?: boolean } = {}
+		opts: {
+			silent?: boolean;
+			silentError?: boolean;
+			forceRefresh?: boolean;
+			onError?: (message: string) => void;
+		} = {}
 	): Promise<boolean> {
 		const url = normalizeUrl(rawUrl);
 
@@ -292,6 +370,8 @@ export class ExtractionController {
 
 		return this.run({
 			silent: opts.silent,
+			silentError: opts.silentError,
+			onError: opts.onError,
 			task: async (signal) => {
 				const gallery = await postGallery<IncomingGallery>(
 					'/extract-gallery',
@@ -299,7 +379,7 @@ export class ExtractionController {
 					{ signal }
 				);
 
-				await resolveGalleryCookieTokens(gallery);
+				await resolveGalleryCookieTokens(gallery, cookies);
 
 				return gallery;
 			},
@@ -323,6 +403,23 @@ export class ExtractionController {
 
 					if (gallery?.skippedCount) {
 						toast.warning(t('gallery.someSkipped', { n: gallery.skippedCount }));
+					}
+					for (const w of gallery?.warnings ?? []) {
+						const key =
+							w.code === 'login'
+								? 'gallery.warning.login'
+								: w.code === 'rate_limit'
+									? 'gallery.warning.rateLimit'
+									: w.code === 'quality'
+										? 'gallery.warning.quality'
+										: w.code === 'truncated'
+											? 'gallery.warning.truncated'
+											: 'gallery.warning.generic';
+						toast.warning(
+							key === 'gallery.warning.generic'
+								? t(key, { message: w.message })
+								: t(key)
+						);
 					}
 				}
 			}
@@ -351,6 +448,11 @@ export class ExtractionController {
 		silentError?: boolean;
 		task: (signal: AbortSignal) => Promise<T>;
 		onSuccess: (result: T) => void;
+		/** Always invoked with the failure message, even when `silentError`/
+		 *  `silent` suppress the toast/alert -- lets `extractAuto` capture the
+		 *  video attempt's (more specific) error to show later if the gallery
+		 *  fallback also fails, instead of losing it. */
+		onError?: (message: string) => void;
 	}): Promise<boolean> {
 		this.start();
 		appStore.isVideoExtractRunning = true;
@@ -382,6 +484,8 @@ export class ExtractionController {
 			}
 
 			const message = error instanceof Error ? error.message : t('toast.unknownError');
+
+			config.onError?.(message);
 
 			// In silent (batch) mode, don't pin the error alert or toast per item —
 			// the caller tallies failures and shows one summary. `silentError`

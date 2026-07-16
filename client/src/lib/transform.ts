@@ -207,7 +207,8 @@ export function groupGalleriesBySource(galleries: IncomingGallery[] = []): Group
 			title: item.title,
 			webpage_url: item.webpageUrl,
 			images: images.map(normalizeImage),
-			skippedCount: item.skippedCount || undefined
+			skippedCount: item.skippedCount || undefined,
+			warnings: item.warnings?.length ? item.warnings : undefined
 		});
 	}
 

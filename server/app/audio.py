@@ -21,6 +21,7 @@ import asyncio
 import logging
 import math
 import shutil
+import subprocess
 import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -29,11 +30,43 @@ from urllib.parse import parse_qs, urlparse
 
 from curl_cffi.requests import AsyncSession
 
+from . import proc_util
 from .config import Settings
 from .models import VideoFormat
 from .net_common import impersonate_kwarg
 
-logger = logging.getLogger("directstream.audio")
+logger = logging.getLogger("pullbox.audio")
+
+# One shared curl_cffi session for the impersonated-download fallback, reused
+# across transcription jobs instead of built per download -- mirrors how
+# ProxyService and Extractor hold a single long-lived session, so we don't pay
+# a fresh connection-pool + TLS setup on every job that falls back to it. Keyed
+# by proxy so a config that routes through a different egress still gets a
+# correct session. Created lazily (the fallback path is rarely hit) and closed
+# on shutdown via ``close_download_session`` (wired into the app lifespan).
+_download_sessions: dict[str | None, AsyncSession] = {}
+
+
+def _get_download_session(settings: Settings) -> AsyncSession:
+    proxy = settings.proxy_url or None
+    session = _download_sessions.get(proxy)
+    if session is None:
+        session = AsyncSession(
+            timeout=settings.request_timeout,
+            proxies={"http": proxy, "https": proxy} if proxy else None,
+        )
+        _download_sessions[proxy] = session
+    return session
+
+
+async def close_download_session() -> None:
+    """Close every shared download session. Idempotent -- safe to call on
+    shutdown even if the fallback download path was never exercised."""
+    sessions = list(_download_sessions.values())
+    _download_sessions.clear()
+    for session in sessions:
+        await session.close()
+
 
 # Intermediate audio codecs Whisper accepts, keyed by the TRANSCRIBE_AUDIO_CODEC
 # setting. Each carries the ffmpeg output args (always mono/16kHz -- Whisper's
@@ -161,7 +194,11 @@ _FFMPEG_RW_TIMEOUT = "30000000"
 ProgressFn = Callable[[float], None]
 
 
-def _unwrap_proxied(url: str) -> tuple[str, dict[str, str]]:
+def _unwrap_proxied(
+    url: str,
+    *,
+    resolve_cookie_token: Callable[[str], str] | None = None,
+) -> tuple[str, dict[str, str]]:
     """Recover the real source URL + headers from our own ``/proxy-video``
     wrapper, so server-side acquisition fetches the origin **directly** (with
     curl_cffi impersonation / ffmpeg ``-headers``) instead of bouncing back
@@ -171,6 +208,10 @@ def _unwrap_proxied(url: str) -> tuple[str, dict[str, str]]:
     a media element. ffmpeg and curl_cffi can, and going direct avoids a slow
     double-hop and the proxy's segment-extension rewriting that breaks ffmpeg's
     HLS demuxer. Non-proxied URLs pass through unchanged.
+
+    Auth cookies travel as opaque ``ctok`` tokens (not raw ``cookies=``). Pass
+    ``resolve_cookie_token`` from ``ProxyService.resolve_cookie_token`` so the
+    transcription path can restore the Cookie header server-side.
     """
     try:
         parsed = urlparse(url)
@@ -190,7 +231,13 @@ def _unwrap_proxied(url: str) -> tuple[str, dict[str, str]]:
         headers["Referer"] = qs["referer"][0]
     if qs.get("userAgent"):
         headers["User-Agent"] = qs["userAgent"][0]
-    if qs.get("cookies"):
+    ctok = (qs.get("ctok") or [None])[0]
+    if ctok and resolve_cookie_token is not None:
+        cookies = resolve_cookie_token(ctok)
+        if cookies:
+            headers["Cookie"] = cookies
+    elif qs.get("cookies"):
+        # Legacy query form (pre-ctok); kept for old clients / bookmarked jobs.
         headers["Cookie"] = qs["cookies"][0]
     return real, headers
 
@@ -252,7 +299,11 @@ class AcquisitionPlan:
 
 
 async def plan_acquisition(
-    formats: list[VideoFormat], settings: Settings, *, duration_hint: float | None
+    formats: list[VideoFormat],
+    settings: Settings,
+    *,
+    duration_hint: float | None,
+    resolve_cookie_token: Callable[[str], str] | None = None,
 ) -> AcquisitionPlan:
     """Decide how to pull the audio: parallel cap-sized windows when the source
     is progressive and its duration is known, else the single-pass fallback.
@@ -262,7 +313,15 @@ async def plan_acquisition(
     read that keeps the fast path available for unknown-duration sources instead
     of dropping every one of them to the slow single connection."""
     fmt = pick_audio_format(formats)
-    real_url, extra_headers = _unwrap_proxied(fmt.url or "")
+    real_url, extra_headers = _unwrap_proxied(
+        fmt.url or "", resolve_cookie_token=resolve_cookie_token
+    )
+    from .ssrf import assert_public_http_url
+
+    try:
+        assert_public_http_url(real_url)
+    except ValueError as exc:
+        raise AudioError(str(exc)) from exc
     headers = {**(fmt.http_headers or {}), **extra_headers}
     is_hls = fmt.protocol == "m3u8_native"
 
@@ -380,12 +439,10 @@ async def _run_ffmpeg(
     if on_out_time is not None:
         prefix += ["-nostats", "-progress", "pipe:1"]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            binary,
-            *prefix,
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc = await proc_util.spawn(
+            [binary, *prefix, *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except OSError as exc:
         logger.error("ffmpeg binary %r is not runnable: %s", binary, exc)
@@ -394,59 +451,60 @@ async def _run_ffmpeg(
             "absolute path if it's installed somewhere not on this process's PATH."
         ) from exc
 
-    async def _pump_stdout() -> None:
+    loop = asyncio.get_running_loop()
+
+    def _pump_stdout() -> None:
         assert proc.stdout is not None
-        while True:
-            line = await proc.stdout.readline()
-            if not line:
-                return
+        for raw_line in proc.stdout:
             if on_out_time is None:
                 continue
-            text = line.decode(errors="ignore").strip()
+            text = raw_line.decode(errors="ignore").strip()
             # ffmpeg quirk: out_time_ms is ALSO microseconds (same as
             # out_time_us) -- both divide by 1e6. Value is "N/A" early on.
             if text.startswith(("out_time_us=", "out_time_ms=")):
                 try:
-                    on_out_time(max(0, int(text.split("=", 1)[1])) / 1_000_000)
+                    value = max(0, int(text.split("=", 1)[1])) / 1_000_000
                 except ValueError:
                     continue
+                loop.call_soon_threadsafe(on_out_time, value)
+
+    def _pump_stderr() -> bytes:
+        assert proc.stderr is not None
+        return proc.stderr.read()
 
     async def _consume() -> bytes:
-        assert proc.stderr is not None
-        _, stderr = await asyncio.gather(_pump_stdout(), proc.stderr.read())
-        await proc.wait()
+        # stdout/stderr are drained concurrently (each in its own thread) --
+        # sequentially would risk a classic pipe deadlock if one fills while
+        # only the other is being read.
+        _, stderr = await asyncio.gather(
+            asyncio.to_thread(_pump_stdout), asyncio.to_thread(_pump_stderr)
+        )
+        await asyncio.to_thread(proc.wait)
         return stderr
 
     try:
-        stderr = await asyncio.wait_for(_consume(), timeout=timeout)
-    except asyncio.TimeoutError as exc:
-        proc.kill()
-        await proc.wait()
+        stderr = await proc_util.guarded(_consume, proc=proc, timeout=timeout)
+    except TimeoutError as exc:
         raise AudioError("Audio extraction timed out") from exc
-    except asyncio.CancelledError:
-        # A cancelled job's task would otherwise leave this ffmpeg child
-        # running as an orphan -- make sure it actually dies before the
-        # cancellation propagates.
-        proc.kill()
-        await proc.wait()
-        raise
     if proc.returncode != 0:
         raise AudioError(f"ffmpeg failed: {stderr.decode(errors='ignore')[-2000:].strip()}")
 
 
 async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
     try:
-        proc = await asyncio.create_subprocess_exec(
-            binary,
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            str(path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc = await proc_util.spawn(
+            [
+                binary,
+                "-v",
+                "error",
+                "-show_entries",
+                "format=duration",
+                "-of",
+                "default=noprint_wrappers=1:nokey=1",
+                str(path),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except OSError as exc:
         logger.error("ffprobe binary %r is not runnable: %s", binary, exc)
@@ -455,15 +513,11 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
             "absolute path if it's installed somewhere not on this process's PATH."
         ) from exc
     try:
-        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=_FFPROBE_TIMEOUT)
-    except asyncio.TimeoutError as exc:
-        proc.kill()
-        await proc.wait()
+        stdout, stderr = await proc_util.guarded(
+            lambda: proc_util.communicate(proc), proc=proc, timeout=_FFPROBE_TIMEOUT
+        )
+    except TimeoutError as exc:
         raise AudioError("ffprobe timed out") from exc
-    except asyncio.CancelledError:
-        proc.kill()
-        await proc.wait()
-        raise
     if proc.returncode != 0:
         raise AudioError(f"ffprobe failed: {stderr.decode(errors='ignore')[-500:].strip()}")
     try:
@@ -497,26 +551,21 @@ async def probe_duration_url(
         url,
     ]
     try:
-        proc = await asyncio.create_subprocess_exec(
-            settings.ffprobe_binary,
-            *args,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        proc = await proc_util.spawn(
+            [settings.ffprobe_binary, *args],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
         )
     except OSError as exc:
         logger.warning("ffprobe not runnable for URL duration probe: %s", exc)
         return None
     try:
-        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=_FFPROBE_TIMEOUT)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+        stdout, _ = await proc_util.guarded(
+            lambda: proc_util.communicate(proc), proc=proc, timeout=_FFPROBE_TIMEOUT
+        )
+    except TimeoutError:
         logger.warning("ffprobe URL duration probe timed out -- planning without a duration")
         return None
-    except asyncio.CancelledError:
-        proc.kill()
-        await proc.wait()
-        raise
     if proc.returncode != 0:
         return None
     try:
@@ -537,49 +586,60 @@ async def _download_stream(
     """Stream a progressive media URL to disk (with browser impersonation),
     capped at ``transcribe_max_download_bytes``. Reports bytes/Content-Length
     as fractional progress when the server discloses a length."""
-    proxy = settings.proxy_url or None
     max_bytes = settings.transcribe_max_download_bytes
     dest = work_dir / f"source.{ext or 'bin'}"
 
-    async with AsyncSession(
-        timeout=settings.request_timeout,
-        proxies={"http": proxy, "https": proxy} if proxy else None,
-    ) as session:
-        kwargs: dict = {"headers": headers, "stream": True, "allow_redirects": True}
-        kwargs.update(impersonate_kwarg(settings))
+    # Shared, long-lived session (see _get_download_session) -- NOT an
+    # `async with`, which would tear down the connection pool after one job.
+    session = _get_download_session(settings)
+    kwargs: dict = {"headers": headers, "stream": True, "allow_redirects": True}
+    kwargs.update(impersonate_kwarg(settings))
 
-        try:
-            resp = await session.get(url, **kwargs)
-        except Exception as exc:  # noqa: BLE001 - surface as a clean AudioError
-            raise AudioError(f"Failed to reach source media: {exc}") from exc
+    try:
+        resp = await session.get(url, **kwargs)
+    except NotImplementedError as exc:
+        # curl_cffi raises a bare (often message-less) NotImplementedError
+        # when the configured IMPERSONATE_CLIENT needs a TLS feature the
+        # installed curl-impersonate build doesn't support on this
+        # platform. Distinct from a normal network failure, so it gets
+        # its own actionable message instead of falling into the generic
+        # "Failed to reach source media: " branch below (which would be
+        # left with nothing after the colon).
+        raise AudioError(
+            "Browser impersonation isn't supported for the configured "
+            "IMPERSONATE_CLIENT on this server. Try a different "
+            "IMPERSONATE_CLIENT, or disable ENABLE_IMPERSONATION."
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 - surface as a clean AudioError
+        raise AudioError(f"Failed to reach source media: {exc}") from exc
 
-        if resp.status_code >= 400:
-            await resp.aclose()
-            raise AudioError(f"Failed to download source media: HTTP {resp.status_code}")
+    if resp.status_code >= 400:
+        await resp.aclose()
+        raise AudioError(f"Failed to download source media: HTTP {resp.status_code}")
 
-        try:
-            total = int(resp.headers.get("content-length", "0")) or None
-        except ValueError:
-            total = None
+    try:
+        total = int(resp.headers.get("content-length", "0")) or None
+    except ValueError:
+        total = None
 
-        written = 0
-        try:
-            with dest.open("wb") as fh:
-                async for chunk in resp.aiter_content():
-                    written += len(chunk)
-                    if written > max_bytes:
-                        raise AudioError(
-                            "Source media exceeds the server's transcription download size limit"
-                        )
-                    fh.write(chunk)
-                    if on_progress is not None and total:
-                        on_progress(min(written / total, 1.0))
-        except AudioError:
-            raise
-        except Exception as exc:  # noqa: BLE001 - surface as a clean AudioError
-            raise AudioError(f"Failed while downloading source media: {exc}") from exc
-        finally:
-            await resp.aclose()
+    written = 0
+    try:
+        with dest.open("wb") as fh:
+            async for chunk in resp.aiter_content():
+                written += len(chunk)
+                if written > max_bytes:
+                    raise AudioError(
+                        "Source media exceeds the server's transcription download size limit"
+                    )
+                await asyncio.to_thread(fh.write, chunk)
+                if on_progress is not None and total:
+                    on_progress(min(written / total, 1.0))
+    except AudioError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - surface as a clean AudioError
+        raise AudioError(f"Failed while downloading source media: {exc}") from exc
+    finally:
+        await resp.aclose()
 
     return dest
 
@@ -627,6 +687,14 @@ def _ffmpeg_proxy_args(settings: Settings) -> list[str]:
     return []
 
 
+_ALLOWED_FFMPEG_HEADER_NAMES = frozenset({"referer", "user-agent", "cookie", "range"})
+
+
+def _safe_header_value(value: str) -> str:
+    """Strip CR/LF/NUL so client-controlled values cannot smuggle extra headers."""
+    return value.replace("\r", "").replace("\n", "").replace("\0", "")[:4096]
+
+
 def _url_input_args(
     url: str, headers: dict[str, str] | None, settings: Settings, *, hls: bool
 ) -> list[str]:
@@ -635,8 +703,14 @@ def _url_input_args(
     per-read network timeout."""
     args: list[str] = [*_ffmpeg_proxy_args(settings)]
     if headers:
-        header_lines = "".join(f"{k}: {v}\r\n" for k, v in headers.items())
-        args += ["-headers", header_lines]
+        safe_pairs = [
+            (k, _safe_header_value(v))
+            for k, v in headers.items()
+            if k.lower() in _ALLOWED_FFMPEG_HEADER_NAMES and v
+        ]
+        if safe_pairs:
+            header_lines = "".join(f"{k}: {v}\r\n" for k, v in safe_pairs)
+            args += ["-headers", header_lines]
     if hls:
         args += ["-allowed_extensions", "ALL"]
     args += ["-rw_timeout", _FFMPEG_RW_TIMEOUT]
@@ -713,6 +787,7 @@ async def acquire_audio(
     *,
     duration_hint: float | None = None,
     on_progress: ProgressFn | None = None,
+    resolve_cookie_token: Callable[[str], str] | None = None,
 ) -> Path:
     """Resolve the audio track for the transcription job into ONE file (the
     single-pass fallback used for HLS / unknown-duration sources), reporting
@@ -732,7 +807,15 @@ async def acquire_audio(
         cap_bytes=settings.transcribe_max_upload_bytes,
     )
     fmt = pick_audio_format(formats)
-    real_url, extra_headers = _unwrap_proxied(fmt.url or "")
+    real_url, extra_headers = _unwrap_proxied(
+        fmt.url or "", resolve_cookie_token=resolve_cookie_token
+    )
+    from .ssrf import assert_public_http_url
+
+    try:
+        assert_public_http_url(real_url)
+    except ValueError as exc:
+        raise AudioError(str(exc)) from exc
     headers = {**(fmt.http_headers or {}), **extra_headers}
 
     if fmt.protocol == "m3u8_native":

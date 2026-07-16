@@ -66,6 +66,72 @@
 		}
 	}
 
+	const bulkDownloading = new SvelteMap<GroupedGallery, boolean>();
+
+	/** Sequential bulk download (no zip dep) — fetches each proxied image and
+	 *  triggers a save. Concurrency 1 keeps browsers from choking. */
+	async function downloadAll(gallery: GroupedGallery) {
+		if (bulkDownloading.get(gallery) || !gallery.images.length) {
+			return;
+		}
+		bulkDownloading.set(gallery, true);
+		const base = safeFilename(gallery.title) || sourceHost(gallery.webpage_url) || 'image';
+		let done = 0;
+		let failed = 0;
+		const total = gallery.images.length;
+		const toastId = toast.loading(t('gallery.downloadingAll', { done: 0, total }));
+
+		try {
+			for (let i = 0; i < gallery.images.length; i++) {
+				const image = gallery.images[i];
+				try {
+					const res = await fetch(image.url);
+					if (!res.ok) {
+						throw new Error(String(res.status));
+					}
+					const blob = await res.blob();
+					const objectUrl = URL.createObjectURL(blob);
+					const link = document.createElement('a');
+					link.href = objectUrl;
+					link.download = `${base}-${i + 1}.${image.ext || 'jpg'}`;
+					link.click();
+					URL.revokeObjectURL(objectUrl);
+					done += 1;
+				} catch {
+					failed += 1;
+				}
+				toast.loading(t('gallery.downloadingAll', { done: done + failed, total }), {
+					id: toastId
+				});
+				// Brief pause so the browser doesn't coalesce download prompts.
+				await new Promise((r) => setTimeout(r, 120));
+			}
+			if (failed === 0) {
+				toast.success(t('gallery.downloadAllDone', { n: done }), { id: toastId });
+			} else {
+				toast.warning(t('gallery.downloadAllPartial', { done, total }), { id: toastId });
+			}
+		} finally {
+			bulkDownloading.set(gallery, false);
+		}
+	}
+
+	function warningLabel(code: string, message: string): string {
+		if (code === 'login') {
+			return t('gallery.warning.login');
+		}
+		if (code === 'rate_limit') {
+			return t('gallery.warning.rateLimit');
+		}
+		if (code === 'quality') {
+			return t('gallery.warning.quality');
+		}
+		if (code === 'truncated') {
+			return t('gallery.warning.truncated');
+		}
+		return t('gallery.warning.generic', { message });
+	}
+
 	// Keyed by the gallery object itself -- same pattern VideoExtractList uses
 	// for its per-group refresh spinner.
 	const refreshTracker = new GroupRefreshTracker<GroupedGallery>();
@@ -204,12 +270,30 @@
 					onRemove={() => removeGallery(gallery)}
 				>
 					<div class="px-3.5 pt-1 sm:px-0">
+						<div class="mb-2 flex flex-wrap items-center gap-2">
+							<Button
+								variant="outline"
+								size="sm"
+								class="h-7 gap-1.5 rounded-full text-xs"
+								disabled={bulkDownloading.get(gallery)}
+								onclick={() => downloadAll(gallery)}
+							>
+								<Download class="h-3 w-3" />
+								{t('gallery.downloadAll')}
+							</Button>
+						</div>
 						{#if gallery.skippedCount}
 							<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
 								<TriangleAlert class="h-3 w-3 shrink-0" />
 								{t('gallery.someSkipped', { n: gallery.skippedCount })}
 							</p>
 						{/if}
+						{#each gallery.warnings ?? [] as warning (warning.code + warning.message)}
+							<p class="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs">
+								<TriangleAlert class="h-3 w-3 shrink-0" />
+								{warningLabel(warning.code, warning.message)}
+							</p>
+						{/each}
 						<!-- Responsive auto-fit grid: the column count adapts to how
 						     many images there are (1 image fills the row, 2 share it
 						     evenly, ...) instead of a fixed column count leaving empty

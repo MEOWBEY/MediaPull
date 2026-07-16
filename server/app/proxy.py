@@ -32,6 +32,7 @@ from fastapi.responses import JSONResponse, Response, StreamingResponse
 
 from .config import Settings
 from .net_common import impersonate_kwarg
+from .ssrf import is_blocked_ip
 
 logger = logging.getLogger("pullbox.proxy")
 
@@ -51,6 +52,11 @@ _IS_PLAYLIST = re.compile(r"\.m3u8(\?|$)", re.IGNORECASE)
 _UNSAFE_FILENAME = re.compile(r'[\r\n"]+')
 
 
+def _safe_header_value(value: str) -> str:
+    """Strip CR/LF/NUL so query/token-derived values cannot smuggle headers."""
+    return value.replace("\r", "").replace("\n", "").replace("\0", "")[:4096]
+
+
 def _download_filename(q) -> str:
     """Sanitized filename for the forced-download ``Content-Disposition``, from
     the ``?filename=`` query param (falls back to a generic name)."""
@@ -59,32 +65,8 @@ def _download_filename(q) -> str:
     return cleaned or "video"
 
 
-# ---- private-IP guards -------------------------------------------------
-
-
-def _is_blocked_ip(host: str) -> bool:
-    """True when *host* is an IP literal in a range the proxy must never reach.
-
-    Covers loopback, RFC-1918 private, link-local, unique-local (fc00::/7),
-    unspecified (0.0.0.0/::), reserved, multicast, and IPv4-mapped IPv6
-    (``::ffff:10.0.0.1``). Returns False when *host* is not an IP literal (a
-    DNS name) — those are resolved and re-checked in ``_resolve_and_check``.
-    """
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    # Unwrap IPv4-mapped IPv6 so ::ffff:127.0.0.1 is judged as 127.0.0.1.
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
-        ip = ip.ipv4_mapped
-    return (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_unspecified
-        or ip.is_multicast
-    )
+# Back-compat alias for tests that import the old private name.
+_is_blocked_ip = is_blocked_ip
 
 
 class ProxyService:
@@ -111,6 +93,16 @@ class ProxyService:
         # (see the note in main.py's transcribe section).
         self._cookie_tokens: dict[str, tuple[str, float]] = {}
         self._token_ttl = 3600.0
+        # Short-lived cache of the *DNS* verdict (hostname -> (allowed, expiry)).
+        # An HLS stream fans out into one proxied request per segment, all on the
+        # same CDN host, so without this every segment re-runs a blocking
+        # getaddrinfo for a name the OS resolver already has cached. Only the
+        # resolve-and-judge step is cached; the allow-list / IP-literal guard
+        # (_check_host) still runs live on every call. The TTL is deliberately
+        # short so a rebind can't be exploited for longer than one window.
+        self._dns_verdict_cache: dict[str, tuple[bool, float]] = {}
+        self._dns_ttl = 30.0
+        self._dns_cache_max = 512
 
     async def aclose(self) -> None:
         await self._session.close()
@@ -120,9 +112,20 @@ class ProxyService:
     def create_cookie_token(self, cookies: str) -> str:
         """Store *cookies* under a fresh opaque token and return the token."""
         self._sweep_tokens()
+        max_tokens = self._settings.proxy_cookie_token_max
+        if len(self._cookie_tokens) >= max_tokens:
+            # Evict soonest-expiring entries until there is room.
+            by_exp = sorted(self._cookie_tokens.items(), key=lambda kv: kv[1][1])
+            overflow = len(self._cookie_tokens) - max_tokens + 1
+            for tok, _ in by_exp[:overflow]:
+                self._cookie_tokens.pop(tok, None)
         token = uuid.uuid4().hex
         self._cookie_tokens[token] = (cookies, time.monotonic() + self._token_ttl)
         return token
+
+    def resolve_cookie_token(self, token: str) -> str:
+        """Public resolve for transcription unwrap and other server-side paths."""
+        return self._resolve_cookie_token(token)
 
     def _resolve_cookie_token(self, token: str) -> str:
         entry = self._cookie_tokens.get(token)
@@ -164,7 +167,11 @@ class ProxyService:
     async def _resolve_and_check(self, url: str) -> bool:
         """Re-run ``_check_host``, then resolve the hostname and reject if ANY
         resolved address is a blocked (internal) IP — kills DNS rebinding. The
-        DNS lookup is blocking, so it runs in the default executor."""
+        DNS lookup is blocking, so it runs in the default executor.
+
+        The allow-list / IP-literal guard (``_check_host``) is evaluated live on
+        every call; only the *resolution* verdict is cached (short TTL), so the
+        repeated per-HLS-segment lookups of one CDN host collapse to one."""
         if not self._check_host(url):
             return False
         hostname = (urlparse(url).hostname or "").lower()
@@ -174,13 +181,36 @@ class ProxyService:
             return True
         except ValueError:
             pass
+
+        now = time.monotonic()
+        cached = self._dns_verdict_cache.get(hostname)
+        if cached is not None and cached[1] > now:
+            return cached[0]
+
         loop = asyncio.get_running_loop()
         try:
             infos = await loop.run_in_executor(None, socket.getaddrinfo, hostname, None)
+            verdict = not any(_is_blocked_ip(str(info[4][0])) for info in infos)
         except socket.gaierror:
-            # Can't resolve -> reject rather than silently allow.
+            # Can't resolve -> reject rather than silently allow. Not cached: a
+            # transient resolver failure shouldn't pin a host to "blocked".
             return False
-        return not any(_is_blocked_ip(str(info[4][0])) for info in infos)
+        self._remember_dns_verdict(hostname, verdict, now)
+        return verdict
+
+    def _remember_dns_verdict(self, hostname: str, verdict: bool, now: float) -> None:
+        """Store a resolution verdict with a short expiry, evicting the oldest
+        entry when the cache is full (simple FIFO — entries are short-lived and
+        the working set is tiny, so LRU bookkeeping isn't worth it)."""
+        if len(self._dns_verdict_cache) >= self._dns_cache_max:
+            # Drop everything already expired; if none are, drop the oldest.
+            expired = [h for h, (_, exp) in self._dns_verdict_cache.items() if exp <= now]
+            for h in expired:
+                self._dns_verdict_cache.pop(h, None)
+            if len(self._dns_verdict_cache) >= self._dns_cache_max:
+                oldest = min(self._dns_verdict_cache, key=lambda h: self._dns_verdict_cache[h][1])
+                self._dns_verdict_cache.pop(oldest, None)
+        self._dns_verdict_cache[hostname] = (verdict, now + self._dns_ttl)
 
     async def _get_checked(self, url: str, *, stream: bool, headers: dict[str, str]):
         """Like ``session.get(..., allow_redirects=True)`` but follows redirects
@@ -221,6 +251,16 @@ class ProxyService:
         if not source or not protocol:
             return JSONResponse({"error": "Missing url or protocol"}, status_code=400)
 
+        try:
+            source_scheme = (urlparse(source).scheme or "").lower()
+        except ValueError:
+            source_scheme = ""
+        if source_scheme not in ("http", "https"):
+            return JSONResponse(
+                {"error": "Only http and https URLs can be proxied"},
+                status_code=400,
+            )
+
         if not self._check_host(source):
             return JSONResponse(
                 {"error": "Proxying to this host is not allowed"},
@@ -237,14 +277,16 @@ class ProxyService:
         # When impersonating, let curl_cffi set the User-Agent that matches the
         # TLS fingerprint — a UA that disagrees re-triggers the 403 we're dodging.
         if not self._impersonate_kw:
-            upstream_headers["User-Agent"] = q.get("userAgent") or self._default_ua
+            upstream_headers["User-Agent"] = _safe_header_value(
+                q.get("userAgent") or self._default_ua
+            )
         if referer:
-            upstream_headers["Referer"] = referer
+            upstream_headers["Referer"] = _safe_header_value(referer)
         if cookies:
-            upstream_headers["Cookie"] = cookies
+            upstream_headers["Cookie"] = _safe_header_value(cookies)
         range_header = request.headers.get("range")
         if range_header:
-            upstream_headers["Range"] = range_header
+            upstream_headers["Range"] = _safe_header_value(range_header)
 
         if protocol == "m3u8_native":
             return await self._handle_playlist(request, source, upstream_headers, q)
@@ -332,13 +374,33 @@ class ProxyService:
             await upstream.aclose()
             return JSONResponse({"error": f"Upstream error: {status}"}, status_code=status)
 
+        # curl_cffi transparently decompresses the body, so `aiter_content()`
+        # below yields DECODED bytes. That makes the upstream Content-Encoding
+        # and (compressed) Content-Length lies about what we actually stream --
+        # forwarding them made the browser try to gunzip already-plain text
+        # (YouTube/Vimeo gzip their timedtext captions), which failed with a
+        # decode error and showed an empty track. So never forward the upstream
+        # transfer encoding: drop it here and re-assert identity below. When the
+        # upstream was compressed, its Content-Length is the compressed size and
+        # is now wrong too, so drop that as well and let the response stream
+        # unsized (chunked). Uncompressed responses keep their real length so
+        # Range/seek stays intact for video.
+        upstream_encoded = (
+            upstream.headers.get("content-encoding", "").lower() not in ("", "identity")
+        )
+        drop = {"content-encoding"}
+        if upstream_encoded:
+            drop.add("content-length")
         out_headers = {
-            k: v for k, v in upstream.headers.items() if k.lower() in _FORWARD_RESP_HEADERS
+            k: v
+            for k, v in upstream.headers.items()
+            if k.lower() in _FORWARD_RESP_HEADERS and k.lower() not in drop
         }
         out_headers["Access-Control-Allow-Origin"] = "*"
         out_headers.setdefault("Accept-Ranges", "bytes")
-        # Keep GZip middleware off media so Content-Length/Range stay intact.
-        out_headers.setdefault("Content-Encoding", "identity")
+        # Body is always identity by the time it reaches the browser (see above);
+        # this also keeps the app's GZip middleware off media.
+        out_headers["Content-Encoding"] = "identity"
         if download_name:
             ascii_name = download_name.encode("ascii", "ignore").decode() or "video"
             out_headers["Content-Disposition"] = (

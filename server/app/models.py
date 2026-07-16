@@ -26,7 +26,7 @@ class ExtractRequest(BaseModel):
 
 
 class VideoFormat(BaseModel):
-    url: str | None = None
+    url: str | None = Field(default=None, max_length=8192)
     ext: str = "mp4"
     tbr: float | None = None
     format_id: str = "unknown"
@@ -138,6 +138,13 @@ class GalleryImage(BaseModel):
     http_headers: dict[str, str] | None = None
 
 
+class GalleryWarning(BaseModel):
+    """Soft notice about a gallery extract (login, quality, truncation, …)."""
+
+    code: str
+    message: str
+
+
 class GalleryInfo(BaseModel):
     title: str | None = None
     webpage_url: str | None = None
@@ -148,6 +155,7 @@ class GalleryInfo(BaseModel):
     # partially-failed gallery (common on Instagram/X without fresh cookies)
     # is visible to the user rather than looking like "extraction is flaky".
     skipped: int = 0
+    warnings: list[GalleryWarning] = Field(default_factory=list)
 
 
 class ClientGalleryImage(BaseModel):
@@ -161,6 +169,13 @@ class ClientGalleryImage(BaseModel):
     http_headers: dict[str, str] | None = Field(default=None, alias="httpHeaders")
 
 
+class ClientGalleryWarning(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    code: str
+    message: str
+
+
 class ClientGallery(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -168,6 +183,7 @@ class ClientGallery(BaseModel):
     webpage_url: str | None = Field(default=None, alias="webpageUrl")
     images: list[ClientGalleryImage] = Field(default_factory=list)
     skipped: int = Field(default=0, alias="skippedCount")
+    warnings: list[ClientGalleryWarning] = Field(default_factory=list)
 
 
 class GalleryResponse(BaseModel):
@@ -212,8 +228,8 @@ class TranscribeRequest(BaseModel):
     has a usable caption track (``VideoInfo.subtitle_tracks``), the client
     should use that directly instead of calling this at all."""
 
-    webpage_url: str
-    formats: list[VideoFormat]
+    webpage_url: str = Field(max_length=4096)
+    formats: list[VideoFormat] = Field(min_length=1, max_length=40)
     cookies: str | None = Field(default=None, max_length=262_144)
     # Video duration as the player knows it -- lets the server turn ffmpeg's
     # out_time into a real acquisition percentage even for sources it can't
@@ -233,7 +249,7 @@ class TranscribeResult(BaseModel):
     language: str
     vtt_url: str = Field(alias="vttUrl")
     srt_url: str = Field(alias="srtUrl")
-    waveform: list[float] | None = None
+    dialogue_map: list[float] | None = Field(default=None, alias="dialogueMap")
 
 
 class TranscribeStatus(BaseModel):
@@ -245,7 +261,7 @@ class TranscribeStatus(BaseModel):
     step_label: str = Field(alias="stepLabel")
     # Fine-grained sub-stage code the client maps to its own localized text
     # (planning / downloading_source / extracting / compressing / transcribing /
-    # building_subtitles / waveform). More specific than `status`, which stays
+    # building_subtitles / dialogue_map). More specific than `status`, which stays
     # coarse for back-compat. None until the pipeline sets one.
     detail: str | None = Field(default=None, alias="detail")
     # Transcription chunk counters (0 until that stage) -- lets the client

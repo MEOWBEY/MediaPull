@@ -11,12 +11,24 @@ from .models import (
     ClientFormat,
     ClientGallery,
     ClientGalleryImage,
+    ClientGalleryWarning,
     ClientMetadata,
     ClientSubtitleTrack,
     ClientVideo,
     GalleryInfo,
     VideoInfo,
 )
+
+
+def _public_headers(headers: dict[str, str] | None) -> dict[str, str]:
+    """Drop Cookie from outbound headers so extract JSON never leaks sessions.
+
+    Auth cookies stay server-side (or in the user's Settings store) and reach
+    the media path only via opaque ``ctok`` tokens, never in the wire response.
+    """
+    if not headers:
+        return {}
+    return {k: v for k, v in headers.items() if k.lower() != "cookie"}
 
 
 def to_client_video(info: VideoInfo) -> ClientVideo:
@@ -40,7 +52,7 @@ def to_client_video(info: VideoInfo) -> ClientVideo:
                 tbr=fmt.tbr,
                 protocol=fmt.protocol,
                 source_video_url=fmt.url,
-                http_headers=fmt.http_headers,
+                http_headers=_public_headers(fmt.http_headers),
                 video_only=fmt.video_only,
             )
             for fmt in info.formats
@@ -69,9 +81,12 @@ def to_client_gallery(info: GalleryInfo) -> ClientGallery:
                 height=img.height,
                 filesize=img.filesize,
                 ext=img.ext,
-                http_headers=img.http_headers,
+                http_headers=_public_headers(img.http_headers),
             )
             for img in info.images
         ],
         skipped=info.skipped,
+        warnings=[
+            ClientGalleryWarning(code=w.code, message=w.message) for w in info.warnings
+        ],
     )
