@@ -14,6 +14,12 @@ through: extract a video, extract a gallery, play a video, generate subtitles,
 switch qualities, try auto vs manual mode. Pay extra attention to the areas
 touched most recently:
 
+- **UI/UX pass** (plans 019–024): on a real phone, verify the extract bar shows
+  Auto|Video|Gallery, the video card leads with Download/Copy and collapses the
+  quality table, the error banner offers Retry / Add cookies / Try-as-other,
+  Settings opens as four tabs (General / Library / Playback / Sign-in) with a
+  two-step confirm on "clear library", and the jump-to-input button appears on
+  mobile.
 - **Cookie'd playback** (plan 007): with cookies set for a site, play/download
   an authenticated source — confirm it still streams, and that the copied
   link / QR code contains `ctok=` (a token) and **no** raw `cookies=`.
@@ -50,9 +56,12 @@ cookies. `gallery-dl` logs a warning internally but it never reaches the user.
 Workaround: add your cookies in Settings → Cookies.
 
 **Generic error messages on gallery extraction failure**
-**Status:** Open | **Severity:** Medium
+**Status:** Open (partly mitigated) | **Severity:** Medium
 Gallery-dl's error messages differ from yt-dlp's. Most gallery failures show
 "extraction failed" instead of a specific reason (rate-limited, blocked, etc.).
+The client-side error banner (plan 023) now offers Retry / Add-cookies /
+Try-as-video recovery actions so a vague message is at least actionable, but the
+underlying server message is still generic.
 
 ---
 

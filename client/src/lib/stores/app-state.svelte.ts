@@ -19,6 +19,14 @@ import { CookieStore } from './cookies.svelte';
 import { LibraryStore } from './library.svelte';
 import { PreferencesStore } from './preferences.svelte';
 
+/** A recoverable extract failure: the URL that failed, the message shown, and
+ *  the content-type mode that was attempted. */
+export type ExtractFailure = {
+	url: string;
+	message: string;
+	mode: 'auto' | 'video' | 'gallery';
+};
+
 export type {
 	GroupedGallery,
 	GroupedVideo,
@@ -37,6 +45,11 @@ class AppStore {
 	isVideoExtractRunning = $state(false);
 
 	videoExtractError = $state<string | null>(null);
+
+	/** The most recent non-silent extract failure, kept so the error banner can
+	 *  offer Retry / Open cookies / Try the other type. `mode` is what was
+	 *  attempted ('auto' tries both). Cleared on any new run and on success. */
+	lastFailure = $state<ExtractFailure | null>(null);
 
 	get preferences(): Preferences {
 		return this.prefs.current;
@@ -90,6 +103,7 @@ class AppStore {
 
 	clearErrors(): void {
 		this.videoExtractError = null;
+		this.lastFailure = null;
 	}
 
 	reset(): void {

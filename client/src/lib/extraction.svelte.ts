@@ -151,7 +151,7 @@ export class ExtractionController {
 	 */
 	async extractLinks(
 		rawUrl: string,
-		opts: { silent?: boolean; forceRefresh?: boolean; mode?: 'video' | 'gallery' } = {}
+		opts: { silent?: boolean; forceRefresh?: boolean; mode?: 'auto' | 'video' | 'gallery' } = {}
 	): Promise<boolean> {
 		const mode = opts.mode ?? appStore.preferences.contentTypeMode;
 
@@ -242,6 +242,7 @@ export class ExtractionController {
 
 		if (!opts.silent) {
 			appStore.videoExtractError = message;
+			appStore.lastFailure = { url: rawUrl.trim(), message, mode: 'auto' };
 			toast.error(message);
 		}
 
@@ -294,6 +295,7 @@ export class ExtractionController {
 			silent: opts.silent,
 			silentError: opts.silentError,
 			onError: opts.onError,
+			failureContext: { url, mode: 'video' },
 			task: async (signal) => {
 				const video = await post<IncomingVideo>(
 					'/extract-videos',
@@ -372,6 +374,7 @@ export class ExtractionController {
 			silent: opts.silent,
 			silentError: opts.silentError,
 			onError: opts.onError,
+			failureContext: { url, mode: 'gallery' },
 			task: async (signal) => {
 				const gallery = await postGallery<IncomingGallery>(
 					'/extract-gallery',
@@ -436,6 +439,33 @@ export class ExtractionController {
 		return this.extractLinks(rawUrl, { mode: otherMode, forceRefresh: true });
 	}
 
+	/** Re-run the last failed extract exactly as it was tried (same URL + mode).
+	 *  Used by the error banner's Retry button. */
+	async retryLastFailure(): Promise<void> {
+		const failure = appStore.lastFailure;
+
+		if (!failure) {
+			return;
+		}
+
+		appStore.clearErrors();
+		await this.extractLinks(failure.url, { mode: failure.mode, forceRefresh: true });
+	}
+
+	/** Force the opposite content type for the last failure. From an 'auto'
+	 *  failure (which already tried both), `preferType` says which single type to
+	 *  force next. Used by the banner's "Try as gallery/video" action. */
+	async retryLastAsType(preferType: 'video' | 'gallery'): Promise<void> {
+		const failure = appStore.lastFailure;
+
+		if (!failure) {
+			return;
+		}
+
+		appStore.clearErrors();
+		await this.extractLinks(failure.url, { mode: preferType, forceRefresh: true });
+	}
+
 	cancel(): void {
 		this.batchAborted = true;
 		this.stop();
@@ -446,6 +476,9 @@ export class ExtractionController {
 	private async run<T>(config: {
 		silent?: boolean;
 		silentError?: boolean;
+		/** URL + mode of this attempt, so a non-silent failure can be stored as a
+		 *  recoverable `lastFailure` (Retry / Open cookies / Try other type). */
+		failureContext?: { url: string; mode: 'video' | 'gallery' };
 		task: (signal: AbortSignal) => Promise<T>;
 		onSuccess: (result: T) => void;
 		/** Always invoked with the failure message, even when `silentError`/
@@ -494,6 +527,13 @@ export class ExtractionController {
 			// something worth alarming the user about.
 			if (!config.silent && !config.silentError) {
 				appStore.videoExtractError = message;
+				if (config.failureContext) {
+					appStore.lastFailure = {
+						url: config.failureContext.url,
+						message,
+						mode: config.failureContext.mode
+					};
+				}
 				toast.error(message);
 			}
 

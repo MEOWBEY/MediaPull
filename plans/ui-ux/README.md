@@ -81,11 +81,11 @@ This is an `/improve`-style **UI/UX pass**: findings with evidence, then impleme
 
 | Plan | Status |
 |------|--------|
-| [019-prefs-structure-fix](../019-prefs-structure-fix.md) | TODO |
-| [020-extract-bar-clarity](../020-extract-bar-clarity.md) | TODO |
-| [021-settings-ia-redesign](../021-settings-ia-redesign.md) | TODO |
-| [022-workspace-results-chrome](../022-workspace-results-chrome.md) | TODO |
-| [023-error-recovery-ux](../023-error-recovery-ux.md) | TODO |
-| [024-result-card-mobile](../024-result-card-mobile.md) | TODO |
+| [019-prefs-structure-fix](../019-prefs-structure-fix.md) | DONE (headers; compact/info deferred to 021) |
+| [020-extract-bar-clarity](../020-extract-bar-clarity.md) | DONE |
+| [021-settings-ia-redesign](../021-settings-ia-redesign.md) | DONE |
+| [022-workspace-results-chrome](../022-workspace-results-chrome.md) | DONE (headers, mobile jump, collapse; sticky bar deferred) |
+| [023-error-recovery-ux](../023-error-recovery-ux.md) | DONE |
+| [024-result-card-mobile](../024-result-card-mobile.md) | DONE |
 
 Update status here when executing.

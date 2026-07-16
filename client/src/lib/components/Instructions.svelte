@@ -9,7 +9,10 @@
 	import { i18n } from '$lib/i18n/index.svelte';
 	import type { Preferences } from '$lib/types';
 
-	let { preferences }: { preferences: Pick<Preferences, 'enableCompact'> } = $props();
+	let {
+		preferences,
+		nested = false
+	}: { preferences: Pick<Preferences, 'enableCompact'>; nested?: boolean } = $props();
 
 	const { t } = i18n;
 
@@ -27,13 +30,15 @@
 	]);
 </script>
 
-<section class="mt-12 {preferences.enableCompact ? 'space-y-4' : 'space-y-6'}">
-	<div class="text-center">
-		<h2 class="text-xl font-bold tracking-tight">{t('how.heading')}</h2>
-		<p class="text-muted-foreground mt-1 text-sm">
-			{t('how.subtitle')}
-		</p>
-	</div>
+<section class={nested ? (preferences.enableCompact ? 'space-y-4' : 'space-y-6') : `mt-12 ${preferences.enableCompact ? 'space-y-4' : 'space-y-6'}`}>
+	{#if !nested}
+		<div class="text-center">
+			<h2 class="text-xl font-bold tracking-tight">{t('how.heading')}</h2>
+			<p class="text-muted-foreground mt-1 text-sm">
+				{t('how.subtitle')}
+			</p>
+		</div>
+	{/if}
 
 	<ol class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
 		{#each steps as step, i (i)}

@@ -5,7 +5,7 @@
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import Search from '@lucide/svelte/icons/search';
 	import Settings from '@lucide/svelte/icons/settings';
-	// import Sparkles from '@lucide/svelte/icons/sparkles';
+	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import X from '@lucide/svelte/icons/x';
 
@@ -32,16 +32,20 @@
 	let isOperationRunning = $derived(isVideoExtractRunning || isBatchRunning);
 
 	// 'auto' (the default) tries video first and silently falls back to
-	// gallery -- see ExtractionController.extractAuto. Forcing 'video'/
-	// 'gallery' here only happens after the user explicitly picks manual mode
-	// in Preferences; this row then lets them swap between the two without
-	// leaving the input.
+	// gallery -- see ExtractionController.extractAuto. This row is always
+	// visible so first-run users can see (and change) whether we'll pull a
+	// video, a gallery, or auto-detect -- without hunting through Preferences.
 	let contentTypeMode = $derived(appStore.preferences.contentTypeMode);
-	let isManualMode = $derived(contentTypeMode !== 'auto');
 
-	function setContentTypeMode(mode: 'video' | 'gallery') {
+	function setContentTypeMode(mode: 'auto' | 'video' | 'gallery') {
 		appStore.updatePreferences({ contentTypeMode: mode });
 	}
+
+	const contentTypeOptions = [
+		{ mode: 'auto', icon: Sparkles, labelKey: 'prefs.contentType.auto' },
+		{ mode: 'video', icon: VideoIcon, labelKey: 'prefs.contentType.video' },
+		{ mode: 'gallery', icon: ImageIcon, labelKey: 'prefs.contentType.gallery' }
+	] as const;
 
 	// How many URLs the field currently holds (pasted multi-line collapses to
 	// spaces in a single-line input, so whitespace-splitting catches a batch).
@@ -119,40 +123,22 @@
 
 		<!-- Action row -->
 		<div class="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
-			{#if isManualMode}
-				<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+				{#each contentTypeOptions as option (option.mode)}
 					<Button
-						variant={contentTypeMode === 'video' ? 'default' : 'ghost'}
+						variant={contentTypeMode === option.mode ? 'default' : 'ghost'}
 						size="sm"
 						disabled={isOperationRunning}
-						onclick={() => setContentTypeMode('video')}
+						onclick={() => setContentTypeMode(option.mode)}
 						class="gap-1 rounded-full px-2.5 py-1 text-xs"
-						title={t('prefs.contentType.video')}
+						aria-pressed={contentTypeMode === option.mode}
+						title={t(option.labelKey)}
 					>
-						<VideoIcon class="h-3 w-3" />
-						<span>{t('prefs.contentType.video')}</span>
+						<option.icon class="h-3 w-3" />
+						<span>{t(option.labelKey)}</span>
 					</Button>
-					<Button
-						variant={contentTypeMode === 'gallery' ? 'default' : 'ghost'}
-						size="sm"
-						disabled={isOperationRunning}
-						onclick={() => setContentTypeMode('gallery')}
-						class="gap-1 rounded-full px-2.5 py-1 text-xs"
-						title={t('prefs.contentType.gallery')}
-					>
-						<ImageIcon class="h-3 w-3" />
-						<span>{t('prefs.contentType.gallery')}</span>
-					</Button>
-				</div>
-			{:else}
-				<!-- <span
-					class="bg-muted/50 text-muted-foreground flex shrink-0 items-center gap-1 rounded-full px-3 py-1.5 text-xs"
-					title={t('prefs.contentType.autoHint')}
-				>
-					<Sparkles class="h-3 w-3" />
-					{t('prefs.contentType.auto')}
-				</span> -->
-			{/if}
+				{/each}
+			</div>
 
 			<Button
 				onclick={() => runVideoExtractFromServer(inputUrl)}

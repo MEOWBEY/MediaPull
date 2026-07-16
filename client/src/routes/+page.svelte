@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ArrowUp from '@lucide/svelte/icons/arrow-up';
+	import HelpCircle from '@lucide/svelte/icons/circle-help';
 	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import { onMount } from 'svelte';
 
@@ -108,9 +109,9 @@
 			<span class="ds-gradient-text">{t('hero.titleHighlight')}</span><br class="hidden sm:block" />
 			{t('hero.titleTrail')}
 		</h1>
-		<!-- <p class="text-muted-foreground mx-auto mt-4 max-w-xl text-sm text-pretty sm:text-lg">
+		<p class="text-muted-foreground mx-auto mt-4 max-w-xl text-sm text-pretty sm:text-lg">
 			{t('hero.subtitle')}
-		</p> -->
+		</p>
 
 		<div class="mt-8">
 			<InputUrl
@@ -129,7 +130,7 @@
 	<!-- Tighter side padding on phones so the video previews get more width. -->
 	<div class="container mx-auto max-w-6xl px-2 pb-12 sm:px-4">
 		{#if videoExtractError}
-			<ErrorAlert {videoExtractError} />
+			<ErrorAlert {videoExtractError} onOpenCookies={() => (isPreferencesDialogOpen = true)} />
 		{/if}
 
 		<VideoExtractList {preferences} />
@@ -156,7 +157,23 @@
 			</div>
 		{/if}
 
-		<Instructions {preferences} />
+		{#if hasResults}
+			<!-- After the first success, the how-it-works guide collapses into a
+			     disclosure so it stops dominating the workspace but stays reachable. -->
+			<details class="border-border/60 bg-card/40 mt-12 rounded-2xl border px-4">
+				<summary
+					class="text-muted-foreground hover:text-foreground flex cursor-pointer list-none items-center justify-center gap-1.5 py-3 text-sm font-medium"
+				>
+					<HelpCircle class="h-4 w-4" />
+					{t('how.heading')}
+				</summary>
+				<div class="pb-4">
+					<Instructions {preferences} nested />
+				</div>
+			</details>
+		{:else}
+			<Instructions {preferences} />
+		{/if}
 	</div>
 </div>
 
@@ -169,7 +186,7 @@
 		onclick={() => focusInput()}
 		title={t('input.jumpToInput')}
 		aria-label={t('input.jumpToInput')}
-		class="ds-glass shadow-float text-primary hover:bg-primary hover:text-primary-foreground fixed inset-e-5 bottom-5 z-40 hidden h-12 w-12 items-center justify-center rounded-full transition-colors sm:flex"
+		class="ds-glass shadow-float text-primary hover:bg-primary hover:text-primary-foreground fixed inset-e-5 bottom-5 z-40 flex h-12 w-12 items-center justify-center rounded-full transition-colors"
 	>
 		<ArrowUp class="h-5 w-5" />
 	</button>

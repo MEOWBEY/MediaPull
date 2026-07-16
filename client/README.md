@@ -29,8 +29,9 @@ Serve `build/` with any static file server (nginx, `python -m http.server`,
 |----------|---------|---------|
 | `VITE_API_BASE_URL` | *(empty)* | Backend origin. Empty in dev → relative URLs + Vite proxy. Set for split/static deploys (e.g. `https://api.example.com`). |
 
-All other settings (cookies, subtitles toggle, quality preference) live in
-browser localStorage via the Settings panel.
+All other settings (sign-in cookies, playback, layout/sort, content-type,
+theme, language) live in browser localStorage and are organized into tabs in
+the Settings panel: **General / Library / Playback / Sign-in**.
 
 ## Scripts
 

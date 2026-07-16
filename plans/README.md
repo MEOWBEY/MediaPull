@@ -38,7 +38,20 @@
 
 ## UI / UX redesign (client)
 
-See **[ui-ux/README.md](ui-ux/README.md)** — audit + plans **019–024** (settings structure, extract bar, settings IA, workspace chrome, error recovery, mobile cards).
+See **[ui-ux/README.md](ui-ux/README.md)** — audit + plans **019–024**, all
+**DONE** (implemented on `improve/all`, 2026-07-16):
+
+| # | Plan | Status |
+|---|------|--------|
+| 019 | Preferences section headers | DONE |
+| 020 | Extract bar: Auto/Video/Gallery always visible + hero copy | DONE |
+| 021 | Settings IA — tabs (General / Library / Playback / Sign-in) | DONE |
+| 022 | Workspace chrome: mobile jump button + collapse how-it-works | DONE |
+| 023 | Error recovery: Retry / Add cookies / Try-as-other-type | DONE |
+| 024 | Mobile-first result card: primary Download/Copy + collapsible qualities | DONE |
+
+All six passed `npm run check` + `lint`; still pending a manual click-through
+(see [KNOWN_ISSUES.md](../KNOWN_ISSUES.md)).
 
 ## Verify
 
