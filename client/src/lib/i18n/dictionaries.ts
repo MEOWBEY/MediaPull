@@ -336,8 +336,8 @@ export const fa: Record<MessageKey, string> = {
 	'nav.madeBy': 'ساخته‌شده توسط',
 	'nav.language': 'زبان',
 
-	'hero.titleLead': 'لینک بده،',
-	'hero.titleHighlight': 'رسانه بگیر.',
+	'hero.titleLead': 'استخراج و دانلود',
+	'hero.titleHighlight': 'رسانه از هر لینکی',
 	'hero.titleTrail': '',
 	'hero.subtitle':
 		'لینک صفحه را بچسبان تا فرمت‌های دانلود ویدیو یا گالری عکس‌هایش را بگیری — با پیش‌نمایش، دانلود، زیرنویس خودکار، پشتیبانی از کوکی برای سایت‌های نیازمند ورود، و پروکسی برای وقتی پخش مستقیم جواب نمی‌دهد.',
@@ -353,7 +353,8 @@ export const fa: Record<MessageKey, string> = {
 	'input.jumpToInput': 'استخراج جدید',
 
 	'empty.title': 'هر وقت آماده بودی',
-	'empty.body': 'آدرس صفحه را در نوار بالا بچسبان. مدیاپول فرمت‌های ویدیو یا گالری تصویر را همین‌جا نشان می‌دهد.',
+	'empty.body':
+		'آدرس صفحه را در نوار بالا بچسبان. مدیاپول فرمت‌های ویدیو یا گالری تصویر را همین‌جا نشان می‌دهد.',
 
 	'extract.heading': 'ویدیوها',
 	'extract.proxyMode': 'پروکسی',
@@ -569,8 +570,7 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.contentTypeDesc':
 		'حالت خودکار اول ویدیو را امتحان می‌کند و اگر نبود، خودش به سراغ تصاویر می‌رود. اگر همیشه یک نوع را می‌خواهی، دستی انتخابش کن.',
 	'prefs.contentType.auto': 'خودکار',
-	'prefs.contentType.autoHint':
-		'تشخیص خودکار ویدیو یا تصویر. این را می‌توانی در تنظیمات عوض کنی.',
+	'prefs.contentType.autoHint': 'تشخیص خودکار ویدیو یا تصویر. این را می‌توانی در تنظیمات عوض کنی.',
 	'prefs.contentType.video': 'ویدیو',
 	'prefs.contentType.gallery': 'گالری',
 	'prefs.themeSection': 'انتخاب پوسته',

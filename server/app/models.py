@@ -19,7 +19,7 @@ class ExtractRequest(BaseModel):
     # cookies.txt text or a single "Cookie: a=b; c=d" header line. Stored only
     # in the user's browser; written to a throwaway temp file for one yt-dlp or
     # gallery-dl run and deleted. Cap matches MAX_COOKIE_BYTES. Falls back to
-    # the server-side COOKIE_FILE when absent.
+    # the server-side COOKIE_FILE_PATHS when absent.
     cookies: str | None = Field(default=None, max_length=262_144)
 
 

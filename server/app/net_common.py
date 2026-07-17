@@ -21,7 +21,7 @@ logger = logging.getLogger("mediapull.net_common")
 
 
 class CookiePool:
-    """Round-robin over the server-side cookie files (``COOKIE_FILE`` may
+    """Round-robin over the server-side cookie files (``COOKIE_FILE_PATHS`` may
     hold several comma-separated paths, e.g. two Instagram accounts).
 
     Requests spread across the accounts, and when a site answers one of them
@@ -73,7 +73,7 @@ class CookiePool:
         )
 
 
-# One pool per COOKIE_FILE value, shared by yt-dlp and gallery-dl so a
+# One pool per COOKIE_FILE_PATHS value, shared by yt-dlp and gallery-dl so a
 # cooldown earned through either engine protects the account from both.
 _cookie_pools: dict[str, CookiePool] = {}
 _cookie_pools_lock = threading.Lock()
@@ -81,9 +81,9 @@ _cookie_pools_lock = threading.Lock()
 
 def get_cookie_pool(settings: Settings) -> CookiePool:
     with _cookie_pools_lock:
-        pool = _cookie_pools.get(settings.cookie_file)
+        pool = _cookie_pools.get(settings.cookie_file_paths_raw)
         if pool is None:
-            pool = _cookie_pools[settings.cookie_file] = CookiePool(settings.cookie_files)
+            pool = _cookie_pools[settings.cookie_file_paths_raw] = CookiePool(settings.cookie_file_paths)
         return pool
 
 

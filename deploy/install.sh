@@ -292,7 +292,7 @@ if [[ ! -f "$COOKIE_FILE_PATH" ]]; then
 else
   echo "==> $COOKIE_FILE_PATH already exists, leaving it alone"
 fi
-sudo -u "$SERVICE_USER" sed -i "s#^COOKIE_FILE=.*#COOKIE_FILE=$COOKIE_FILE_PATH#" "$REPO_DIR/server/.env"
+sudo -u "$SERVICE_USER" sed -i "s#^COOKIE_FILE_PATHS=.*#COOKIE_FILE_PATHS=$COOKIE_FILE_PATH#" "$REPO_DIR/server/.env"
 
 # ---- client (optional) -----------------------------------------------------
 CLIENT_DIR_SETTING=""
@@ -348,6 +348,20 @@ if [[ -n "$DOMAIN" || ( "$CLIENT_MODE" == "subdomain" && -n "${CLIENT_DOMAIN:-}"
     tls_attempted=true
     echo "==> requesting TLS certificate(s) (certbot)"
     apt-get install -y certbot python3-certbot-nginx
+
+    # Open 80/443 in ufw BEFORE certbot, not after. Let's Encrypt's HTTP-01
+    # challenge reaches this box on port 80 from the public internet, and the
+    # issued cert then serves on 443 -- both must already be open when certbot
+    # runs. The main firewall block further down hasn't executed yet at this
+    # point, so on a box where ufw is already active (typically SSH-only),
+    # certbot's challenge would be blocked and the whole install would fall
+    # back to plain HTTP. Re-allowing the same ports later is harmless.
+    if command -v ufw &>/dev/null && ufw status 2>/dev/null | grep -q "^Status: active"; then
+      echo "    ufw is active -- opening ports 80 and 443 so the challenge can get through"
+      ufw allow 80/tcp  || true
+      ufw allow 443/tcp || true
+    fi
+
     domains=()
     [[ -n "$DOMAIN" ]] && domains+=("$DOMAIN")
     [[ "$CLIENT_MODE" == "subdomain" && -n "${CLIENT_DOMAIN:-}" ]] && domains+=("$CLIENT_DOMAIN")
@@ -357,8 +371,14 @@ if [[ -n "$DOMAIN" || ( "$CLIENT_MODE" == "subdomain" && -n "${CLIENT_DOMAIN:-}"
         continue
       fi
       if ! certbot --nginx -d "$d" --non-interactive --agree-tos -m "admin@$d" --redirect; then
-        echo "    certbot failed/skipped for $d -- DNS may not point here yet."
-        echo "    Re-run later: certbot --nginx -d $d"
+        echo "    certbot failed for $d -- the Let's Encrypt HTTP-01 challenge could not"
+        echo "    reach this box on port 80. Check BOTH of these, then re-run the command"
+        echo "    below:"
+        echo "      1. DNS: '$d' must resolve to THIS server's public IP (dig +short $d)."
+        echo "      2. Firewall: ports 80 AND 443 must be open to the internet -- not just"
+        echo "         in ufw here, but in any cloud/provider firewall or security group"
+        echo "         (AWS/GCP/Oracle/Hetzner block these by default)."
+        echo "      Re-run once fixed:  certbot --nginx -d $d --redirect"
         tls_ok=false
       fi
     done

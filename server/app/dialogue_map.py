@@ -73,7 +73,7 @@ async def _decode_peaks(audio_path: Path, settings: Settings) -> list[float]:
     try:
         proc = await proc_util.spawn(
             [
-                settings.ffmpeg_binary,
+                settings.ffmpeg_path,
                 "-hide_banner",
                 "-loglevel",
                 "error",
@@ -91,8 +91,8 @@ async def _decode_peaks(audio_path: Path, settings: Settings) -> list[float]:
             stderr=subprocess.PIPE,
         )
     except OSError as exc:
-        logger.error("ffmpeg binary %r is not runnable: %s", settings.ffmpeg_binary, exc)
-        raise DialogueMapError(f"ffmpeg is not installed or not on PATH ({settings.ffmpeg_binary!r})") from exc
+        logger.error("ffmpeg binary %r is not runnable: %s", settings.ffmpeg_path, exc)
+        raise DialogueMapError(f"ffmpeg is not installed or not on PATH ({settings.ffmpeg_path!r})") from exc
 
     def _pump_stdout() -> list[float]:
         assert proc.stdout is not None

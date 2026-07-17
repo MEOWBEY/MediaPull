@@ -78,7 +78,7 @@ def _resolve_client_dir() -> Path | None:
 
 def _check_binary(name: str, configured: str) -> bool:
     """shutil.which resolves both a bare PATH-only name and an absolute path
-    the operator pointed FFMPEG_BINARY/FFPROBE_BINARY/GALLERY_DL_BINARY at."""
+    the operator pointed FFMPEG_PATH/FFPROBE_PATH/GALLERY_DL_PATH at."""
     available = shutil.which(configured) is not None
     if not available:
         logger.warning(
@@ -111,9 +111,9 @@ async def lifespan(app: FastAPI):
     # GET /health and logs show ffmpegAvailable=false before anyone hits
     # /transcribe (where it would fail mid-job). Always checked — even when
     # GROQ_API_KEY is empty — so deploy tooling can catch a broken PATH early.
-    app.state.ffmpeg_available = _check_binary("ffmpeg", settings.ffmpeg_binary)
-    app.state.ffprobe_available = _check_binary("ffprobe", settings.ffprobe_binary)
-    if settings.gallery_dl_binary == "gallery-dl":
+    app.state.ffmpeg_available = _check_binary("ffmpeg", settings.ffmpeg_path)
+    app.state.ffprobe_available = _check_binary("ffprobe", settings.ffprobe_path)
+    if settings.gallery_dl_path == "gallery-dl":
         # The default invokes `sys.executable -m gallery_dl` (see
         # GalleryExtractor._base_cmd), not a bare PATH lookup, so its
         # availability is really "is the gallery_dl module importable".
@@ -121,7 +121,7 @@ async def lifespan(app: FastAPI):
         if not app.state.gallery_dl_available:
             logger.warning("gallery_dl Python package is not installed -- /extract-gallery will fail")
     else:
-        app.state.gallery_dl_available = _check_binary("gallery-dl", settings.gallery_dl_binary)
+        app.state.gallery_dl_available = _check_binary("gallery-dl", settings.gallery_dl_path)
     logger.info("MediaPull API %s ready", __version__)
     try:
         yield

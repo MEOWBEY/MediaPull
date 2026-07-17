@@ -35,7 +35,7 @@ All config via `server/.env` (see `.env.example`).
 |----------|---------|---------|
 | `GROQ_API_KEY` | — | Groq Whisper for subtitles. Empty = disabled. |
 | `TRANSCRIBE_ENABLED` | `true` | Master toggle for subtitle feature |
-| `COOKIE_FILE` | — | Shared cookies file (Netscape format). Enables age-gated/login content. |
+| `COOKIE_FILE_PATHS` | — | Shared cookies file(s), comma-separated (Netscape format). Enables age-gated/login content. |
 | `PROXY_URL` | — | Outbound proxy for extraction and streaming |
 | `ENABLE_IMPERSONATION` | `true` | Browser impersonation to bypass anti-bot blocks |
 

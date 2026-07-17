@@ -100,7 +100,7 @@ class GalleryExtractor:
         isn't reliably on PATH (confirmed on Windows) -- `python -m
         gallery_dl` sidesteps that entirely by using the same interpreter
         this process is already running under. Only fall back to a bare
-        binary name when the operator explicitly points GALLERY_DL_BINARY at
+        binary name when the operator explicitly points GALLERY_DL_PATH at
         something else (a custom wrapper script, a different install, etc.).
         """
         if binary == "gallery-dl":
@@ -110,14 +110,14 @@ class GalleryExtractor:
     def _extract_sync(self, url: str, cookies: str | None) -> GalleryInfo:
         s = self._settings
         cmd = [
-            *self._base_cmd(s.gallery_dl_binary),
+            *self._base_cmd(s.gallery_dl_path),
             "-j",  # dump metadata as JSON, no download
             "--no-input",
         ]
 
         # Authentication cookies: per-request blob (from the user's Settings)
         # wins; otherwise the next server-side default file in the rotation
-        # (COOKIE_FILE may list several accounts), same fallback order
+        # (COOKIE_FILE_PATHS may list several accounts), same fallback order
         # extractor.py uses for yt-dlp. Instagram/X mostly refuse to list
         # content at all without a logged-in session, so this matters more
         # here than for video sites.
@@ -143,7 +143,7 @@ class GalleryExtractor:
                 )
             except FileNotFoundError as exc:
                 raise ExtractionError(
-                    f"gallery-dl is not installed or not on PATH ({s.gallery_dl_binary!r})",
+                    f"gallery-dl is not installed or not on PATH ({s.gallery_dl_path!r})",
                     status=500,
                 ) from exc
             except subprocess.TimeoutExpired as exc:

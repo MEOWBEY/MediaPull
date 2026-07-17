@@ -407,7 +407,7 @@ async def run_transcription_job(
                     detail="compressing",
                     progress=_ACQUIRE_END,
                 )
-                duration = await probe_duration(audio_path, settings.ffprobe_binary)
+                duration = await probe_duration(audio_path, settings.ffprobe_path)
                 chunks = await chunk_audio(audio_path, work_dir, settings, duration=duration)
                 await store.update(job_id, progress=_CHUNK_END)
 

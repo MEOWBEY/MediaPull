@@ -156,7 +156,7 @@ For a production box, in `.env`:
 - `CORS_ORIGINS=https://your-client-domain.example` — pin it, don't leave `*`.
   (With `*`, the app disables credentialed CORS, because browsers reject
   `Access-Control-Allow-Origin: *` together with credentials.)
-- `COOKIE_FILE=/opt/mediapull/server/cookies.txt` if using server-side cookies
+- `COOKIE_FILE_PATHS=/opt/mediapull/server/cookies.txt` if using server-side cookies
   (`chmod 600`, owned by `mediapull`).
 - `PROXY_ALLOWED_HOSTS=googlevideo.com,cdninstagram.com,fbcdn.net,…` if you
   expose the box publicly — see [Security](#security).
@@ -248,7 +248,7 @@ version-checked protocol — letting them drift breaks the plugin).
 Most of X/Twitter and private/login-only Instagram refuse to serve content
 **at all** without a session — no PO token fixes that. `install.sh` sets up
 `server/cookies.txt` (from `server/cookies.example.txt`) and points
-`COOKIE_FILE` at it:
+`COOKIE_FILE_PATHS` at it:
 
 ```bash
 sudo nano /opt/mediapull/server/cookies.txt
@@ -328,7 +328,7 @@ don't leak sessions.
 - **`ffmpegAvailable: false` on `/health`**: ffmpeg is only used by
   auto-subtitles, so this goes unnoticed until someone generates them.
   `install.sh` installs ffmpeg via apt; if you skipped/moved it, set
-  `FFMPEG_BINARY`/`FFPROBE_BINARY` in `.env` to the absolute path and restart.
+  `FFMPEG_PATH`/`FFPROBE_PATH` in `.env` to the absolute path and restart.
 - **"This site or URL isn't supported" on a link that used to work**: the
   pinned `yt-dlp`/`gallery-dl` is behind. `update.sh` always upgrades both to
   latest — run it even without new app code.
@@ -337,3 +337,20 @@ don't leak sessions.
 - **"Unknown or expired job" on subtitles**: caused by running >1 worker (the
   in-memory job store isn't shared across processes). Confirm
   `mediapull.service`'s `--workers` is `1` and restart.
+- **Site stays on HTTP — no HTTPS after install**: certbot couldn't complete
+  the Let's Encrypt challenge, so the install fell back to plain HTTP. The
+  challenge reaches this box on **port 80** and the cert then serves on **443**;
+  both must be open to the public internet. Check, in order:
+  1. **DNS** actually points here: `dig +short YOUR_DOMAIN` must return this
+     server's public IP (not a Cloudflare/proxy IP — if you use Cloudflare, set
+     that record to "DNS only" / grey-cloud until the cert is issued).
+  2. **Cloud/provider firewall**: AWS security groups, GCP/Oracle/Hetzner
+     firewalls, etc. block 80/443 by default and `install.sh` can't touch them.
+     Open both there, separately from ufw.
+  3. Then re-run just the cert step (no need to re-run the whole installer):
+     ```bash
+     sudo certbot --nginx -d YOUR_DOMAIN --redirect
+     ```
+  The installer now opens 80/443 in `ufw` before running certbot, so an active
+  local firewall is no longer the cause — it's almost always DNS or a provider
+  firewall above.

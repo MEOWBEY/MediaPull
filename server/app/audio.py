@@ -447,7 +447,7 @@ async def _run_ffmpeg(
     except OSError as exc:
         logger.error("ffmpeg binary %r is not runnable: %s", binary, exc)
         raise AudioError(
-            f"ffmpeg is not installed or not on PATH ({binary!r}). Set FFMPEG_BINARY to its "
+            f"ffmpeg is not installed or not on PATH ({binary!r}). Set FFMPEG_PATH to its "
             "absolute path if it's installed somewhere not on this process's PATH."
         ) from exc
 
@@ -509,7 +509,7 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
     except OSError as exc:
         logger.error("ffprobe binary %r is not runnable: %s", binary, exc)
         raise AudioError(
-            f"ffprobe is not installed or not on PATH ({binary!r}). Set FFPROBE_BINARY to its "
+            f"ffprobe is not installed or not on PATH ({binary!r}). Set FFPROBE_PATH to its "
             "absolute path if it's installed somewhere not on this process's PATH."
         ) from exc
     try:
@@ -552,7 +552,7 @@ async def probe_duration_url(
     ]
     try:
         proc = await proc_util.spawn(
-            [settings.ffprobe_binary, *args],
+            [settings.ffprobe_path, *args],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
@@ -668,12 +668,12 @@ async def extract_audio_track(
     out = work_dir / f"audio.{codec.ext}"
     if duration_hint is None and on_progress is not None:
         try:
-            duration_hint = await probe_duration(source, settings.ffprobe_binary)
+            duration_hint = await probe_duration(source, settings.ffprobe_path)
         except AudioError:
             duration_hint = None  # progress stays indeterminate; extraction still runs
     await _run_ffmpeg(
         ["-i", str(source), *codec.args, str(out)],
-        settings.ffmpeg_binary,
+        settings.ffmpeg_path,
         on_out_time=_out_time_progress(duration_hint, on_progress),
     )
     return out
@@ -741,7 +741,7 @@ async def _extract_audio_from_url(
     args += ["-i", url, *codec.args, str(out)]
     await _run_ffmpeg(
         args,
-        settings.ffmpeg_binary,
+        settings.ffmpeg_path,
         on_out_time=_out_time_progress(duration_hint, on_progress),
     )
     return out
@@ -774,7 +774,7 @@ async def extract_window(
     ]
     await _run_ffmpeg(
         args,
-        settings.ffmpeg_binary,
+        settings.ffmpeg_path,
         on_out_time=_out_time_progress(window.length, on_progress),
     )
     return AudioChunk(path=out, offset_seconds=window.start)
@@ -888,7 +888,7 @@ async def chunk_audio(
             "copy",
             str(pattern),
         ],
-        settings.ffmpeg_binary,
+        settings.ffmpeg_path,
         timeout=_FFMPEG_SEGMENT_TIMEOUT,
     )
 
@@ -902,7 +902,7 @@ async def chunk_audio(
     offset = 0.0
     for path in paths:
         chunks.append(AudioChunk(path=path, offset_seconds=offset))
-        offset += await probe_duration(path, settings.ffprobe_binary)
+        offset += await probe_duration(path, settings.ffprobe_path)
 
     logger.info("split %.0fs audio into %d chunk(s)", duration, len(chunks))
     return chunks

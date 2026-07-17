@@ -1,6 +1,5 @@
 # MediaPull
 
-**Paste a link. Pull the media.**
 
 MediaPull turns a page URL into downloadable video formats and/or image
 galleries. Paste a link, extract, then preview, download, or copy. Optional
@@ -22,8 +21,6 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
 - **Proxy mode** — stream through the backend when direct play fails (hotlink
   protection, missing Referer/Cookie headers)
 - **Sign-in cookies** — Settings → Sign-in for sites that need a login
-- **Mobile-first UI** — primary Download/Copy actions up front; extra tools in
-  overflow
 - **Bilingual** — English and Persian (RTL-aware)
 
 ## Quick start
@@ -40,7 +37,7 @@ cd mediapull
 ```bash
 cd server
 pip install -r requirements.txt
-cp .env.example .env        # optional: CORS_ORIGINS, GROQ_API_KEY, COOKIE_FILE, …
+cp .env.example .env        # optional: CORS_ORIGINS, GROQ_API_KEY, COOKIE_FILE_PATHS, …
 ```
 
 **Client** (Node.js 18+):
@@ -131,6 +128,10 @@ npm test
   proxy isn’t an open relay.
 - Upgrade `yt-dlp` when extraction fails against sites that change often.
 
-## License
+## Responsible use
 
-MIT
+MediaPull is a tool for pulling media you are **authorized to download** — your
+own uploads, content you have rights to, or material whose license permits it.
+You are responsible for complying with the terms of service of the sites you
+point it at and with the copyright law of your jurisdiction. Don't use it to
+infringe copyright or bypass access controls you aren't entitled to.

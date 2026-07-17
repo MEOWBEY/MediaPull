@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # May hold SEVERAL comma-separated paths (e.g. two Instagram accounts) --
     # extraction rotates round-robin across them, and a file whose account is
     # rate-limited / bot-flagged goes on cooldown while the others keep serving.
-    cookie_file: str = Field(default="", alias="COOKIE_FILE")
+    cookie_file_paths_raw: str = Field(default="", alias="COOKIE_FILE_PATHS")
     # Hard cap on the per-request cookie blob the client may paste (bytes).
     max_cookie_bytes: int = Field(default=262_144, ge=0)
 
@@ -217,7 +217,7 @@ class Settings(BaseSettings):
     gallery_dl_workers: int = Field(default=3, ge=1, le=20)
     # Default "gallery-dl" uses `python -m gallery_dl` when the package is
     # installed; set an absolute path to force a specific binary instead.
-    gallery_dl_binary: str = Field(default="gallery-dl")
+    gallery_dl_path: str = Field(default="gallery-dl", alias="GALLERY_DL_PATH")
     # Hard cap on images returned per gallery extract. Large albums are
     # truncated (client gets a soft "truncated" warning); raise for bulk dumps.
     gallery_max_images: int = Field(default=200, ge=1, le=5000, alias="GALLERY_MAX_IMAGES")
@@ -227,8 +227,8 @@ class Settings(BaseSettings):
     # same PATH an interactive shell sees (systemd services, some containers,
     # or a dev machine where ffmpeg was only added to a shell profile). Point
     # these at an absolute path if `/health` reports either as unavailable.
-    ffmpeg_binary: str = Field(default="ffmpeg", alias="FFMPEG_BINARY")
-    ffprobe_binary: str = Field(default="ffprobe", alias="FFPROBE_BINARY")
+    ffmpeg_path: str = Field(default="ffmpeg", alias="FFMPEG_PATH")
+    ffprobe_path: str = Field(default="ffprobe", alias="FFPROBE_PATH")
 
     # ----- Proxy security ---------------------------------------------------
     # The media proxy (GET /proxy-video) fetches arbitrary user-supplied URLs.
@@ -267,8 +267,8 @@ class Settings(BaseSettings):
         return [k.strip() for k in self.groq_api_key.split(",") if k.strip()]
 
     @property
-    def cookie_files(self) -> list[str]:
-        return [p.strip() for p in self.cookie_file.split(",") if p.strip()]
+    def cookie_file_paths(self) -> list[str]:
+        return [p.strip() for p in self.cookie_file_paths_raw.split(",") if p.strip()]
 
     @property
     def youtube_player_client_list(self) -> list[str]:

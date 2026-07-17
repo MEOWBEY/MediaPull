@@ -14,7 +14,7 @@
 	let { children } = $props();
 	const GITHUB_URL = 'https://github.com/meowbey';
 	const GITHUB_USERNAME = 'MEOWBEY';
-	
+
 	// Sync lang/dir with locale (RTL for Farsi, correct screen-reader language).
 	$effect(() => {
 		if (typeof document === 'undefined') {

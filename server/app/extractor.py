@@ -452,7 +452,7 @@ class Extractor:
 
         # Authentication cookies: per-request blob (from the user's Settings)
         # wins; otherwise the next server-side default file in the rotation
-        # (COOKIE_FILE may list several accounts). The temp file lives only
+        # (COOKIE_FILE_PATHS may list several accounts). The temp file lives only
         # for this one extraction and is removed right after.
         cookie_text = normalize_cookies(cookies, url) if cookies else None
         pool_cookie: str | None = None
