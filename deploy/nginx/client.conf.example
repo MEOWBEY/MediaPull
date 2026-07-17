@@ -1,11 +1,11 @@
-# Static file server for the Pullbox CLIENT (app.example.com), separate from
+# Static file server for the MediaPull CLIENT (app.example.com), separate from
 # the backend's server block (./backend.conf.example). Only needed when you
 # serve the client on its own subdomain; the "same-domain" install mode serves
 # the built client straight from the FastAPI backend instead (no nginx block).
 #
 # install.sh fills this in for you. To do it by hand, install at
-# /etc/nginx/sites-available/pullbox-client, then:
-#   ln -s /etc/nginx/sites-available/pullbox-client /etc/nginx/sites-enabled/
+# /etc/nginx/sites-available/mediapull-client, then:
+#   ln -s /etc/nginx/sites-available/mediapull-client /etc/nginx/sites-enabled/
 #   nginx -t && systemctl reload nginx
 # TLS: run certbot afterwards (see README.md).
 

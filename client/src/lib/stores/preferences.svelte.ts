@@ -1,3 +1,12 @@
+/**
+ * UI preferences (theme, layout, proxy/captions toggles, content-type mode).
+ *
+ * Persisted in localStorage under `preferences`. Defaults live in
+ * `DEFAULT_PREFERENCES`; unknown keys from older clients are ignored by
+ * Object.assign (extra fields stay harmlessly on the object until reset).
+ * Applied by components (+page for theme, extract list for sort/filters, etc.).
+ */
+
 import { browser } from '$app/environment';
 import type { Preferences } from '$lib/types';
 
@@ -15,6 +24,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 	enableVideoPreloadMetadata: false,
 	showVideoThumbnail: true,
 	showHlsTypeDownloadButton: true,
+	showExportButtons: false,
 	showVideoOnlyFormats: false,
 	autoOpenSubtitlePanel: false,
 	subtitlePanelMinWords: 0,

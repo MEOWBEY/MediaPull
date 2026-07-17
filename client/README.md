@@ -1,7 +1,7 @@
-# pullbox client
+# MediaPull client
 
-Svelte 5 frontend for pullbox. Paste a URL, get downloadable video/image
-links.
+Svelte 5 frontend for **MediaPull**. Paste a URL, get downloadable video
+formats and image galleries — preview, download, copy, optional subtitles.
 
 ## Setup
 

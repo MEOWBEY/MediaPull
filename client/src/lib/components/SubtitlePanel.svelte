@@ -125,40 +125,48 @@
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
 		closeLabel={t('common.close')}
-		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-4 sm:max-w-md sm:p-6 {desktop.matches
+		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-4 sm:max-w-lg sm:p-6 {desktop.matches
 			? ''
 			: 'h-[65vh] rounded-t-3xl'}"
 	>
-		<Sheet.Header class="flex-row items-center justify-between px-0 text-start">
+		<!-- Header keeps room on the end for the sheet's corner close (X) button.
+		     Title on top, then the actions row aligned to the start edge (under the
+		     title) -- both actions are matching labeled pills, and because the row
+		     uses the start edge + logical padding it mirrors correctly for Farsi. -->
+		<Sheet.Header class="flex-col items-start gap-3 px-0 pe-10 text-start">
 			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">
 				{t('subtitles.panel.title')}
 			</Sheet.Title>
-			<div class="flex shrink-0 items-center gap-2">
-				{#if segments.length && activeSeg}
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={scrollToActive}
-						class="h-9 w-9 shrink-0"
-						title={t('subtitles.panel.scrollToActive')}
-						aria-label={t('subtitles.panel.scrollToActive')}
-					>
-						<LocateFixed class="h-4 w-4" />
-					</Button>
-				{/if}
-				{#if canDownload}
-					<Button
-						variant="outline"
-						size="icon"
-						onclick={onDownload}
-						class="h-9 w-9 shrink-0"
-						title={t('subtitles.download')}
-						aria-label={t('subtitles.download')}
-					>
-						<Download class="h-4 w-4" />
-					</Button>
-				{/if}
-			</div>
+			{#if (segments.length && activeSeg) || canDownload}
+				<div class="flex flex-wrap items-center gap-2">
+					{#if canDownload}
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={onDownload}
+							class="h-9 shrink-0 gap-1.5 rounded-full px-3"
+							title={t('subtitles.download')}
+							aria-label={t('subtitles.download')}
+						>
+							<Download class="h-4 w-4" />
+							<span class="text-xs font-semibold">SRT</span>
+						</Button>
+					{/if}
+					{#if segments.length && activeSeg}
+						<Button
+							variant="outline"
+							size="sm"
+							onclick={scrollToActive}
+							class="h-9 shrink-0 gap-1.5 rounded-full px-3"
+							title={t('subtitles.panel.scrollToActive')}
+							aria-label={t('subtitles.panel.scrollToActive')}
+						>
+							<LocateFixed class="h-4 w-4" />
+							<span class="text-xs font-semibold">{t('subtitles.panel.jump')}</span>
+						</Button>
+					{/if}
+				</div>
+			{/if}
 		</Sheet.Header>
 
 		{#if segments.length}

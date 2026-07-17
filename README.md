@@ -1,38 +1,38 @@
-# pullbox
+# MediaPull
 
-**Paste a link → get the video (or a whole image gallery).** No accounts, no
-installs for the person using it — just a URL in, downloadable files out.
+**Paste a link. Pull the media.**
 
-Powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
-[gallery-dl](https://github.com/mikf/gallery-dl) for images, with optional
-automatic subtitles via Groq Whisper.
+MediaPull turns a page URL into downloadable video formats and/or image
+galleries. Paste a link, extract, then preview, download, or copy. Optional
+speech-to-text subtitles (Groq Whisper), cookie support for signed-in sites,
+and a media proxy when the browser can’t play a source directly.
 
-## What it does
+Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
+[gallery-dl](https://github.com/mikf/gallery-dl) for images.
 
-- **Extract video links** — paste a page URL, get every available quality and
-  format, ready to preview, download, or copy.
-- **Download image galleries** — pull a whole album/gallery in one go, with
-  download-all.
-- **Built-in player** — preview before you download; switch quality inline.
-- **Auto / Video / Gallery** — leave it on **Auto** and pullbox figures out
-  whether the page is a video or a gallery. Force one from the extract bar if
-  you already know.
-- **Optional subtitles** — generate captions for any video via speech-to-text.
-- **Proxy mode** — stream media through the backend when a direct link won't
-  play in the browser (wrong headers, hotlink protection).
-- **Sign-in cookies** — add cookies in **Settings → Sign-in** for sites that
-  need a login (Instagram, X/Twitter, etc.).
-- **Mobile-first UI** — big primary actions (Download / Copy), power features
-  tucked into an overflow so the phone screen stays clean.
-- **Bilingual** — English and Persian (RTL-aware).
+## Features
+
+- **Extract video formats** — qualities and container types, ready to preview,
+  download, or copy
+- **Image galleries** — pull albums/galleries with per-image and bulk download
+- **Built-in player** — preview in the page; switch quality without leaving
+- **Auto / Video / Gallery** — Auto detects type; force Video or Gallery from
+  the extract bar when you already know
+- **Optional subtitles** — speech-to-text captions when `GROQ_API_KEY` is set
+- **Proxy mode** — stream through the backend when direct play fails (hotlink
+  protection, missing Referer/Cookie headers)
+- **Sign-in cookies** — Settings → Sign-in for sites that need a login
+- **Mobile-first UI** — primary Download/Copy actions up front; extra tools in
+  overflow
+- **Bilingual** — English and Persian (RTL-aware)
 
 ## Quick start
 
 ### 1. Install
 
 ```bash
-git clone https://github.com/your-org/pullbox.git
-cd pullbox
+git clone https://github.com/meowbey/MediaPull.git
+cd mediapull
 ```
 
 **Server** (Python 3.10+):
@@ -69,40 +69,40 @@ http://localhost:8000 (including `/proxy-token`).
 ### 3. Use it
 
 1. Paste a URL into the input field.
-2. Leave the mode on **Auto** (or pick **Video** / **Gallery**), then hit
-   **Extract**.
+2. Leave mode on **Auto** (or pick **Video** / **Gallery**), then **Extract**.
 3. Preview, then **Download** or **Copy** the link you want.
-4. For login-only sites, add cookies in **Settings → Sign-in** and try again —
-   the error banner has a one-tap shortcut to that panel.
+4. For login-only sites, add cookies in **Settings → Sign-in** and try again.
 
-Want subtitles? Set `GROQ_API_KEY` in `server/.env`, then use the **Subtitles**
-button on any video card.
+Want subtitles? Set `GROQ_API_KEY` in `server/.env`, then use **Subtitles** on
+a video card.
 
 ## How it works
 
-Your browser only ever talks to the pullbox backend — never to the source site
-directly. The backend does the extracting (and optional proxying), because it
-can send the `Referer` / `Cookie` / `User-Agent` headers a plain `<video>` tag
-can't.
+The browser never talks to the source site — only to the MediaPull backend.
+That's the whole trick: the backend can send the `Referer` / `Cookie` /
+`User-Agent` headers a plain `<video>` tag cannot, so extraction and playback
+work on sites that block hotlinking or require a login.
 
+```mermaid
+flowchart LR
+    browser([Browser<br/>SvelteKit client]) --> api[FastAPI backend]
+    api -- "/extract-videos" --> ytdlp[yt-dlp<br/>video format links]
+    api -- "/extract-gallery" --> gdl[gallery-dl<br/>image lists]
+    api -- "/proxy-video" --> proxy[media proxy<br/>real browser headers]
+    api -- "/transcribe" --> whisper[Groq Whisper<br/>optional subtitles]
 ```
-                 ┌──────────────────────── FastAPI backend ────────────────────────┐
- browser ──▶ SvelteKit client ──▶  /extract-videos   ──▶ yt-dlp        (video links)
-                                   /extract-gallery   ──▶ gallery-dl    (image lists)
-                                   /proxy-video       ──▶ media + real browser headers
-                                   /proxy-token       ──▶ cookies → opaque `ctok`
-                                   /transcribe        ──▶ Groq Whisper  (optional subs)
-                 └─────────────────────────────────────────────────────────────────┘
-```
 
-**Two things worth knowing:**
+**Worth knowing:**
 
-- **Cookies never leak.** Auth cookies are swapped for a short-lived token
-  (`ctok`) *before* they ever appear in a proxy URL, so a copied / QR'd / shared
-  link can't expose your session.
-- **Single-worker by design.** The result cache, transcription jobs, and proxy
-  tokens all live in-memory per process — scale out with more *instances* behind
-  a load balancer, not more workers.
+- **Cookies stay off proxy URLs.** Before a proxy URL is built, auth cookies
+  are swapped for a short-lived opaque token (`ctok` via `/proxy-token`), so
+  copied, QR'd, or shared links never expose a session.
+- **Single-worker by design.** Result cache, transcription jobs, and proxy
+  tokens are in-memory per process — scale with more instances behind a load
+  balancer, not more workers in one process.
+- **Keep scrapers current.** When extraction breaks after site changes, upgrade
+  yt-dlp/gallery-dl (`pip install -U yt-dlp gallery-dl`). There is no built-in
+  auto-update of those tools.
 
 ## Testing
 
@@ -121,17 +121,15 @@ npm test
 
 - **[Server setup](server/README.md)** — backend config, env vars, security
 - **[Client setup](client/README.md)** — frontend build, routing, dev mode
-- **[Deployment](deploy/README.md)** — run it on your own VPS (systemd + nginx/Caddy)
-- **[Known issues](KNOWN_ISSUES.md)** — bug-tracker style list
-- **[Plans](plans/README.md)** — improvement / production roadmap
+- **[Deployment](deploy/README.md)** — VPS install (systemd + nginx/Caddy)
 
 ## Production notes
 
 - Pin `CORS_ORIGINS` to your real frontend origin(s) (not `*`) if you need
   credentialed cross-origin requests.
 - On a public VPS, set `PROXY_ALLOWED_HOSTS` to known media CDNs so the media
-  proxy isn't an open relay.
-- Keep `yt-dlp` updated when YouTube extraction breaks (`pip install -U yt-dlp`).
+  proxy isn’t an open relay.
+- Upgrade `yt-dlp` when extraction fails against sites that change often.
 
 ## License
 

@@ -8,6 +8,7 @@ describe('segmentsToSrt', () => {
 			{ start: 1, end: 2.5, text: 'Hello' },
 			{ start: 3, end: 4, text: 'World' }
 		]);
+
 		expect(srt).toContain('1\n');
 		expect(srt).toContain('00:00:01,000 --> 00:00:02,500');
 		expect(srt).toContain('Hello');
@@ -19,6 +20,7 @@ describe('segmentsToSrt', () => {
 describe('segmentsToVttUrl', () => {
 	it('returns a blob: URL', () => {
 		const url = segmentsToVttUrl([{ start: 0, end: 1, text: 'Hi' }]);
+
 		expect(url.startsWith('blob:')).toBe(true);
 		URL.revokeObjectURL(url);
 	});

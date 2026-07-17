@@ -68,11 +68,12 @@
 		disabled={switching}
 		onclick={() => (menuOpen = !menuOpen)}
 	>
-		{#if switching}
-			<SlidersHorizontal class="h-3.5 w-3.5 animate-spin" />
-		{:else}
-			<SlidersHorizontal class="h-3.5 w-3.5" />
-		{/if}
+		<!-- While switching, the sliders icon pulses in the accent color instead of
+		     spinning: a non-circular glyph spinning reads as broken, whereas a soft
+		     opacity+color pulse clearly says "working" without the jarring rotation. -->
+		<SlidersHorizontal
+			class="h-3.5 w-3.5 transition-colors {switching ? 'text-primary animate-pulse' : ''}"
+		/>
 		<span>{qualityLabel(qualities[activeIndex], activeIndex)}</span>
 	</button>
 

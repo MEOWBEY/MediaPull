@@ -1,34 +1,18 @@
 #!/usr/bin/env bash
-# One-time provisioning for a fresh VPS (Debian/Ubuntu): system packages,
-# service user, clone, venv, systemd unit, nginx + TLS, firewall -- and,
-# if you want, the web client too (built + served from the same box).
-# Idempotent -- safe to re-run if a step fails partway through.
+# One-time VPS provision (Debian/Ubuntu): packages, service user, clone, venv,
+# systemd, nginx/TLS, firewall, optional client. Idempotent; safe to re-run.
 #
-# INTERACTIVE by default: run it with no arguments and it asks you a few
-# questions (domain, port, whether to serve the client here too). Answer
-# once; the answers are written to /opt/pullbox/.vps-deploy.env so
-# update.sh/uninstall.sh reuse them automatically later.
-#
-# For scripted/non-interactive installs (CI, a second box with the same
-# answers), set the equivalent environment variables up front and they're
-# used as-is with no prompt:
+# Interactive when stdin is a TTY. Answers land in /opt/mediapull/.vps-deploy.env
+# for update.sh/uninstall.sh. Non-interactive:
 #   sudo DOMAIN=api.example.com PORT=8000 CLIENT_MODE=same-domain ./install.sh
-#
-# For routine "pull latest code and restart" after this has already run
-# once, use update.sh instead -- this script is provisioning, not deploying.
+# Day-to-day deploys: use update.sh, not this script.
 set -euo pipefail
 
-# Shared constants (REPO_URL/REPO_DIR/SERVICE_USER/SERVICE/DEPLOY_DIR/CONFIG_FILE)
-# and the git-auth / dependency / systemd helpers update.sh and uninstall.sh
-# also use.
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 require_root
 
-# ---- interactive prompts (skipped for any var already set in the env) -----
-# Only prompts when connected to a real terminal (`sudo ./install.sh` run
-# directly) AND the variable wasn't already provided via env -- piping the
-# script through `curl | bash`, or any other non-terminal stdin, silently
-# uses the defaults shown below instead of hanging waiting for input.
+# ---- interactive prompts (skipped when var already set) -------------------
+# No TTY (e.g. curl | bash) → defaults only, no hang on read.
 interactive=true
 [[ -t 0 ]] || interactive=false
 
@@ -48,7 +32,7 @@ ask() {
   export "$var"
 }
 
-echo "==> Pullbox VPS installer"
+echo "==> MediaPull VPS installer"
 echo "    This sets up the backend and, if you want, the web client too."
 echo "    Leave any answer blank to accept the default shown in [brackets]."
 echo
@@ -90,7 +74,7 @@ if [[ -n "$DOMAIN" ]]; then
       if port_in_use "$PUBLIC_PORT"; then
         echo "    Something is already listening on port $PUBLIC_PORT -- this usually means"
         echo "    another panel or web server is already"
-        echo "    using it. Pullbox will NOT touch it or overwrite its config."
+        echo "    using it. MediaPull will NOT touch it or overwrite its config."
         echo "    Pick a different port, or free this one up first."
         continue
       fi
@@ -104,7 +88,7 @@ fi
 # ---- resource limits (detected, not asked -- no need to bother the user) --
 # Conservative caps so this app can't peg the box and starve nginx/other
 # panels sharing it (a real VPS has hit ~90% CPU with nothing stopping this
-# service from taking it all). Applied to pullbox.service below and re-applied
+# service from taking it all). Applied to mediapull.service below and re-applied
 # by update.sh every deploy (it re-templates the unit already). 70% of RAM and
 # (cores-1) worth of CPU -- leaves headroom for nginx/other panels on the same
 # box. Computed in lib.sh (shared with update.sh); also exports
@@ -254,8 +238,8 @@ if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
   # resolves its version, and clones+builds the matching Node server tag.
   if sync_pot_provider_code; then
     sync_pot_service "$POT_PORT"
-    systemctl enable --now pullbox-pot
-    echo "    PO token provider running as its own service (pullbox-pot), port $POT_PORT"
+    systemctl enable --now mediapull-pot
+    echo "    PO token provider running as its own service (mediapull-pot), port $POT_PORT"
   else
     echo "    bgutil-ytdlp-pot-provider failed to install -- skipping the server half." >&2
     echo "    Set it up manually later: https://github.com/Brainicism/bgutil-ytdlp-pot-provider" >&2
@@ -402,12 +386,12 @@ if command -v ufw &>/dev/null; then
   else
     # Force-enabling an INACTIVE firewall here would block every other port
     # on this box that isn't explicitly allowed -- including things
-    # completely unrelated to Pullbox, like a control panel on its own port
+    # completely unrelated to MediaPull, like a control panel on its own port
     # (this has actually happened: installing the app silently took an
-    # unrelated panel offline). Add the rules Pullbox needs (harmless either
+    # unrelated panel offline). Add the rules MediaPull needs (harmless either
     # way) but leave the decision to actually turn the firewall on to you,
     # since it affects the whole box, not just this app.
-    echo "    ufw is currently inactive -- rules for Pullbox were added, but ufw"
+    echo "    ufw is currently inactive -- rules for MediaPull were added, but ufw"
     echo "    itself was NOT enabled (enabling it would also block any other port on"
     echo "    this box you haven't explicitly allowed yet, e.g. a control panel)."
     echo "    If you want a firewall: run 'ufw allow <port>/tcp' for anything else you"
@@ -450,7 +434,7 @@ Done.
     systemctl restart $SERVICE
 EOF
 if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
-  echo "- PO token provider: enabled (systemd service pullbox-pot, 127.0.0.1:$POT_PORT)"
+  echo "- PO token provider: enabled (systemd service mediapull-pot, 127.0.0.1:$POT_PORT)"
 else
   echo "- PO token provider: not installed -- YouTube extraction may get blocked more often"
 fi
@@ -476,10 +460,10 @@ cat <<EOF
 EOF
 if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
   cat <<EOF
-- PO token provider: running as its own service (pullbox-pot). Check it
+- PO token provider: running as its own service (mediapull-pot). Check it
   came up:
-    systemctl status pullbox-pot
-    journalctl -u pullbox-pot -n 50
+    systemctl status mediapull-pot
+    journalctl -u mediapull-pot -n 50
 EOF
 fi
 if ! $tls_ok; then

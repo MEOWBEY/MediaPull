@@ -1,12 +1,8 @@
 #!/usr/bin/env bash
-# Routine "pull latest code and restart" for the backend (and client, if
-# install.sh set one up). Run as your own admin/sudo user (NOT the "pullbox"
-# service user, which has no login shell):
-#   sudo /opt/pullbox/deploy/update.sh
-#
-# No prompts and no GitHub credentials needed: install.sh persisted the
-# authenticated remote into the checkout, so the git pull below just works.
-# (A fresh provisioning run is install.sh; this is the fast day-to-day path.)
+# Pull latest code, refresh deps, rebuild client if needed, restart service.
+# Run as admin/sudo (not the mediapull service user):
+#   sudo /opt/mediapull/deploy/update.sh
+# install.sh persists git auth so this path is non-interactive.
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
@@ -32,7 +28,7 @@ if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
   echo "==> upgrading the YouTube PO token provider (port $POT_PORT)"
   if sync_pot_provider_code; then
     sync_pot_service "$POT_PORT"
-    systemctl restart pullbox-pot
+    systemctl restart mediapull-pot
   else
     echo "    PO token provider upgrade skipped (plugin not resolvable this run)." >&2
   fi

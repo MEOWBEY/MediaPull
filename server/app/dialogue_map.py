@@ -19,7 +19,7 @@ from pathlib import Path
 from . import proc_util
 from .config import Settings
 
-logger = logging.getLogger("pullbox.dialogue_map")
+logger = logging.getLogger("mediapull.dialogue_map")
 
 _SAMPLE_RATE = 16000
 _WINDOW_MS = 100

@@ -1,7 +1,5 @@
 <script lang="ts">
 	import Captions from '@lucide/svelte/icons/captions';
-	import ChevronDown from '@lucide/svelte/icons/chevron-down';
-	import ChevronUp from '@lucide/svelte/icons/chevron-up';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Download from '@lucide/svelte/icons/download';
@@ -60,19 +58,6 @@
 		formatGroups[activeGroupIndex] ?? formatGroups[0] ?? { type: '', qualities: [] }
 	);
 	const visibleQualities = $derived(activeGroup.qualities);
-
-	// The single quality a normal user most likely wants: highest resolution
-	// that still has audio. Falls back to the top of the list (which is already
-	// resolution-sorted) when every quality is video-only. Powers the mobile
-	// "Download" / "Copy" primary buttons so phone users don't have to expand
-	// the full quality table just to grab the obvious best file.
-	const bestQuality = $derived(
-		visibleQualities.find((q) => !q.videoOnly) ?? visibleQualities[0]
-	);
-
-	// On mobile the full per-quality table is collapsed by default (it's the
-	// densest part of the card). Desktop always shows it.
-	let showAllQualities = $state(false);
 
 	/** First existing caption track the source already provides in a usable
 	 *  (WebVTT) format -- free to use, no transcription pipeline needed. */
@@ -280,59 +265,13 @@
 			</div>
 		</div>
 
-		<!-- Mobile-first primary actions: the one obvious "grab the best file"
-		     pair, so phone users never need to open the full quality table.
-		     Hidden on sm+ where the full table is always visible. -->
-		{#if bestQuality}
-			<div class="flex items-center gap-2 sm:hidden">
-				{#if !(activeGroup.type === 'application/x-mpegURL') || preferences.showHlsTypeDownloadButton}
-					<Button
-						onclick={() => downloadQuality(bestQuality)}
-						class="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 gap-2 rounded-full font-semibold"
-					>
-						<Download class="h-4 w-4" />
-						<span>{t('extract.downloadBest')}</span>
-						{#if bestQuality.resolution}<span class="tabular-nums opacity-80">{bestQuality.resolution}p</span>{/if}
-					</Button>
-				{/if}
-				<Button
-					variant="outline"
-					onclick={() => copyToClipboard(urlForQuality(bestQuality) ?? '')}
-					class="h-11 shrink-0 gap-2 rounded-full px-4"
-					title={t('extract.copyBest')}
-					aria-label={t('extract.copyBest')}
-				>
-					<Copy class="h-4 w-4" />
-					<span>{t('extract.copyBest')}</span>
-				</Button>
-			</div>
-
-			<!-- Toggle for the full per-quality table on mobile. -->
-			<button
-				type="button"
-				onclick={() => (showAllQualities = !showAllQualities)}
-				class="text-muted-foreground hover:text-foreground flex w-full items-center justify-center gap-1 rounded-lg py-1.5 text-xs sm:hidden"
-				aria-expanded={showAllQualities}
-			>
-				{#if showAllQualities}
-					<ChevronUp class="h-3.5 w-3.5" />
-					<span>{t('extract.hideQualities')}</span>
-				{:else}
-					<ChevronDown class="h-3.5 w-3.5" />
-					<span>{t('extract.showAllQualities', { n: visibleQualities.length })}</span>
-				{/if}
-			</button>
-		{/if}
-
 		<!-- Quality list -- a single bordered list with divider lines
 		     between rows, instead of a stack of separately-boxed rows.
 		     Reads like a compact table: badge + size on the left,
 		     tight action icons on the right, row highlights on hover.
-		     On mobile it's collapsed behind the toggle above; sm+ always shows it. -->
+		     Same layout on mobile and desktop. -->
 		<div
-			class="border-border/50 divide-border/50 max-h-56 divide-y overflow-y-auto rounded-xl border {showAllQualities
-				? ''
-				: 'hidden'} sm:block"
+			class="border-border/50 divide-border/50 max-h-56 divide-y overflow-y-auto rounded-xl border"
 		>
 			{#each visibleQualities as quality, index (index)}
 				<div

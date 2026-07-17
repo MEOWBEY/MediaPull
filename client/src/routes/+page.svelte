@@ -19,7 +19,6 @@
 
 	let isPreferencesDialogOpen = $state(false);
 
-	let elapsedOperationSeconds = $derived(extraction.elapsedSeconds);
 	let isVideoExtractRunning = $derived(appStore.isVideoExtractRunning);
 
 	let preferences = $derived(appStore.preferences);
@@ -94,31 +93,34 @@
 </script>
 
 <svelte:head>
-	<title>Pullbox — Extract direct video links from any page</title>
+	<title>MediaPull — Paste a link. Pull the media.</title>
 	<meta
 		name="description"
-		content="Paste a webpage URL to extract direct video links via yt-dlp and HTML scraping, then preview with the built-in player, download, or stream through an optional proxy."
+		content="Paste a URL to extract downloadable video formats or image galleries. Built-in player, optional subtitles, cookies for signed-in sites, and proxy when direct play fails."
 	/>
 </svelte:head>
 
 <div class="w-full">
-	<!-- ===== Hero / command deck ===== -->
 	<section class="relative mx-auto w-full max-w-3xl px-4 pt-12 pb-8 text-center sm:pt-20">
-		<h1 class="font-heading text-3xl font-extrabold tracking-tight text-balance sm:text-6xl">
+		<h1 class="font-heading text-4xl font-extrabold tracking-tight text-balance sm:text-6xl">
 			{t('hero.titleLead')}
-			<span class="ds-gradient-text">{t('hero.titleHighlight')}</span><br class="hidden sm:block" />
-			{t('hero.titleTrail')}
+			<span class="ds-gradient-text">{t('hero.titleHighlight')}</span>
+			{#if t('hero.titleTrail')}
+				<br class="hidden sm:block" />
+				{t('hero.titleTrail')}
+			{/if}
 		</h1>
-		<p class="text-muted-foreground mx-auto mt-4 max-w-xl text-sm text-pretty sm:text-lg">
-			{t('hero.subtitle')}
-		</p>
+		<!-- {#if t('hero.subtitle')}
+			<p class="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm leading-relaxed sm:text-base">
+				{t('hero.subtitle')}
+			</p>
+		{/if} -->
 
 		<div class="mt-8">
 			<InputUrl
 				{runVideoExtractFromServer}
 				{cancelActiveOperation}
 				{isVideoExtractRunning}
-				{elapsedOperationSeconds}
 				{batchTotal}
 				{batchDone}
 				bind:isPreferencesDialogOpen
@@ -126,8 +128,7 @@
 		</div>
 	</section>
 
-	<!-- ===== Workspace ===== -->
-	<!-- Tighter side padding on phones so the video previews get more width. -->
+	<!-- Narrower side padding on phones so previews use more width. -->
 	<div class="container mx-auto max-w-6xl px-2 pb-12 sm:px-4">
 		{#if videoExtractError}
 			<ErrorAlert {videoExtractError} onOpenCookies={() => (isPreferencesDialogOpen = true)} />
@@ -186,7 +187,7 @@
 		onclick={() => focusInput()}
 		title={t('input.jumpToInput')}
 		aria-label={t('input.jumpToInput')}
-		class="ds-glass shadow-float text-primary hover:bg-primary hover:text-primary-foreground fixed inset-e-5 bottom-5 z-40 flex h-12 w-12 items-center justify-center rounded-full transition-colors"
+		class="ds-glass shadow-float text-primary hover:bg-primary hover:text-primary-foreground fixed inset-e-5 bottom-5 z-40 hidden h-12 w-12 items-center justify-center rounded-full transition-colors sm:flex"
 	>
 		<ArrowUp class="h-5 w-5" />
 	</button>

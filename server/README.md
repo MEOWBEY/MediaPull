@@ -1,7 +1,7 @@
-# pullbox server
+# MediaPull server
 
-FastAPI backend. Extracts video links via yt-dlp, image galleries via
-gallery-dl, optional subtitles via Groq Whisper.
+FastAPI backend for **MediaPull**: extract video formats (yt-dlp), image
+galleries (gallery-dl), and optional speech-to-text subtitles (Groq Whisper).
 
 ## Setup
 
@@ -9,13 +9,13 @@ gallery-dl, optional subtitles via Groq Whisper.
 # Python 3.10+
 pip install -r requirements.txt
 cp .env.example .env
-# edit .env — at minimum set CORS_ORIGINS and GROQ_API_KEY (for subtitles)
+# edit .env — at minimum set CORS_ORIGINS; set GROQ_API_KEY for subtitles
 python -m app
 # → http://localhost:8000
 ```
 
 yt-dlp and gallery-dl must be installed and on PATH (or available as Python
-packages — they're in `requirements.txt`). ffmpeg required for subtitles.
+packages — they're in `requirements.txt`). ffmpeg is required for subtitles.
 
 ## Configuration
 
@@ -58,16 +58,16 @@ All config via `server/.env` (see `.env.example`).
 | `PROXY_ENABLED` | `true` | Master switch for `GET /proxy-video`. `false` = client plays sources directly (no header injection). |
 | `PROXY_ALLOWED_HOSTS` | — | Comma-separated destination host allow-list (e.g. `googlevideo.com,cdninstagram.com,fbcdn.net`). Empty = allow any public host. **Set this on a public deploy.** |
 
-## Proxying &amp; security
+## Proxying & security
 
 `GET /proxy-video` streams media from the source host so the frontend stays
 behind one origin, injecting the Referer/Cookie/User-Agent a `<video>` element
-can't set. Built in — no separate proxy setup.
+can't set.
 
-- **SSRF guard**: the proxy rejects internal targets (loopback, RFC-1918,
-  link-local, IPv4-mapped IPv6) and re-checks the host on every redirect hop
-  and against resolved DNS. Add `PROXY_ALLOWED_HOSTS` (or `PROXY_ENABLED=false`)
-  on a public box.
+- **SSRF guard**: rejects internal targets (loopback, RFC-1918, link-local,
+  IPv4-mapped IPv6) and re-checks the host on every redirect hop and against
+  resolved DNS. Add `PROXY_ALLOWED_HOSTS` (or `PROXY_ENABLED=false`) on a
+  public box.
 - **Cookie tokens**: clients never put auth cookies in a proxy URL. They call
   `POST /proxy-token` to swap cookies for a short-lived opaque token, which the
   proxy resolves server-side — so copied/QR/shared links can't leak a session.
@@ -78,7 +78,7 @@ can't set. Built in — no separate proxy setup.
 - **Single worker.** In-memory job tracking means one process. Don't set
   `WORKERS` > 1 unless you add external shared state (Redis, db).
 - **Subprocess extraction.** yt-dlp/gallery-dl run as subprocesses, not
-  libraries. Keeps them independently updatable.
+  libraries. Keeps them independently updatable (`pip install -U …`).
 
 ## Testing
 
@@ -91,5 +91,4 @@ ruff check app/                   # lint
 ## Full docs
 
 - [Deployment (VPS)](../deploy/README.md)
-- [Known issues](../KNOWN_ISSUES.md)
 - [Project overview](../README.md)

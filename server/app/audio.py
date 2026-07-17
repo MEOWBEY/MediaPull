@@ -35,7 +35,7 @@ from .config import Settings
 from .models import VideoFormat
 from .net_common import impersonate_kwarg
 
-logger = logging.getLogger("pullbox.audio")
+logger = logging.getLogger("mediapull.audio")
 
 # One shared curl_cffi session for the impersonated-download fallback, reused
 # across transcription jobs instead of built per download -- mirrors how

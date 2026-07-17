@@ -24,11 +24,11 @@ export const en = {
 	'nav.language': 'Language',
 
 	// Hero
-	'hero.titleLead': 'Pull',
-	'hero.titleHighlight': 'direct video links',
-	'hero.titleTrail': 'out of any page.',
+	'hero.titleLead': 'Paste a link.',
+	'hero.titleHighlight': 'Pull the media.',
+	'hero.titleTrail': '',
 	'hero.subtitle':
-		'Paste a page link and get the direct video — preview it here, then download it or stream it through the proxy.',
+		'Get downloadable video formats and image galleries from a page URL — preview, download, optional subtitles, cookies for signed-in sites, and proxy when direct play fails.',
 
 	// Input
 	'input.placeholder': 'Paste a page or video URL…',
@@ -44,10 +44,10 @@ export const en = {
 	// Empty state
 	'empty.title': 'Ready when you are',
 	'empty.body':
-		'Paste a page link in the bar above and the direct videos we find will land right here.',
+		'Paste a page URL above. MediaPull will extract video formats or an image gallery here.',
 
 	// Extract list
-	'extract.heading': 'Extracted',
+	'extract.heading': 'Videos',
 	'extract.proxyMode': 'Proxy',
 	'extract.sourceUnknown': 'Unknown source',
 	'extract.removeGroup': 'Remove all from source',
@@ -61,6 +61,7 @@ export const en = {
 	'extract.retryAsVideo': 'Wrong type? Retry as Video',
 	'extract.exportTxt': 'Links (.txt)',
 	'extract.exportM3u': 'Playlist (.m3u)',
+	'extract.copyOriginalUrl': 'Copy original URL',
 	'extract.hint':
 		"If a video won't play, try switching quality or proxy mode, or copy the URL into an external player.",
 	'extract.qualityOne': 'quality',
@@ -81,7 +82,7 @@ export const en = {
 		'This quality has no audio (adaptive stream). Plays silently; still downloadable.',
 
 	// Gallery list
-	'gallery.heading': 'Galleries',
+	'gallery.heading': 'Images',
 	'gallery.resultCount': '{n} images extracted',
 	'gallery.imageAlt': 'Image {n}',
 	'gallery.copyImageUrl': 'Copy image URL',
@@ -122,6 +123,7 @@ export const en = {
 	'subtitles.panel.noTrack':
 		'No subtitles yet — generate them from the Subtitles button on the card.',
 	'subtitles.panel.scrollToActive': 'Scroll to current line',
+	'subtitles.panel.jump': 'Current line',
 	'subtitles.existingTrack': 'Use existing “{label}” subtitles',
 	'subtitles.error.notConfigured': 'Auto-subtitles are not configured on this server.',
 	'subtitles.error.generic': 'Could not generate subtitles for this video.',
@@ -223,32 +225,34 @@ export const en = {
 	'prefs.title': 'Preferences',
 	'prefs.subtitle': 'Tune the interface, playback, and stored data.',
 	'prefs.tab.general': 'General',
-	'prefs.tab.library': 'Library',
-	'prefs.tab.playback': 'Playback',
-	'prefs.tab.cookies': 'Sign-in',
+	'prefs.tab.library': 'Downloads',
+	'prefs.tab.playback': 'Player',
+	'prefs.tab.cookies': 'Cookies',
 	'prefs.confirmClear': 'Clear the whole library? This removes every extracted video and gallery.',
 	'prefs.confirmClearYes': 'Yes, clear it',
 	'prefs.confirmClearNo': 'Cancel',
 	'prefs.section.interface': 'Interface',
+	'prefs.section.exports': 'Export buttons',
 	'prefs.section.playback': 'Playback',
 	'prefs.section.proxy': 'Proxy & URLs',
 	'prefs.showThumbnails.label': 'Show thumbnails',
-	'prefs.showThumbnails.desc': 'Display thumbnail images for videos in the list',
+	'prefs.showThumbnails.desc': 'Show video thumbnails in the list',
 	'prefs.animations.label': 'Enable animations',
-	'prefs.animations.desc': 'Enable smooth animations and transitions throughout the interface',
+	'prefs.animations.desc': 'Smooth animations and transitions',
 	'prefs.compact.label': 'Compact mode',
-	'prefs.compact.desc': 'Use a more compact layout to fit more content on screen',
+	'prefs.compact.desc': 'Fit more content on screen',
 	'prefs.mute.label': 'Mute by default',
 	'prefs.mute.desc': 'Start videos with audio muted',
 	'prefs.preload.label': 'Preload metadata',
-	'prefs.preload.desc': 'Load video metadata in advance for faster playback initialization',
+	'prefs.preload.desc': 'Load video metadata ahead for faster playback',
 	'prefs.useProxy.label': 'Proxy mode',
-	'prefs.useProxy.desc': 'Use proxy mode to access video URLs when direct access is blocked',
+	'prefs.useProxy.desc': 'Route video URLs through the proxy when blocked',
 	'prefs.hlsDownload.label': 'Show HLS download',
-	'prefs.hlsDownload.desc': 'Display download button for HLS (HTTP Live Streaming) videos',
+	'prefs.hlsDownload.desc': 'Show a download button for HLS videos',
+	'prefs.showExports.label': 'Show export buttons',
+	'prefs.showExports.desc': 'Show Links (.txt) and Playlist (.m3u) buttons per group',
 	'prefs.videoOnly.label': 'Show video-only qualities',
-	'prefs.videoOnly.desc':
-		'Include high-res adaptive streams that have no audio (e.g. YouTube above 360p). They play silently but can be downloaded.',
+	'prefs.videoOnly.desc': 'Include high-res streams with no audio (e.g. YouTube above 360p)',
 	'prefs.viewMode': 'View mode on desktop',
 	'prefs.gridView': 'Grid view',
 	'prefs.listView': 'List view',
@@ -285,12 +289,10 @@ export const en = {
 	// Subtitles / captions
 	'prefs.section.captions': 'Subtitles',
 	'prefs.autoOpenSubs.label': 'Auto-open subtitle panel',
-	'prefs.autoOpenSubs.desc':
-		'Open the searchable subtitle list automatically once generation finishes',
+	'prefs.autoOpenSubs.desc': 'Open the subtitle list when generation finishes',
 	'prefs.subtitlePanelSection': 'Subtitle panel',
 	'prefs.minWords.label': 'Minimum words per line',
-	'prefs.minWords.desc':
-		'Hide lines shorter than this from the panel (0 = show all). The video still shows every line.',
+	'prefs.minWords.desc': 'Hide shorter lines from the panel (0 = show all)',
 	'prefs.minWords.off': 'Off',
 	'prefs.minWords.decrease': 'Fewer words',
 	'prefs.minWords.increase': 'More words',
@@ -334,14 +336,14 @@ export const fa: Record<MessageKey, string> = {
 	'nav.madeBy': 'ساخته‌شده توسط',
 	'nav.language': 'زبان',
 
-	'hero.titleLead': 'استخراج',
-	'hero.titleHighlight': 'لینک مستقیم ویدیو',
-	'hero.titleTrail': 'از هر صفحه‌ای.',
+	'hero.titleLead': 'لینک بده،',
+	'hero.titleHighlight': 'رسانه بگیر.',
+	'hero.titleTrail': '',
 	'hero.subtitle':
-		'یک لینک صفحه را بچسبان تا ویدیوی مستقیم را بگیری — همین‌جا ببین، سپس دانلود کن یا از طریق پروکسی پخش کن.',
+		'لینک صفحه را بچسبان تا فرمت‌های دانلود ویدیو یا گالری عکس‌هایش را بگیری — با پیش‌نمایش، دانلود، زیرنویس خودکار، پشتیبانی از کوکی برای سایت‌های نیازمند ورود، و پروکسی برای وقتی پخش مستقیم جواب نمی‌دهد.',
 
-	'input.placeholder': 'لینک صفحه یا ویدیو را بچسبانید…',
-	'input.placeholderGallery': 'لینک صفحه گالری را بچسبانید…',
+	'input.placeholder': 'لینک صفحه یا ویدیو را بچسبان…',
+	'input.placeholderGallery': 'لینک صفحه گالری را بچسبان…',
 	'input.batchHint': '{n} لینک شناسایی شد — یکی‌یکی پردازش می‌شوند.',
 	'input.clear': 'پاک کردن',
 	'input.preferences': 'تنظیمات',
@@ -351,9 +353,9 @@ export const fa: Record<MessageKey, string> = {
 	'input.jumpToInput': 'استخراج جدید',
 
 	'empty.title': 'هر وقت آماده بودی',
-	'empty.body': 'یک آدرس صفحه را در نوار بالا وارد کن تا ویدیوهای مستقیم همین‌جا نمایش داده شوند.',
+	'empty.body': 'آدرس صفحه را در نوار بالا بچسبان. مدیاپول فرمت‌های ویدیو یا گالری تصویر را همین‌جا نشان می‌دهد.',
 
-	'extract.heading': 'استخراج‌شده',
+	'extract.heading': 'ویدیوها',
 	'extract.proxyMode': 'پروکسی',
 	'extract.sourceUnknown': 'منبع نامشخص',
 	'extract.removeGroup': 'حذف همه از این منبع',
@@ -363,12 +365,13 @@ export const fa: Record<MessageKey, string> = {
 	'extract.searchPlaceholder': 'فیلتر بر اساس عنوان، منبع، نوع یا کیفیت…',
 	'extract.noMatches': 'نتیجه‌ای با فیلتر شما مطابقت ندارد.',
 	'extract.export': 'خروجی',
-	'extract.retryAsGallery': 'نوع اشتباه؟ به‌عنوان گالری دوباره امتحان کنید',
-	'extract.retryAsVideo': 'نوع اشتباه؟ به‌عنوان ویدیو دوباره امتحان کنید',
+	'extract.retryAsGallery': 'نوع اشتباه است؟ به‌عنوان گالری امتحان کن',
+	'extract.retryAsVideo': 'نوع اشتباه است؟ به‌عنوان ویدیو امتحان کن',
 	'extract.exportTxt': 'لینک‌ها (.txt)',
 	'extract.exportM3u': 'پلی‌لیست (.m3u)',
+	'extract.copyOriginalUrl': 'کپی نشانی اصلی',
 	'extract.hint':
-		'اگر ویدیویی پخش نشد، کیفیت یا حالت پروکسی را عوض کنید یا لینک را در یک پخش‌کننده بیرونی باز کنید.',
+		'اگر ویدیویی پخش نشد، کیفیت یا حالت پروکسی را عوض کن یا لینک را در یک پخش‌کننده‌ی دیگر باز کن.',
 	'extract.qualityOne': 'کیفیت',
 	'extract.qualityMany': 'کیفیت',
 	'extract.untitled': 'بدون عنوان',
@@ -384,10 +387,10 @@ export const fa: Record<MessageKey, string> = {
 	'extract.resultCount': '{n} لینک استخراج شد',
 	'extract.videoOnly': 'بدون صدا',
 	'extract.videoOnlyHint':
-		'این کیفیت صدا ندارد (استریم تطبیقی). بی‌صدا پخش می‌شود؛ قابل دانلود است.',
+		'این کیفیت صدا ندارد (استریم تطبیقی). بی‌صدا پخش می‌شود، ولی قابل دانلود است.',
 
 	// Gallery list
-	'gallery.heading': 'گالری‌ها',
+	'gallery.heading': 'تصاویر',
 	'gallery.resultCount': '{n} تصویر استخراج شد',
 	'gallery.imageAlt': 'تصویر {n}',
 	'gallery.copyImageUrl': 'کپی لینک تصویر',
@@ -402,17 +405,17 @@ export const fa: Record<MessageKey, string> = {
 	'gallery.nextImage': 'تصویر بعدی',
 	'gallery.openOriginal': 'باز کردن اصل تصویر',
 	'gallery.someSkipped':
-		'{n} مورد استخراج نشد (ممکن است این منبع به کوکی نیاز داشته باشد، یا پست تغییر کرده باشد).',
+		'{n} مورد استخراج نشد (شاید این منبع به کوکی نیاز دارد، یا پست از آن موقع تغییر کرده).',
 
 	// QR handoff
-	'qr.title': 'برای باز کردن روی گوشی اسکن کنید',
-	'qr.desc': 'دوربین گوشی را روی کد بگیرید تا این لینک باز شود.',
+	'qr.title': 'برای باز کردن روی گوشی، اسکن کن',
+	'qr.desc': 'دوربین گوشی را روی کد بگیر تا این لینک باز شود.',
 	'qr.error': 'ساخت کد QR برای این لینک ممکن نشد.',
 
 	'player.audioLabel': 'صوت',
 	'player.formatTabs': 'فرمت',
 	'player.error':
-		'این لینک اینجا قابل پخش نبود. کیفیت دیگری را امتحان کنید (در صورت وجود)، حالت پروکسی را پایین‌تر عوض کنید یا لینک را در پخش‌کننده بیرونی باز کنید.',
+		'این لینک اینجا پخش نشد. اگر کیفیت دیگری هست امتحانش کن، حالت پروکسی را پایین‌تر عوض کن، یا لینک را در یک پخش‌کننده‌ی دیگر باز کن.',
 	'player.error.switchProxy': 'تغییر حالت پروکسی',
 
 	'subtitles.generate': 'تولید زیرنویس',
@@ -422,14 +425,15 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.download': 'دانلود .srt',
 	'subtitles.panel.title': 'زیرنویس‌ها',
 	'subtitles.panel.search': 'جستجوی متن یا زمان…',
-	'subtitles.panel.empty': 'هیچ خطی با جستجوی شما مطابقت ندارد.',
-	'subtitles.panel.noTrack': 'هنوز زیرنویسی نیست — از دکمه زیرنویس روی کارت تولید کنید.',
+	'subtitles.panel.empty': 'هیچ خطی با جستجوی تو مطابقت ندارد.',
+	'subtitles.panel.noTrack': 'هنوز زیرنویسی نیست — از دکمه‌ی زیرنویس روی کارت بسازش.',
 	'subtitles.panel.scrollToActive': 'رفتن به خط فعلی',
+	'subtitles.panel.jump': 'خط فعلی',
 	'subtitles.existingTrack': 'استفاده از زیرنویس موجود «{label}»',
 	'subtitles.error.notConfigured': 'زیرنویس خودکار روی این سرور تنظیم نشده است.',
 	'subtitles.error.generic': 'تولید زیرنویس برای این ویدیو ممکن نشد.',
-	'subtitles.error.fetchFailed': 'بارگذاری این زیرنویس ممکن نشد. دوباره تلاش کنید.',
-	'subtitles.info.alreadyLoading': 'زیرنویس در حال بارگذاری است — لطفاً منتظر بمانید…',
+	'subtitles.error.fetchFailed': 'بارگذاری این زیرنویس ممکن نشد. دوباره امتحان کن.',
+	'subtitles.info.alreadyLoading': 'زیرنویس در حال بارگذاری است — کمی صبر کن…',
 	// Pipeline stage labels, keyed by the job's `status` field
 	'subtitles.stage.queued': 'در انتظار شروع…',
 	'subtitles.stage.planning': 'در حال آماده‌سازی…',
@@ -443,26 +447,26 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.stage.finalizing': 'ساخت زیرنویس…',
 	'subtitles.stage.dialogueMap': 'ساخت نقشه گفتگو…',
 	'subtitles.stage.waveform': 'ساخت نقشه گفتگو…',
-	'dialogueMap.aria': 'نقشه گفتگو — برای رفتن به زمان کلیک کنید',
+	'dialogueMap.aria': 'نقشه‌ی گفتگو — برای رفتن به زمان کلیک کن',
 	'gallery.downloadAll': 'دانلود همه',
 	'gallery.downloadingAll': 'در حال دانلود {done}/{total}…',
 	'gallery.downloadAllDone': '{n} تصویر دانلود شد',
 	'gallery.downloadAllPartial': '{done} از {total} دانلود شد (بعضی ناموفق)',
 	'gallery.warning.login': 'برخی تصاویر ممکن است به کوکی نیاز داشته باشند (تنظیمات ← کوکی‌ها).',
-	'gallery.warning.rateLimit': 'سایت در حال محدود کردن درخواست‌هاست — بعداً دوباره تلاش کنید.',
+	'gallery.warning.rateLimit': 'سایت دارد درخواست‌ها را محدود می‌کند — بعداً دوباره امتحان کن.',
 	'gallery.warning.quality': 'بدون کوکی تازه کیفیت تصویر ممکن است کاهش یابد.',
 	'gallery.warning.truncated': 'گالری تا سقف سرور کوتاه شد.',
 	'gallery.warning.generic': 'یادداشت گالری: {message}',
 
 	'error.extractTitle': 'استخراج لینک‌ها ممکن نشد',
 	'error.advice':
-		'لینک را بررسی و دوباره تلاش کنید، یا اگر لینک مستقیم باز نشد حالت پروکسی را برای آن کارت روشن کنید.',
+		'لینک را بررسی کن و دوباره امتحان کن، یا اگر لینک مستقیم باز نشد، حالت پروکسی را برای آن کارت روشن کن.',
 	'error.dismiss': 'بستن',
 	'error.retry': 'تلاش دوباره',
 	'error.openCookies': 'افزودن کوکی ورود',
 	'error.tryGallery': 'به‌صورت تصویر امتحان کن',
 	'error.tryVideo': 'به‌صورت ویدیو امتحان کن',
-	'error.loginHint': 'این سایت ممکن است نیاز به ورود داشته باشد. کوکی‌ها را اضافه و دوباره تلاش کنید.',
+	'error.loginHint': 'شاید این سایت به ورود نیاز دارد. کوکی‌ها را اضافه کن و دوباره امتحان کن.',
 
 	'how.heading': 'چطور کار می‌کند',
 	'how.subtitle': 'از لینک یک صفحه تا یک لینک قابل‌پخش در چهار گام.',
@@ -471,17 +475,17 @@ export const fa: Record<MessageKey, string> = {
 	'how.step2.title': 'استخراج',
 	'how.step2.body': 'yt-dlp، یک استخراج‌گر عمومی و سپس اسکرپ HTML لینک‌های واقعی را پیدا می‌کنند.',
 	'how.step3.title': 'پیش‌نمایش',
-	'how.step3.body': 'هر کیفیتی را در پخش‌کننده داخلی با پشتیبانی HLS پخش کنید.',
+	'how.step3.body': 'هر کیفیتی را در پخش‌کننده‌ی داخلی با پشتیبانی HLS پخش کن.',
 	'how.step4.title': 'ذخیره یا پروکسی',
-	'how.step4.body': 'یک کیفیت را دانلود کنید، یا وقتی مستقیم باز نمی‌شود از پروکسی پخش کنید.',
+	'how.step4.body': 'یک کیفیت را دانلود کن، یا وقتی مستقیم باز نمی‌شود از پروکسی پخشش کن.',
 	'how.feat1.title': 'پروکسی پخش داخلی',
 	'how.feat1.body':
-		'لینک‌هایی که هات‌لینک را مسدود می‌کنند یا به هدر خاص نیاز دارند را پخش می‌کند و HLS را برای پخش روان بازنویسی می‌کند.',
-	'how.feat2.title': 'روی دستگاه شما می‌ماند',
+		'لینک‌هایی را که هات‌لینک را مسدود می‌کنند یا به هدر خاص نیاز دارند پخش می‌کند و HLS را برای پخش روان بازنویسی می‌کند.',
+	'how.feat2.title': 'روی دستگاه خودت می‌ماند',
 	'how.feat2.body':
-		'نتایج و تنظیمات در حافظه محلی مرورگر شما ذخیره می‌شوند — هر وقت خواستید پاک کنید.',
+		'نتایج و تنظیمات در حافظه‌ی محلی مرورگر خودت ذخیره می‌شوند — هر وقت خواستی پاکشان کن.',
 
-	'toast.invalidUrlEmpty': 'لطفاً یک لینک معتبر وارد کنید',
+	'toast.invalidUrlEmpty': 'لطفاً یک لینک معتبر وارد کن',
 	'toast.invalidUrl': 'فرمت لینک نامعتبر است',
 	'toast.loadedCache': '{n} فرمت از حافظه بارگذاری شد',
 	'toast.alreadyInLibrary': 'قبلاً در کتابخانه شما هست',
@@ -507,7 +511,7 @@ export const fa: Record<MessageKey, string> = {
 	'toast.dataCleared': 'همه داده‌ها پاک شد',
 
 	'errorPage.404Title': 'صفحه پیدا نشد',
-	'errorPage.404Body': 'اوه! صفحه‌ای که دنبالش هستید وجود ندارد.',
+	'errorPage.404Body': 'اوه! صفحه‌ای که دنبالش هستی وجود ندارد.',
 	'errorPage.500Title': 'خطای سرور',
 	'errorPage.500Body': 'متأسفیم! مشکلی در سمت ما پیش آمد:',
 	'errorPage.genericTitle': 'خطایی رخ داد',
@@ -516,15 +520,16 @@ export const fa: Record<MessageKey, string> = {
 	'errorPage.home': 'بازگشت به خانه',
 
 	'prefs.title': 'تنظیمات',
-	'prefs.subtitle': 'رابط، پخش و داده‌های ذخیره‌شده را تنظیم کنید.',
+	'prefs.subtitle': 'رابط، پخش و داده‌های ذخیره‌شده را تنظیم کن.',
 	'prefs.tab.general': 'عمومی',
-	'prefs.tab.library': 'کتابخانه',
-	'prefs.tab.playback': 'پخش',
-	'prefs.tab.cookies': 'ورود',
+	'prefs.tab.library': 'دانلودها',
+	'prefs.tab.playback': 'پخش‌کننده',
+	'prefs.tab.cookies': 'کوکی',
 	'prefs.confirmClear': 'کل کتابخانه پاک شود؟ همه ویدیوها و گالری‌های استخراج‌شده حذف می‌شوند.',
 	'prefs.confirmClearYes': 'بله، پاک کن',
 	'prefs.confirmClearNo': 'انصراف',
 	'prefs.section.interface': 'رابط کاربری',
+	'prefs.section.exports': 'دکمه‌های خروجی',
 	'prefs.section.playback': 'پخش',
 	'prefs.section.proxy': 'پروکسی و لینک‌ها',
 	'prefs.showThumbnails.label': 'نمایش بندانگشتی‌ها',
@@ -542,6 +547,9 @@ export const fa: Record<MessageKey, string> = {
 		'استفاده از حالت پروکسی برای دسترسی به لینک‌ها وقتی دسترسی مستقیم مسدود است',
 	'prefs.hlsDownload.label': 'نمایش دانلود HLS',
 	'prefs.hlsDownload.desc': 'نمایش دکمه دانلود برای ویدیوهای HLS',
+	'prefs.showExports.label': 'نمایش دکمه‌های خروجی',
+	'prefs.showExports.desc':
+		'نمایش دکمه‌های خروجی لینک‌ها (.txt) و پلی‌لیست (.m3u) در سربرگ هر گروه نتیجه',
 	'prefs.videoOnly.label': 'نمایش کیفیت‌های بدون صدا',
 	'prefs.videoOnly.desc':
 		'شامل استریم‌های تطبیقی باکیفیت که صدا ندارند (مثلاً یوتیوب بالای ۳۶۰p). بی‌صدا پخش می‌شوند اما قابل دانلود هستند.',
@@ -559,10 +567,10 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.contentTypeSection': 'نوع محتوا',
 	'prefs.contentTypeLabel': 'چه چیزی استخراج شود',
 	'prefs.contentTypeDesc':
-		'حالت خودکار ابتدا ویدیو را امتحان می‌کند و در صورت نبود، به‌طور خودکار به تصاویر برمی‌گردد. برای استفاده همیشگی از یک نوع، آن را دستی انتخاب کنید.',
+		'حالت خودکار اول ویدیو را امتحان می‌کند و اگر نبود، خودش به سراغ تصاویر می‌رود. اگر همیشه یک نوع را می‌خواهی، دستی انتخابش کن.',
 	'prefs.contentType.auto': 'خودکار',
 	'prefs.contentType.autoHint':
-		'تشخیص خودکار ویدیو یا تصویر. این را می‌توانید در تنظیمات تغییر دهید.',
+		'تشخیص خودکار ویدیو یا تصویر. این را می‌توانی در تنظیمات عوض کنی.',
 	'prefs.contentType.video': 'ویدیو',
 	'prefs.contentType.gallery': 'گالری',
 	'prefs.themeSection': 'انتخاب پوسته',
@@ -593,7 +601,7 @@ export const fa: Record<MessageKey, string> = {
 	// Cookies / sign-in
 	'cookies.section': 'کوکی‌ها و ورود',
 	'cookies.desc':
-		'کوکی‌های خودت را اضافه کن تا ویدیوهای محدودشده با سن، خصوصی یا نیازمند ورود (یوتیوب، اینستاگرام، …) باز شوند. کوکی‌ها فقط در همین مرورگر ذخیره و فقط برای همان سایت ارسال می‌شوند.',
+		'کوکی‌های خودت را اضافه کن تا ویدیوهای محدودشده با سن، خصوصی، یا نیازمند ورود (یوتیوب، اینستاگرام و…) باز شوند. کوکی‌ها فقط در همین مرورگر ذخیره می‌شوند و فقط برای همان سایت فرستاده می‌شوند.',
 	'cookies.statusSaved': 'ذخیره شد',
 	'cookies.statusEmpty': 'تنظیم نشده',
 	'cookies.add': 'افزودن',
@@ -615,7 +623,7 @@ export const fa: Record<MessageKey, string> = {
 	'cookies.guide.s4': 'متن خروجی را در کادر همان سایت اینجا بچسبان و ذخیره کن.',
 	'cookies.warnTitle': 'توجه',
 	'cookies.warnThrowaway':
-		'از یک حساب یک‌بارمصرف استفاده کن — سایت‌ها ممکن است حساب‌های دانلود را محدود یا مسدود کنند.',
+		'از یک حساب یک‌بارمصرف استفاده کن — سایت‌ها ممکن است حساب‌هایی را که برای دانلود به کار می‌روند محدود یا مسدود کنند.',
 	'cookies.warnLocal':
 		'کوکی‌ها حساس هستند و فقط در همین مرورگر می‌مانند. روی رایانه‌ی مشترک از این استفاده نکن.',
 	'cookies.clearAll': 'حذف همه‌ی کوکی‌ها',

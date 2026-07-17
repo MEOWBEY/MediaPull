@@ -34,7 +34,7 @@ from .net_common import (
     normalize_cookies,
 )
 
-logger = logging.getLogger("pullbox.extractor")
+logger = logging.getLogger("mediapull.extractor")
 
 VIDEO_EXTENSIONS = (
     ".mp4", ".webm", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".m4v", ".3gp", ".ts",

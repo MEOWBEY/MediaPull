@@ -17,8 +17,9 @@ class ExtractRequest(BaseModel):
     # Optional per-request authentication cookies for the URL's site, supplied
     # by the user from the client's Settings → Cookies panel. Either Netscape
     # cookies.txt text or a single "Cookie: a=b; c=d" header line. Stored only
-    # in the user's browser; written to a throwaway temp file for one yt-dlp
-    # call and deleted. Falls back to the server-side COOKIE_FILE when absent.
+    # in the user's browser; written to a throwaway temp file for one yt-dlp or
+    # gallery-dl run and deleted. Cap matches MAX_COOKIE_BYTES. Falls back to
+    # the server-side COOKIE_FILE when absent.
     cookies: str | None = Field(default=None, max_length=262_144)
 
 
@@ -208,7 +209,7 @@ class HealthResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     status: str = "healthy"
-    service: str = "pullbox"
+    service: str = "mediapull"
     version: str
     timestamp: str
     # Surfaced so deploy tooling (install.sh's verification step, uptime

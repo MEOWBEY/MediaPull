@@ -34,7 +34,7 @@ from .config import Settings
 from .net_common import impersonate_kwarg
 from .ssrf import is_blocked_ip
 
-logger = logging.getLogger("pullbox.proxy")
+logger = logging.getLogger("mediapull.proxy")
 
 # Upstream response headers worth forwarding to the player.
 _FORWARD_RESP_HEADERS = (
@@ -76,8 +76,6 @@ class ProxyService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
         self._default_ua = settings.user_agent
-        # Use shared impersonation helper (checks enable_impersonation +
-        # impersonate_client) instead of duplicating logic locally.
         self._impersonate_kw = impersonate_kwarg(settings)
         self._proxy = settings.proxy_url or None
         self._session = AsyncSession(
@@ -89,8 +87,9 @@ class ProxyService:
         self._enabled = settings.proxy_enabled
         # Ephemeral token -> (cookie_blob, expiry_monotonic). Keeps a source's
         # auth cookies OUT of the proxy URL (URLs get copied / QR'd / shared);
-        # the token is opaque and short-lived. Single-worker deploy assumed
-        # (see the note in main.py's transcribe section).
+        # the token is opaque and short-lived (~1h). Cap size with
+        # PROXY_COOKIE_TOKEN_MAX. Single-worker only — tokens live in this
+        # process dict (same constraint as JobStore / TTLCache).
         self._cookie_tokens: dict[str, tuple[str, float]] = {}
         self._token_ttl = 3600.0
         # Short-lived cache of the *DNS* verdict (hostname -> (allowed, expiry)).

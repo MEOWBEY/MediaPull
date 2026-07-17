@@ -168,9 +168,11 @@ export class ExtractionController {
 	 *  so we skip a full failed video extract on Pinterest/Imgur/etc. */
 	private looksLikeGalleryUrl(rawUrl: string): boolean {
 		try {
+			// eslint-disable-next-line svelte/prefer-svelte-reactivity
 			const u = new URL(rawUrl.trim());
 			const host = u.hostname.toLowerCase().replace(/^www\./, '');
 			const path = u.pathname.toLowerCase();
+
 			if (
 				host.includes('pinterest.') ||
 				host === 'imgur.com' ||
@@ -186,8 +188,10 @@ export class ExtractionController {
 				if (host.includes('instagram.com') || host.includes('youtube.com')) {
 					return false;
 				}
+
 				return true;
 			}
+
 			return false;
 		} catch {
 			return false;
@@ -230,6 +234,7 @@ export class ExtractionController {
 							silentError: true,
 							onError
 						});
+
 			if (ok) {
 				return true;
 			}
@@ -418,6 +423,7 @@ export class ExtractionController {
 										: w.code === 'truncated'
 											? 'gallery.warning.truncated'
 											: 'gallery.warning.generic';
+
 						toast.warning(
 							key === 'gallery.warning.generic'
 								? t(key, { message: w.message })
@@ -547,7 +553,7 @@ export class ExtractionController {
 	private start(): void {
 		// Single-flight: abort any request still in flight before starting a new
 		// one, so a rapid re-paste / retry doesn't leak the prior fetch (it would
-		// run to the 3-min server timeout and confuse the running flag).
+		// run until the client's ~3 min fetch timeout and confuse the running flag).
 		this.controller?.abort();
 		this.controller = new AbortController();
 		this.elapsedSeconds = 0;

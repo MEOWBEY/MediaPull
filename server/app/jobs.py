@@ -27,7 +27,7 @@ from .transcribe.base import Transcriber, TranscriptionResult
 from .transcribe.groq_engine import GroqError
 from .dialogue_map import DialogueMapError, extract_peaks_chunks
 
-logger = logging.getLogger("pullbox.jobs")
+logger = logging.getLogger("mediapull.jobs")
 
 _QUEUED, _DOWNLOADING, _CHUNKING, _TRANSCRIBING, _FINALIZING = (
     "queued",
@@ -40,6 +40,12 @@ _TERMINAL_STATUSES = ("done", "error", "cancelled")
 
 
 def _return_freed_memory_to_os() -> None:
+    """Best-effort glibc malloc_trim after a job frees large audio buffers.
+
+    Python keeps freed heap pages for reuse; on Linux a long-running worker can
+    look permanently "fat" in RSS after several transcriptions. This only runs
+    on glibc (no-op on Windows/macOS or musl) and never raises.
+    """
     try:
         import ctypes
 

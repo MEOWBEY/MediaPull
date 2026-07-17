@@ -1,6 +1,5 @@
 <script lang="ts">
 	import ListVideo from '@lucide/svelte/icons/list-video';
-	import Search from '@lucide/svelte/icons/search';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
@@ -10,7 +9,7 @@
 	import VideoCard from '$lib/components/VideoCard.svelte';
 	import { allQualityLinks, buildVideosM3u, downloadTextFile, safeFilename } from '$lib/export';
 	import { extraction } from '$lib/extraction.svelte';
-	import { isAudioType, mediaKindLabel, sourceHost } from '$lib/format';
+	import { isAudioType, sourceHost } from '$lib/format';
 	import { GroupRefreshTracker } from '$lib/group-refresh.svelte';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
@@ -123,46 +122,6 @@
 		});
 	}
 
-	// Free-text filter over title, format-kind labels, and per-quality resolution/extension.
-	let filterQuery = $state('');
-	// Debounced so a large result set doesn't re-filter on every keystroke --
-	// the input itself stays bound to the raw, undelayed value so typing never
-	// feels laggy.
-	let debouncedFilterQuery = $state('');
-
-	$effect(() => {
-		const value = filterQuery;
-		const timer = setTimeout(() => {
-			debouncedFilterQuery = value;
-		}, 180);
-
-		return () => clearTimeout(timer);
-	});
-
-	let filteredResults = $derived.by(() => {
-		const q = debouncedFilterQuery.trim().toLowerCase();
-
-		if (!q) {
-			return orderedResults;
-		}
-
-		return orderedResults.filter((v) => {
-			const allQ = v.formatGroups.flatMap((g) => g.qualities);
-			const haystack = [
-				v.title ?? '',
-				...v.formatGroups.map((g) => g.type),
-				...v.formatGroups.map((g) => mediaKindLabel(g.type, t('player.audioLabel'))),
-				v.webpage_url ?? '',
-				...allQ.map((qq) => (qq.resolution ? `${qq.resolution}p` : '')),
-				...allQ.map((qq) => qq.ext ?? '')
-			]
-				.join(' ')
-				.toLowerCase();
-
-			return haystack.includes(q);
-		});
-	});
-
 	interface SourceGroup {
 		key: string;
 		sourceUrl: string;
@@ -178,7 +137,7 @@
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const map = new Map<string, Card[]>();
 
-		for (const v of filteredResults) {
+		for (const v of orderedResults) {
 			// Skip cards left with nothing to show once video-only is hidden.
 			if (visibleFormatGroups(v, preferences).length === 0) {
 				continue;
@@ -219,26 +178,6 @@
 			</h2>
 		</div>
 
-		<!-- Filter — only worth showing once there's more than one card. -->
-		{#if videoExtractResults.length > 1}
-			<div class="relative mb-5 w-full">
-				<Search
-					class="text-muted-foreground pointer-events-none absolute top-1/2 inset-s-3 h-4 w-4 -translate-y-1/2"
-				/>
-				<input
-					bind:value={filterQuery}
-					type="search"
-					placeholder={t('extract.searchPlaceholder')}
-					aria-label={t('extract.searchPlaceholder')}
-					class="bg-card/60 border-border/60 focus:ring-primary/40 h-10 w-full rounded-full border ps-9 pe-3 text-sm outline-none focus:ring-2"
-				/>
-			</div>
-		{/if}
-
-		{#if filteredResults.length === 0}
-			<p class="text-muted-foreground py-8 text-center text-sm">{t('extract.noMatches')}</p>
-		{/if}
-
 		<!-- The group is the card -- the one bordered, backed container in the
 		     whole hierarchy. Groups sit in the same responsive grid so they line
 		     up together; a group with several videos just stacks them inside,
@@ -252,8 +191,16 @@
 				<SourceGroupCard
 					sourceUrl={group.sourceUrl}
 					itemCount={group.items.length}
+					onCopyUrl={group.sourceUrl
+						? () => copyUrlToClipboard(group.sourceUrl, t)
+						: undefined}
 					onExportTxt={() => exportTxtFor(group.items, sourceHost(group.sourceUrl) || 'group')}
-					onExportM3u={() => exportM3uFor(group.items, sourceHost(group.sourceUrl) || 'group')}
+					onExportM3u={group.items.some((v) =>
+						v.formatGroups.some((g) => g.type === 'application/x-mpegURL')
+					)
+						? () => exportM3uFor(group.items, sourceHost(group.sourceUrl) || 'group')
+						: undefined}
+					showExports={preferences.showExportButtons}
 					onRefresh={() => refreshGroup(group)}
 					refreshing={refreshTracker.isRefreshing(group.key)}
 					onRemove={() => removeGroup(group.items)}

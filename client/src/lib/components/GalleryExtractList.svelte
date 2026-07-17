@@ -5,7 +5,6 @@
 	import Download from '@lucide/svelte/icons/download';
 	import ExternalLink from '@lucide/svelte/icons/external-link';
 	import ImagesIcon from '@lucide/svelte/icons/images';
-	import Search from '@lucide/svelte/icons/search';
 	import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
@@ -84,14 +83,17 @@
 		try {
 			for (let i = 0; i < gallery.images.length; i++) {
 				const image = gallery.images[i];
+
 				try {
 					const res = await fetch(image.url);
+
 					if (!res.ok) {
 						throw new Error(String(res.status));
 					}
 					const blob = await res.blob();
 					const objectUrl = URL.createObjectURL(blob);
 					const link = document.createElement('a');
+
 					link.href = objectUrl;
 					link.download = `${base}-${i + 1}.${image.ext || 'jpg'}`;
 					link.click();
@@ -129,6 +131,7 @@
 		if (code === 'truncated') {
 			return t('gallery.warning.truncated');
 		}
+
 		return t('gallery.warning.generic', { message });
 	}
 
@@ -172,21 +175,6 @@
 	function toggleExpanded(gallery: GroupedGallery) {
 		expandedGalleries.set(gallery, !expandedGalleries.get(gallery));
 	}
-
-	// Free-text filter over title and source URL.
-	let filterQuery = $state('');
-
-	let filteredGalleries = $derived.by(() => {
-		const q = filterQuery.trim().toLowerCase();
-
-		if (!q) {
-			return galleries;
-		}
-
-		return galleries.filter((g) =>
-			[g.title ?? '', g.webpage_url ?? ''].join(' ').toLowerCase().includes(q)
-		);
-	});
 
 	let totalImages = $derived(galleries.reduce((sum, g) => sum + g.images.length, 0));
 
@@ -236,52 +224,39 @@
 			</h2>
 		</div>
 
-		{#if galleries.length > 1}
-			<div class="relative mb-5 w-full">
-				<Search
-					class="text-muted-foreground pointer-events-none absolute top-1/2 inset-s-3 h-4 w-4 -translate-y-1/2"
-				/>
-				<input
-					bind:value={filterQuery}
-					type="search"
-					placeholder={t('extract.searchPlaceholder')}
-					aria-label={t('extract.searchPlaceholder')}
-					class="bg-card/60 border-border/60 focus:ring-primary/40 h-10 w-full rounded-full border ps-9 pe-3 text-sm outline-none focus:ring-2"
-				/>
-			</div>
-		{/if}
-
-		{#if filteredGalleries.length === 0}
-			<p class="text-muted-foreground py-8 text-center text-sm">{t('extract.noMatches')}</p>
-		{/if}
-
 		<div
 			class="grid gap-4 sm:gap-5 {preferences.layoutList === 'grid'
 				? 'grid-cols-1 lg:grid-cols-2'
 				: 'grid-cols-1'}"
 		>
-			{#each filteredGalleries as gallery (gallery)}
+			{#each galleries as gallery (gallery)}
 				<SourceGroupCard
 					sourceUrl={gallery.webpage_url ?? ''}
 					itemCount={gallery.images.length}
+					onCopyUrl={gallery.webpage_url
+						? () => copyToClipboard(gallery.webpage_url ?? '')
+						: undefined}
 					onExportTxt={() => exportTxtFor(gallery)}
+					showExports={preferences.showExportButtons}
 					onRefresh={() => refreshGallery(gallery)}
 					refreshing={refreshTracker.isRefreshing(gallery)}
 					onRemove={() => removeGallery(gallery)}
 				>
 					<div class="px-3.5 pt-1 sm:px-0">
-						<div class="mb-2 flex flex-wrap items-center gap-2">
-							<Button
-								variant="outline"
-								size="sm"
-								class="h-7 gap-1.5 rounded-full text-xs"
-								disabled={bulkDownloading.get(gallery)}
-								onclick={() => downloadAll(gallery)}
-							>
-								<Download class="h-3 w-3" />
-								{t('gallery.downloadAll')}
-							</Button>
-						</div>
+						{#if gallery.images.length > 1}
+							<div class="mb-2 flex flex-wrap items-center gap-2">
+								<Button
+									variant="outline"
+									size="sm"
+									class="h-7 gap-1.5 rounded-full text-xs"
+									disabled={bulkDownloading.get(gallery)}
+									onclick={() => downloadAll(gallery)}
+								>
+									<Download class="h-3 w-3" />
+									{t('gallery.downloadAll')}
+								</Button>
+							</div>
+						{/if}
 						{#if gallery.skippedCount}
 							<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
 								<TriangleAlert class="h-3 w-3 shrink-0" />
@@ -315,7 +290,7 @@
 											alt={t('gallery.imageAlt', { n: index + 1 })}
 											loading="lazy"
 											decoding="async"
-											class="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+											class="h-full w-full object-cover"
 										/>
 									</button>
 									<button
@@ -323,9 +298,10 @@
 										onclick={() => downloadImage(gallery, image, index)}
 										title={t('gallery.downloadImage')}
 										aria-label={t('gallery.downloadImage')}
-										class="bg-black/50 text-white hover:bg-black/70 absolute bottom-1.5 inset-e-1.5 z-10 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full backdrop-blur-sm transition-colors"
+										class="bg-black/60 text-white hover:bg-black/80 absolute bottom-1.5 inset-e-1.5 z-10 flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium backdrop-blur-sm transition-colors"
 									>
 										<Download class="h-3.5 w-3.5" />
+										<span>{t('extract.download')}</span>
 									</button>
 								</div>
 							{/each}

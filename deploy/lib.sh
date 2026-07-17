@@ -1,33 +1,18 @@
 #!/usr/bin/env bash
-# Shared helpers for the Pullbox VPS scripts (install/update/uninstall).
-#
-# SOURCED, never executed on its own -- each entry script does:
-#   source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
-# and inherits the constants + functions below. The sourcing script owns
-# `set -euo pipefail`; this file only defines things.
-#
-# Everything here is the code install.sh and update.sh would otherwise
-# duplicate (git sync, dependency installs, yt-dlp / PO-token upgrades, client
-# build, systemd templating, health check) plus the token-based git auth that
-# stops a private repo from re-prompting for credentials on every clone/pull.
+# Shared helpers for MediaPull VPS scripts (install/update/uninstall).
+# Sourced only — not executed on its own. Caller owns set -euo pipefail.
 
-# ---- constants / defaults (override by exporting the var before sourcing) ---
-REPO_SLUG="${REPO_SLUG:-MEOWBEY/direct-stream}"
+# ---- constants / defaults (override by exporting before sourcing) -----------
+REPO_SLUG="${REPO_SLUG:-meowbey/MediaPull}"
 REPO_URL="${REPO_URL:-https://github.com/${REPO_SLUG}.git}"
-REPO_DIR="${REPO_DIR:-/opt/pullbox}"
-SERVICE_USER="${SERVICE_USER:-pullbox}"
-SERVICE="pullbox"
+REPO_DIR="${REPO_DIR:-/opt/mediapull}"
+SERVICE_USER="${SERVICE_USER:-mediapull}"
+SERVICE="mediapull"
 CONFIG_FILE="$REPO_DIR/.vps-deploy.env"
-
-# Directory (inside the checkout) holding the deploy templates this lib fills
-# in -- systemd units, nginx/caddy configs. Set relative to this file so the
-# scripts keep working no matter where the repo is cloned.
+# Templates live next to this file so scripts work from any checkout path.
 DEPLOY_DIR="${DEPLOY_DIR:-$REPO_DIR/deploy}"
 
-# Settings retired from the app in past releases -- scrubbed from a long-lived
-# server/.env so nobody wastes time tuning a knob that no longer exists (the
-# app ignores unknown keys, so this is hygiene). Add to this list when a
-# setting is removed; both install.sh (re-run) and update.sh use it.
+# Keys removed from the app — scrubbed from long-lived server/.env on update.
 OBSOLETE_ENV_KEYS=(
   TRANSCRIBE_CHUNK_SECONDS
   GROQ_CHUNK_CONCURRENCY
@@ -41,9 +26,7 @@ require_root() {
   fi
 }
 
-# install.sh writes CONFIG_FILE with the answers you gave it, so update.sh /
-# uninstall.sh don't need REPO_DIR/PORT/etc re-specified. Env vars set before
-# the run still win (they were already set when the defaults above resolved).
+# Prefer CONFIG_FILE from install.sh; pre-set env vars still win.
 load_config() {
   if [[ -f "$CONFIG_FILE" ]]; then
     # shellcheck disable=SC1090
@@ -71,15 +54,12 @@ authed_url() {
   fi
 }
 
-# True if origin already carries an embedded credential -- lets install.sh skip
-# re-asking for a token on a re-run, and confirms update.sh will never prompt.
+# True if origin URL already embeds credentials (skip re-prompting).
 remote_has_auth() {
   git_c remote get-url origin 2>/dev/null | grep -q '@github.com'
 }
 
-# Persist the authenticated remote into the checkout's (service-user-owned)
-# .git/config, so every later git op -- including update.sh -- reuses it with
-# no prompt. No-op for a blank token.
+# Write authenticated remote into the service user's .git/config. No-op if blank.
 persist_repo_auth() {
   local token="${1:-}"
   [[ -n "$token" ]] || return 0
@@ -113,8 +93,7 @@ install_backend_deps() {
     -r "$REPO_DIR/server/requirements.txt"
 }
 
-# yt-dlp / gallery-dl fight a constant arms race with site changes, so always
-# pull their latest release on top of (not instead of) the pinned versions.
+# Always upgrade scrapers on top of pinned requirements (sites change often).
 upgrade_scrapers() {
   echo "==> upgrading yt-dlp and gallery-dl to their latest releases"
   sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade yt-dlp gallery-dl
@@ -131,11 +110,8 @@ scrub_obsolete_env() {
   done
 }
 
-# YouTube PO token provider: pip plugin + a pinned Node server clone that speak
-# a version-checked protocol, so both must move together. Ensures the clone is
-# at the tag pip resolved and (re)builds it. Sets POT_VERSION for the caller;
-# returns non-zero if the plugin didn't install. Does NOT create the systemd
-# service (install.sh does that once).
+# Keep bgutil pot plugin + Node server on the same version-checked tag.
+# Sets POT_VERSION; does not create the systemd unit (install.sh does).
 sync_pot_provider_code() {
   sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" install --upgrade bgutil-ytdlp-pot-provider
   POT_VERSION="$(sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/pip" show bgutil-ytdlp-pot-provider 2>/dev/null | sed -n 's/^Version: //p')"
@@ -155,14 +131,12 @@ sync_pot_provider_code() {
   fi
 }
 
-# (Re)template the PO provider systemd unit for the given port (default 4416)
-# and reload systemd. Shared by install.sh (first setup) and update.sh (so a
-# template/port change propagates on the next update).
+# Template mediapull-pot.service for the given port (default 4416) and reload.
 sync_pot_service() {
   local port="${1:-4416}"
   sed "s#__REPO_DIR__#$REPO_DIR#; s#__SERVICE_USER__#$SERVICE_USER#; s#__POT_PORT__#$port#" \
-    "$DEPLOY_DIR/systemd/pullbox-pot.service" \
-    > /etc/systemd/system/pullbox-pot.service
+    "$DEPLOY_DIR/systemd/mediapull-pot.service" \
+    > /etc/systemd/system/mediapull-pot.service
   systemctl daemon-reload
 }
 
@@ -205,8 +179,8 @@ detect_resource_limits() {
 sync_systemd_unit() {
   local port="$1" mem="$2" cpu="$3"
   sed "s#__REPO_DIR__#$REPO_DIR#; s#__SERVICE_USER__#$SERVICE_USER#; s/__PORT__/$port/; s/__MEMORY_MAX__/$mem/; s/__CPU_QUOTA__/$cpu/" \
-    "$DEPLOY_DIR/systemd/pullbox.service" \
-    > /etc/systemd/system/pullbox.service
+    "$DEPLOY_DIR/systemd/mediapull.service" \
+    > /etc/systemd/system/mediapull.service
   systemctl daemon-reload
 }
 

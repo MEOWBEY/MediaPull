@@ -25,7 +25,7 @@ import httpx
 from ..config import Settings
 from .base import Segment, TranscriptionResult
 
-logger = logging.getLogger("pullbox.transcribe.groq")
+logger = logging.getLogger("mediapull.transcribe.groq")
 
 _BASE_URL = "https://api.groq.com/openai/v1"
 _TRANSCRIPTIONS_URL = f"{_BASE_URL}/audio/transcriptions"

@@ -4,8 +4,12 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
 
-// In dev, forward the backend routes to the Python server so the client can use
-// relative URLs (no CORS). Override the target with VITE_API_BASE_URL if needed.
+// Dev-only: forward API routes to the Python FastAPI server so the SPA can use
+// same-origin relative URLs (no CORS). Target defaults to localhost:8000;
+// override with VITE_API_BASE_URL if the backend runs elsewhere. Keep this list
+// in sync with every public backend path the client calls (new routes won't
+// proxy until added here). Production static builds set VITE_API_BASE_URL to
+// the real API origin instead of relying on this proxy.
 const backend = process.env.VITE_API_BASE_URL || 'http://localhost:8000';
 const proxied = [
 	'/extract-videos',

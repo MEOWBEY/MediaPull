@@ -157,6 +157,12 @@
 	}
 	body {
 		@apply bg-background text-foreground;
+		/* Crisper text everywhere -- without this, panels that composite on their
+		   own GPU layer (the settings sheet, floating glass bars) render text a
+		   touch fuzzy on WebKit/Blink. */
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		text-rendering: optimizeLegibility;
 	}
 	/* Headings use the clean body sans by default; the display serif (Fraunces) is
 	   opt-in via the `font-heading` utility on brand/hero only, so functional

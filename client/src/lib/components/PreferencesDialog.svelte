@@ -1,6 +1,7 @@
 <script lang="ts">
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import Captions from '@lucide/svelte/icons/captions';
+	import Download from '@lucide/svelte/icons/download';
 	import Grid3X3 from '@lucide/svelte/icons/grid-3x3';
 	import Image from '@lucide/svelte/icons/image';
 	import Info from '@lucide/svelte/icons/info';
@@ -130,6 +131,17 @@
 		}
 	];
 
+	// Result-list export buttons (Links .txt / Playlist .m3u) -- off by default,
+	// lives in the Downloads tab since it's about what the result group shows.
+	const exportSettings: SettingItem[] = [
+		{
+			id: 'show-export-buttons',
+			labelKey: 'prefs.showExports.label',
+			key: 'showExportButtons',
+			descKey: 'prefs.showExports.desc'
+		}
+	];
+
 	const captionSettings: SettingItem[] = [
 		{
 			id: 'auto-open-subtitle-panel',
@@ -169,6 +181,7 @@
 			enableVideoPreloadMetadata: false,
 			enableProxyForVideoExtract: true,
 			showHlsTypeDownloadButton: true,
+			showExportButtons: false,
 			showVideoOnlyFormats: false,
 			autoOpenSubtitlePanel: false,
 			subtitlePanelMinWords: 0
@@ -233,8 +246,7 @@
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
 		closeLabel={t('common.close')}
-		hideClose
-		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg {desktop.matches
+		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl {desktop.matches
 			? ''
 			: 'h-[88vh] rounded-t-3xl'}"
 	>
@@ -242,32 +254,34 @@
 			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">
 				{t('prefs.title')}
 			</Sheet.Title>
-			<Sheet.Description class="text-muted-foreground text-sm">
-				{t('prefs.subtitle')}
-			</Sheet.Description>
 		</Sheet.Header>
 
-		<!-- Tab bar: segmented control that scrolls to the right panel. -->
-		<div class="border-border/60 border-b px-4 pt-3 sm:px-6" role="tablist">
-			<div class="bg-muted/50 flex gap-0.5 rounded-full p-0.5">
+		<!-- Tab bar: underline style, matching the video player's format tabs
+		     (no divider line under the row). Extra bottom margin gives the tabs
+		     breathing room before the content below. -->
+		<div class="mt-2 mb-4 px-4 sm:mb-5 sm:px-6" role="tablist">
+			<div class="flex w-full items-stretch gap-5">
 				{#each tabs as tabItem (tabItem.id)}
 					<button
 						type="button"
 						role="tab"
 						aria-selected={tab === tabItem.id}
 						onclick={() => (tab = tabItem.id)}
-						class="flex-1 rounded-full px-2 py-2 text-xs font-medium transition-colors sm:text-sm {tab ===
+						class="relative -mb-px pt-1 pb-2 text-sm font-semibold transition-colors {tab ===
 						tabItem.id
-							? 'bg-background text-foreground shadow-sm'
+							? 'text-primary'
 							: 'text-muted-foreground hover:text-foreground'}"
 					>
 						{t(tabItem.labelKey)}
+						{#if tab === tabItem.id}
+							<span class="bg-primary absolute inset-x-0 -bottom-px h-0.5 rounded-full"></span>
+						{/if}
 					</button>
 				{/each}
 			</div>
 		</div>
 
-		<div class="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:space-y-6 sm:px-6">
+		<div class="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-8 sm:space-y-6 sm:px-6 sm:pb-10">
 			{#if tab === 'general'}
 				{#snippet interfaceBody()}
 					{@render toggleGroup(interfaceSettings)}
@@ -284,7 +298,7 @@
 									variant={preferences.contentTypeMode === mode ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ contentTypeMode: mode })}
-									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 								>
 									{t(`prefs.contentType.${mode}`)}
 								</Button>
@@ -303,7 +317,7 @@
 									variant={preferences.theme === theme ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ theme })}
-									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 								>
 									{t(`prefs.theme.${theme}`)}
 								</Button>
@@ -322,7 +336,7 @@
 									variant={i18n.locale === loc.code ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => i18n.setLocale(loc.code)}
-									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 								>
 									{loc.label}
 								</Button>
@@ -338,7 +352,7 @@
 							variant={preferences.layoutList === 'grid' ? 'default' : 'outline'}
 							size="sm"
 							onclick={() => appStore.updatePreferences({ layoutList: 'grid' })}
-							class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+							class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 						>
 							<Grid3X3 class="me-2 h-4 w-4" />
 							{t('prefs.gridView')}
@@ -347,7 +361,7 @@
 							variant={preferences.layoutList === 'list' ? 'default' : 'outline'}
 							size="sm"
 							onclick={() => appStore.updatePreferences({ layoutList: 'list' })}
-							class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+							class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 						>
 							<LayoutList class="me-2 h-4 w-4" />
 							{t('prefs.listView')}
@@ -355,6 +369,11 @@
 					</div>
 				{/snippet}
 				{@render sectionCard('prefs.viewMode', LayoutList, 'text-purple-600', viewModeBody)}
+
+				{#snippet exportsBody()}
+					{@render toggleGroup(exportSettings)}
+				{/snippet}
+				{@render sectionCard('prefs.section.exports', Download, 'text-sky-600', exportsBody)}
 
 				{#snippet sortingBody()}
 					<div class="space-y-4">
@@ -366,7 +385,7 @@
 										variant={preferences.videoSortField === sortOption ? 'default' : 'outline'}
 										size="sm"
 										onclick={() => appStore.updatePreferences({ videoSortField: sortOption })}
-										class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+										class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 									>
 										{t(`prefs.sort.${sortOption}`)}
 									</Button>
@@ -380,7 +399,7 @@
 									variant={preferences.videoSortOrder === 'asc' ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ videoSortOrder: 'asc' })}
-									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 								>
 									{t('prefs.ascending')}
 								</Button>
@@ -388,7 +407,7 @@
 									variant={preferences.videoSortOrder === 'desc' ? 'default' : 'outline'}
 									size="sm"
 									onclick={() => appStore.updatePreferences({ videoSortOrder: 'desc' })}
-									class="h-11 py-1.5 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:flex-none sm:justify-start"
+									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 								>
 									{t('prefs.descending')}
 								</Button>
@@ -437,7 +456,7 @@
 								variant="outline"
 								size="sm"
 								onclick={() => (confirmClear = true)}
-								class="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 h-11 w-full cursor-pointer px-4 py-1.5 transition-colors sm:h-10"
+								class="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 h-12 w-full cursor-pointer px-4 py-2 transition-colors sm:h-10 sm:py-1.5"
 							>
 								<Trash2 class="me-2 h-4 w-4" />
 								{t('prefs.clearData')}

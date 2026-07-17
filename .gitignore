@@ -54,5 +54,8 @@ notes.local.md
 CLAUDE.md
 DESIGN-IS-*/
 
+# ── GitHub workflows (kept local-only) ──
+.github/
+
 # ── graphify knowledge graph (regenerated on every commit via .git/hooks/post-commit) ──
 graphify-out/

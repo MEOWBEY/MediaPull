@@ -26,6 +26,7 @@
 
 	function draw() {
 		const canvas = canvasEl;
+
 		if (!canvas || !peaks.length) {
 			return;
 		}
@@ -33,10 +34,12 @@
 		const dpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
 		const width = canvas.clientWidth || 300;
 		const height = canvas.clientHeight || 72;
+
 		canvas.width = Math.floor(width * dpr);
 		canvas.height = Math.floor(height * dpr);
 
 		const ctx = canvas.getContext('2d');
+
 		if (!ctx) {
 			return;
 		}
@@ -55,6 +58,7 @@
 			const x = (i / n) * width;
 			const y = height - h;
 			const played = i / n <= progress;
+
 			ctx.fillStyle = played ? 'rgba(255,255,255,0.92)' : 'rgba(255,255,255,0.35)';
 			ctx.fillRect(x, y, Math.max(1, barW - 0.5), h);
 		}
@@ -74,6 +78,7 @@
 		}
 		const rect = trackEl.getBoundingClientRect();
 		const ratio = Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
+
 		onSeek(ratio * durationSeconds);
 	}
 </script>

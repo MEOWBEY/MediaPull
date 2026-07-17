@@ -10,15 +10,13 @@
 </script>
 
 <svelte:head>
-	<title>Error {page.status} | Pullbox</title>
+	<title>Error {page.status} | MediaPull</title>
 	<meta name="robots" content="noindex, nofollow" />
 </svelte:head>
 
 <div class="min-h-screen">
 	<div class="flex min-h-screen items-center justify-center px-4">
 		<div class="w-full max-w-md">
-			
-			<!-- Error Card -->
 			<div class="ds-glass rounded-2xl border-0 p-8 text-center shadow-glow">
 				<div class="mb-6 flex justify-center">
 					<div class="rounded-2xl bg-red-500/15 p-4">

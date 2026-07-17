@@ -1,4 +1,4 @@
-/** Shared domain types for the Pullbox client. Single source of truth. */
+/** Shared domain types for the MediaPull client. */
 
 export type MediaType =
 	| 'video/mp4'
@@ -108,11 +108,19 @@ export interface Preferences {
 	videoSortOrder: 'asc' | 'desc';
 	enableAnimations: boolean;
 	enableCompact: boolean;
+	/** Route media through `/proxy-video` (Referer/Cookie/UA the player can't set).
+	 *  Off = direct CDN URLs — faster, but breaks many gated sources. */
 	enableProxyForVideoExtract: boolean;
 	enableVideoMute: boolean;
+	/** Ask the player to preload metadata only (not the full stream) — saves data. */
 	enableVideoPreloadMetadata: boolean;
 	showVideoThumbnail: boolean;
+	/** Show a download action on HLS tabs (playlist only, not a single file). */
 	showHlsTypeDownloadButton: boolean;
+	/** Show the per-group export buttons (Links .txt / Playlist .m3u) in the
+	 *  source-group header. Off by default -- most users just want the source
+	 *  URL + refresh/remove; power users can turn the exports back on. */
+	showExportButtons: boolean;
 	/** Show adaptive video-only (no-audio) qualities, e.g. YouTube >720p. Off by default. */
 	showVideoOnlyFormats: boolean;
 	/** Open the subtitle search panel automatically once a track is ready. */

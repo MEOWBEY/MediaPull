@@ -1,5 +1,5 @@
 [Unit]
-Description=Pullbox API (FastAPI backend)
+Description=MediaPull API (FastAPI backend)
 After=network.target
 
 [Service]
@@ -24,16 +24,11 @@ ExecStart=__REPO_DIR__/server/venv/bin/gunicorn app.main:app \
 Restart=on-failure
 RestartSec=5
 
-# Caps sized at install time from the box's detected CPU/RAM (see install.sh)
-# so this service can't peg the VPS and starve nginx/other panels sharing it.
-# Re-templated (not just restarted) on every install.sh/update.sh run, so
-# edits here get overwritten -- use `systemctl edit pullbox` for a permanent
-# local override instead.
+# Caps from install-time CPU/RAM detection. Re-templated on update — use
+# `systemctl edit mediapull` for permanent local overrides.
 MemoryMax=__MEMORY_MAX__
 CPUQuota=__CPU_QUOTA__
 
-# Light sandboxing -- tighten further if you don't need cookie files / a
-# cache dir outside the repo.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full

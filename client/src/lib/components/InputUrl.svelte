@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Clock from '@lucide/svelte/icons/clock';
 	import Globe from '@lucide/svelte/icons/globe';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
@@ -19,7 +18,6 @@
 		runVideoExtractFromServer,
 		cancelActiveOperation,
 		isVideoExtractRunning,
-		elapsedOperationSeconds = 0,
 		batchTotal = 0,
 		batchDone = 0,
 		isPreferencesDialogOpen = $bindable()
@@ -56,13 +54,6 @@
 			return;
 		}
 		inputUrl = '';
-	}
-
-	function elapsed(seconds: number): string {
-		const mins = Math.floor(seconds / 60);
-		const secs = (seconds % 60).toString().padStart(2, '0');
-
-		return `${mins}:${secs}`;
 	}
 
 	function onKeydown(event: KeyboardEvent) {
@@ -123,22 +114,28 @@
 
 		<!-- Action row -->
 		<div class="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
-			<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
-				{#each contentTypeOptions as option (option.mode)}
-					<Button
-						variant={contentTypeMode === option.mode ? 'default' : 'ghost'}
-						size="sm"
-						disabled={isOperationRunning}
-						onclick={() => setContentTypeMode(option.mode)}
-						class="gap-1 rounded-full px-2.5 py-1 text-xs"
-						aria-pressed={contentTypeMode === option.mode}
-						title={t(option.labelKey)}
-					>
-						<option.icon class="h-3 w-3" />
-						<span>{t(option.labelKey)}</span>
-					</Button>
-				{/each}
-			</div>
+			<!-- The mode selector only appears once the user forces video/gallery.
+			     In 'auto' (the default) it's hidden -- the label would just clutter
+			     the input, and auto is what most pastes want anyway. Mode stays
+			     changeable from Preferences. -->
+			{#if contentTypeMode !== 'auto'}
+				<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
+					{#each contentTypeOptions as option (option.mode)}
+						<Button
+							variant={contentTypeMode === option.mode ? 'default' : 'ghost'}
+							size="sm"
+							disabled={isOperationRunning}
+							onclick={() => setContentTypeMode(option.mode)}
+							class="gap-1 rounded-full px-2.5 py-1 text-xs"
+							aria-pressed={contentTypeMode === option.mode}
+							title={t(option.labelKey)}
+						>
+							<option.icon class="h-3 w-3" />
+							<span>{t(option.labelKey)}</span>
+						</Button>
+					{/each}
+				</div>
+			{/if}
 
 			<Button
 				onclick={() => runVideoExtractFromServer(inputUrl)}
@@ -158,13 +155,6 @@
 
 			{#if isOperationRunning}
 				<div class="ms-auto flex items-center gap-2">
-					<span
-						class="bg-primary/10 text-primary hidden items-center gap-1.5 rounded-full px-3 py-2 font-mono text-sm font-medium tabular-nums sm:inline-flex"
-						aria-live="polite"
-					>
-						<Clock class="h-3.5 w-3.5" />
-						{elapsed(elapsedOperationSeconds)}
-					</span>
 					<Button
 						variant="destructive"
 						onclick={cancelActiveOperation}

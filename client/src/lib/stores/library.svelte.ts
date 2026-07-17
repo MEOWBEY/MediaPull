@@ -1,3 +1,13 @@
+/**
+ * Durable extract library (video cards + image galleries).
+ *
+ * Kept in localStorage (capped at MAX_ENTRIES each) so a refresh keeps prior
+ * results. Proxy URLs are rebuilt on load with fresh ctoks when Settings still
+ * has cookies for those hosts — tokens expire server-side (~1h) and must not
+ * be treated as permanent. Dedupes by webpage_url (then id) so re-pasting the
+ * same source doesn't stack duplicate cards.
+ */
+
 import { browser } from '$app/environment';
 import { createProxyToken } from '$lib/api/proxy-token';
 import { buildProxiedUrl } from '$lib/proxy-url';
@@ -14,6 +24,7 @@ import type {
 import type { CookieStore } from './cookies.svelte';
 import type { PreferencesStore } from './preferences.svelte';
 
+/** Soft cap per list so localStorage stays small on long-lived browsers. */
 const MAX_ENTRIES = 50;
 const KEY_EXTRACT = 'videoExtractResults';
 const KEY_GALLERIES = 'galleryExtractResults';
@@ -209,20 +220,25 @@ export class LibraryStore {
 		}
 
 		let videosChanged = false;
+
 		for (const video of this.extractResults) {
 			const page = video.webpage_url;
+
 			if (!page) {
 				continue;
 			}
 			const text = cookies.matchFor(page);
+
 			if (!text) {
 				continue;
 			}
 			const token = await createProxyToken(text);
+
 			if (!token) {
 				continue;
 			}
 			const headers = { Referer: page };
+
 			for (const group of video.formatGroups ?? []) {
 				for (const q of group.qualities ?? []) {
 					if (!q.sourceVideoUrl) {
@@ -236,20 +252,25 @@ export class LibraryStore {
 		}
 
 		let galleriesChanged = false;
+
 		for (const gallery of this.galleryResults) {
 			const page = gallery.webpage_url;
+
 			if (!page) {
 				continue;
 			}
 			const text = cookies.matchFor(page);
+
 			if (!text) {
 				continue;
 			}
 			const token = await createProxyToken(text);
+
 			if (!token) {
 				continue;
 			}
 			const headers = { Referer: page };
+
 			for (const image of gallery.images ?? []) {
 				if (!image.sourceUrl) {
 					continue;

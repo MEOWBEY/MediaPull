@@ -1,4 +1,5 @@
 <script lang="ts">
+	import Copy from '@lucide/svelte/icons/copy';
 	import FileText from '@lucide/svelte/icons/file-text';
 	import Link from '@lucide/svelte/icons/link';
 	import ListMusic from '@lucide/svelte/icons/list-music';
@@ -15,12 +16,16 @@
 	// Shared bordered group-card shell + header toolbar for both video and
 	// gallery result lists -- extracted so the two don't duplicate this chrome.
 	// `onExportM3u` is optional: galleries have no playlist-export use case, so
-	// omitting it drops that toolbar button entirely.
+	// omitting it drops that toolbar button entirely. The export buttons only
+	// render when `showExports` is on (a preference) -- most users just want the
+	// source URL + copy + refresh/remove.
 	let {
 		sourceUrl,
 		itemCount,
+		onCopyUrl,
 		onExportTxt,
 		onExportM3u,
+		showExports = false,
 		onRefresh,
 		refreshing = false,
 		onRemove,
@@ -28,8 +33,10 @@
 	}: {
 		sourceUrl: string;
 		itemCount: number;
+		onCopyUrl?: () => void;
 		onExportTxt: () => void;
 		onExportM3u?: () => void;
+		showExports?: boolean;
 		onRefresh: () => void;
 		refreshing?: boolean;
 		onRemove: () => void;
@@ -73,27 +80,41 @@
 			{/if}
 		</div>
 		<div class="ms-auto flex shrink-0 items-center gap-0.5">
-			<Button
-				variant="ghost"
-				size="icon"
-				onclick={onExportTxt}
-				class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
-				title={t('extract.exportTxt')}
-				aria-label={t('extract.exportTxt')}
-			>
-				<FileText class="h-3.5 w-3.5" />
-			</Button>
-			{#if onExportM3u}
+			{#if onCopyUrl}
 				<Button
 					variant="ghost"
 					size="icon"
-					onclick={onExportM3u}
+					onclick={onCopyUrl}
 					class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
-					title={t('extract.exportM3u')}
-					aria-label={t('extract.exportM3u')}
+					title={t('extract.copyOriginalUrl')}
+					aria-label={t('extract.copyOriginalUrl')}
 				>
-					<ListMusic class="h-3.5 w-3.5" />
+					<Copy class="h-3.5 w-3.5" />
 				</Button>
+			{/if}
+			{#if showExports}
+				<Button
+					variant="ghost"
+					size="icon"
+					onclick={onExportTxt}
+					class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+					title={t('extract.exportTxt')}
+					aria-label={t('extract.exportTxt')}
+				>
+					<FileText class="h-3.5 w-3.5" />
+				</Button>
+				{#if onExportM3u}
+					<Button
+						variant="ghost"
+						size="icon"
+						onclick={onExportM3u}
+						class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+						title={t('extract.exportM3u')}
+						aria-label={t('extract.exportM3u')}
+					>
+						<ListMusic class="h-3.5 w-3.5" />
+					</Button>
+				{/if}
 			{/if}
 			<Button
 				variant="ghost"

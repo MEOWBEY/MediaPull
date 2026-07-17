@@ -1,5 +1,10 @@
 /**
- * Typed client for the SvelteKit `/api/*` routes.
+ * Typed HTTP client for the Python FastAPI backend.
+ *
+ * In dev, leave `VITE_API_BASE_URL` unset so requests stay same-origin and
+ * Vite's proxy (vite.config.ts) forwards `/extract-*`, `/proxy-*`,
+ * `/transcribe`, `/health` to the backend — no CORS. In production, set
+ * `VITE_API_BASE_URL` to the API origin when the SPA is hosted separately.
  *
  * Responsibilities:
  *  - one place that knows the wire shape (`ApiEnvelope`)

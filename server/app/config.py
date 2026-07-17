@@ -16,19 +16,26 @@ class Settings(BaseSettings):
 
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
+    # Must stay 1 for public deploys: JobStore, extract caches, and proxy ctok
+    # maps are in-process only. Scale out with multiple instances + a load
+    # balancer, not multi-worker uvicorn on one box.
     workers: int = Field(default=1)
 
+    # Comma-separated browser origins allowed to call the API. Default "*"
+    # disables credentialed CORS (browsers reject `*` + credentials together).
+    # Pin explicit origins in production (see .env.production.example).
     cors_origins_raw: str = Field(default="*", alias="CORS_ORIGINS")
 
     # Single-process deploy: directory of the built static client to serve from
     # the same origin as the API. Empty -> auto-detect repo-root/client/build.
+    # Leave empty in dev (Vite serves the SPA on :5173).
     client_dir: str = Field(default="", alias="CLIENT_DIR")
 
-    # Extraction tuning
-    max_formats: int = Field(default=40, ge=1, le=200)
-    request_timeout: int = Field(default=90, ge=5)
-    max_retries: int = Field(default=2, ge=0)
-    scrape_max_bytes: int = Field(default=200_000, ge=1_000)
+    # Extraction tuning (video). Gallery has its own GALLERY_* knobs below.
+    max_formats: int = Field(default=40, ge=1, le=200)  # formats kept per video after ranking
+    request_timeout: int = Field(default=90, ge=5)  # yt-dlp / scrape overall seconds
+    max_retries: int = Field(default=2, ge=0)  # transient extract failures
+    scrape_max_bytes: int = Field(default=200_000, ge=1_000)  # HTML scrape body cap
 
     # ----- Authentication / anti-block -----------------------------------
     # Server-side default cookies (Netscape cookies.txt path). Unlocks
@@ -68,8 +75,9 @@ class Settings(BaseSettings):
     sleep_requests: float = Field(default=0.0, ge=0, alias="SLEEP_REQUESTS")
 
     # Browser impersonation (curl_cffi): mimics a real browser's TLS/HTTP
-    # fingerprint so anti-bot sites ( tiktok, …) stop
-    # answering with 403/410. No-op if curl_cffi isn't installed.
+    # fingerprint so anti-bot sites (TikTok, …) stop answering with 403/410.
+    # Used by extraction probes and the media proxy. No-op if curl_cffi isn't
+    # installed. impersonate_client is the curl_cffi target name (e.g. "chrome").
     enable_impersonation: bool = Field(default=True)
     impersonate_client: str = Field(default="chrome")
 
@@ -81,21 +89,39 @@ class Settings(BaseSettings):
     validate_timeout: int = Field(default=6, ge=1)  # per-probe, seconds
     validate_concurrency: int = Field(default=10, ge=1, le=50)
     # Cap how many unique format URLs get a live probe (top by resolution/tbr).
-    # Unprobed formats stay in the list — same as an "uncertain" probe.
+    # Unprobed formats stay in the list — same as an "uncertain" probe. Raise
+    # only if you routinely need more live checks; each probe is an extra
+    # outbound request under VALIDATE_TIMEOUT / VALIDATE_CONCURRENCY.
     validate_max_formats: int = Field(default=8, ge=1, le=200, alias="VALIDATE_MAX_FORMATS")
 
-    # Thread pool for blocking yt-dlp work
+    # Thread-pool size for blocking yt-dlp work only (gallery-dl has its own
+    # GALLERY_DL_WORKERS pool). Raise on a multi-core box if video extracts
+    # queue under concurrent users; each worker holds a full run (network + CPU).
     extract_workers: int = Field(default=4, ge=1, le=32)
 
-    # In-memory result cache
+    # In-memory extraction result cache (separate video + gallery stores in main).
+    # cache_ttl=0 or cache_max_entries=0 disables caching entirely.
     cache_ttl: int = Field(default=300, ge=0)
     cache_max_entries: int = Field(default=512, ge=0)
 
-    # Admission control (single-worker public deploys)
+    # ----- Admission control (single-worker public deploys) ----------------
+    # These are hard caps so a burst of users cannot OOM / thrash one process.
+    # WORKERS must stay 1: JobStore, TTLCache, and cookie tokens are in-process
+    # only (not shared across multi-worker uvicorn).
+    #
+    # Concurrent /extract-videos + /extract-gallery requests that actually run
+    # (not cache hits). Overflow gets 503 "Server busy" after a tiny wait —
+    # shared admission gate so both engines cannot pile up unbounded work.
     extract_max_in_flight: int = Field(default=8, ge=1, le=64, alias="EXTRACT_MAX_IN_FLIGHT")
+    # Max finished+running transcription jobs kept in RAM at once (each holds
+    # VTT/SRT text + dialogue peaks). Create returns 503 when full until TTL
+    # sweep frees slots (see TRANSCRIBE_JOB_TTL).
     transcribe_max_jobs_stored: int = Field(
         default=64, ge=1, le=1000, alias="TRANSCRIBE_MAX_JOBS_STORED"
     )
+    # Cap on live POST /proxy-token entries (cookie blob → opaque ctok). When
+    # full, oldest-expiring tokens are evicted so minting never fails hard.
+    # Raise if many users share one server with heavy cookie-gated media.
     proxy_cookie_token_max: int = Field(
         default=2048, ge=16, le=100_000, alias="PROXY_COOKIE_TOKEN_MAX"
     )
@@ -174,8 +200,9 @@ class Settings(BaseSettings):
         default="", alias="TRANSCRIBE_CUSTOM_FFMPEG_ARGS"
     )
     # Custom-mode encoded-bytes-per-second estimate, used only to size upload
-    # windows so a chunk stays under the cap. Match it to your custom bitrate
-    # (e.g. 24kbps opus ~= 3000). Default mirrors the opus preset.
+    # windows so a chunk stays under the cap. Match it to your custom bitrate:
+    # bytes/s ≈ bitrate_kbps * 125 (e.g. 32kbps opus ≈ 4000 — the built-in
+    # preset; 24kbps ≈ 3000). Default mirrors the opus preset's 32kbps.
     transcribe_custom_bytes_per_second: float = Field(
         default=4_000.0, gt=0, alias="TRANSCRIBE_CUSTOM_BYTES_PER_SECOND"
     )
@@ -184,10 +211,15 @@ class Settings(BaseSettings):
     transcribe_custom_ext: str = Field(default="opus", alias="TRANSCRIBE_CUSTOM_EXT")
 
     # ----- Image/gallery extraction (gallery-dl) ---------------------------
+    # Wall-clock cap (seconds) for one gallery-dl subprocess run.
     gallery_dl_timeout: int = Field(default=45, ge=5)
+    # Concurrent gallery-dl processes (separate from EXTRACT_WORKERS).
     gallery_dl_workers: int = Field(default=3, ge=1, le=20)
+    # Default "gallery-dl" uses `python -m gallery_dl` when the package is
+    # installed; set an absolute path to force a specific binary instead.
     gallery_dl_binary: str = Field(default="gallery-dl")
-    # Hard cap on images returned per gallery extract (large albums).
+    # Hard cap on images returned per gallery extract. Large albums are
+    # truncated (client gets a soft "truncated" warning); raise for bulk dumps.
     gallery_max_images: int = Field(default=200, ge=1, le=5000, alias="GALLERY_MAX_IMAGES")
 
     # ----- ffmpeg/ffprobe (transcription pipeline only) --------------------

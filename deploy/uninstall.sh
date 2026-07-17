@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
-# Reverses install.sh. By default only stops/disables the service and
-# removes the nginx site(s) (safe, non-destructive to your data/config).
-# Pass --purge to also delete the cloned repo, venv, the service user, and
-# the TLS certificate(s).
-#
-# Usage (as root or via sudo):
-#   sudo ./uninstall.sh              # stop + remove service/nginx only
-#   sudo ./uninstall.sh --purge      # also wipe everything (asks to confirm)
+# Reverse install.sh: stop service + remove nginx sites.
+#   sudo ./uninstall.sh           # keep repo/venv/user
+#   sudo ./uninstall.sh --purge   # also wipe data (asks YES)
 set -euo pipefail
 
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib.sh"
 
-# Uninstall-specific settings (REPO_DIR/SERVICE_USER/SERVICE/CONFIG_FILE come
-# from lib.sh). Defaults here are overridden by whatever install.sh recorded.
+# Defaults; overridden by install.sh's saved CONFIG_FILE when present.
 DOMAIN="${DOMAIN:-}"
 CLIENT_MODE="${CLIENT_MODE:-none}"
 CLIENT_DOMAIN="${CLIENT_DOMAIN:-}"
@@ -34,9 +28,9 @@ systemctl disable "$SERVICE" 2>/dev/null || true
 rm -f "/etc/systemd/system/$SERVICE.service"
 
 echo "==> stopping and disabling the PO token provider (if installed)"
-systemctl stop pullbox-pot 2>/dev/null || true
-systemctl disable pullbox-pot 2>/dev/null || true
-rm -f /etc/systemd/system/pullbox-pot.service
+systemctl stop mediapull-pot 2>/dev/null || true
+systemctl disable mediapull-pot 2>/dev/null || true
+rm -f /etc/systemd/system/mediapull-pot.service
 
 systemctl daemon-reload
 
@@ -59,22 +53,15 @@ if command -v ufw &>/dev/null; then
       ufw delete allow 443/tcp 2>/dev/null || true
     fi
   fi
-  # install.sh only force-enables ufw when it was ALREADY active beforehand
-  # (see its comment) -- so if we know it wasn't, Pullbox never turned the
-  # firewall on and there's nothing to revert. If we don't know (older
-  # install, no UFW_WAS_ACTIVE recorded) or it WAS already active, leave ufw
-  # as-is -- it may be protecting other things on this box now, disabling it
-  # here could be more surprising than helpful. Just tell you the truth
-  # about its current state instead of leaving you to guess (or reboot).
+  # Only force-enabled ufw when it was already active at install time; never
+  # disable it here — it may protect other services on the box.
   if $UFW_STILL_ACTIVE; then
     if [[ "$UFW_WAS_ACTIVE" == "false" ]]; then
-      echo "    NOTE: ufw is active but this install never turned it on -- if you enabled"
-      echo "    it yourself since, leave it; otherwise 'ufw disable' removes it entirely."
+      echo "    NOTE: ufw is active but this install never enabled it."
+      echo "    Leave it if you turned it on yourself; otherwise: ufw disable"
     else
-      echo "    NOTE: ufw is still active. If anything else on this box (a control panel,"
-      echo "    another service) stopped being reachable after installing/removing"
-      echo "    Pullbox, it's very likely ufw blocking that port, not a crash --"
-      echo "    check 'ufw status' and 'ufw allow <port>/tcp' rather than rebooting."
+      echo "    NOTE: ufw is still active. If another service became unreachable,"
+      echo "    check 'ufw status' / 'ufw allow <port>/tcp' rather than rebooting."
     fi
   fi
 fi

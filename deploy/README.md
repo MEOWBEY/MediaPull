@@ -1,8 +1,11 @@
-# Deploy Pullbox on your own server (VPS)
+# Deploy MediaPull on your own server (VPS)
 
 Native install — no Docker — using **systemd** to keep the process alive and
 **nginx** (or Caddy) in front for the domain + HTTPS. `install.sh` sets up the
 backend **and**, if you want, the web client from the same box in one run.
+
+Defaults: install path `/opt/mediapull`, system user `mediapull`, units
+`mediapull.service` and `mediapull-pot.service`.
 
 Any VPS works (DigitalOcean, Hetzner, Linode, a home server, …). For a
 free-forever option, **Oracle Cloud's Always Free** tier is enough to run this.
@@ -16,8 +19,8 @@ deploy/
   uninstall.sh        stop/remove the service (--purge wipes everything)
   lib.sh              shared helpers, sourced by the three scripts above
   systemd/
-    pullbox.service       backend unit (templated: port, user, resource caps)
-    pullbox-pot.service   YouTube PO-token sidecar unit
+    mediapull.service       backend unit (templated: port, user, resource caps)
+    mediapull-pot.service   YouTube PO-token sidecar unit
   nginx/
     backend.conf.example  reverse proxy for the API
     client.conf.example   static server for the client (subdomain mode only)
@@ -52,7 +55,7 @@ project itself, so you don't need the repo on the server beforehand:
 
 ```bash
 ssh root@YOUR_SERVER_IP
-curl -fsSL https://raw.githubusercontent.com/MEOWBEY/direct-stream/main/deploy/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/meowbey/MediaPull/main/deploy/install.sh -o install.sh
 sudo bash install.sh
 ```
 
@@ -64,12 +67,12 @@ Prefer to review the code first, or deploying a fork? Clone, then run from
 inside:
 
 ```bash
-git clone https://github.com/MEOWBEY/direct-stream.git /tmp/pullbox
-sudo bash /tmp/pullbox/deploy/install.sh
+git clone https://github.com/meowbey/MediaPull.git /tmp/mediapull
+sudo bash /tmp/mediapull/deploy/install.sh
 ```
 
-(`/tmp/pullbox` is just a throwaway copy to launch the installer;
-`install.sh` clones its own permanent copy into `/opt/pullbox` regardless.)
+(`/tmp/mediapull` is just a throwaway copy to launch the installer;
+`install.sh` clones its own permanent copy into `/opt/mediapull` regardless.)
 
 ### What it asks
 
@@ -86,7 +89,7 @@ sudo bash /tmp/pullbox/deploy/install.sh
 6. **Groq API key** for auto-subtitles — optional, free at
    [console.groq.com](https://console.groq.com); can be added later.
 
-Answers are saved to `/opt/pullbox/.vps-deploy.env`, so `update.sh` /
+Answers are saved to `/opt/mediapull/.vps-deploy.env`, so `update.sh` /
 `uninstall.sh` never re-ask.
 
 ### Non-interactive / scripted
@@ -113,10 +116,10 @@ sudo GITHUB_TOKEN=ghp_xxx DOMAIN=api.example.com CLIENT_MODE=same-domain bash in
 
 A public repo needs none of this. Note the bootstrap `curl`/`git clone` above
 is itself unauthenticated — for a private repo, clone that first step with a
-token too (`git clone https://ghp_xxx@github.com/OWNER/REPO.git /tmp/pullbox`).
+token too (`git clone https://ghp_xxx@github.com/OWNER/REPO.git /tmp/mediapull`).
 
-When it finishes, edit `/opt/pullbox/server/.env` for anything beyond what it
-set, then `sudo systemctl restart pullbox`.
+When it finishes, edit `/opt/mediapull/server/.env` for anything beyond what it
+set, then `sudo systemctl restart mediapull`.
 
 ## Manual install, step by step
 
@@ -135,26 +138,26 @@ sudo apt install -y python3 python3-venv ffmpeg nginx git curl
 ### 2. Service user + clone
 
 ```bash
-sudo useradd --system --create-home --shell /usr/sbin/nologin pullbox
-sudo -u pullbox git clone https://github.com/MEOWBEY/direct-stream.git /opt/pullbox
+sudo useradd --system --create-home --shell /usr/sbin/nologin mediapull
+sudo -u mediapull git clone https://github.com/meowbey/MediaPull.git /opt/mediapull
 ```
 
 ### 3. Python environment
 
 ```bash
-cd /opt/pullbox/server
-sudo -u pullbox python3 -m venv venv
-sudo -u pullbox ./venv/bin/pip install -r requirements.txt
-sudo -u pullbox cp .env.production.example .env
-sudo -u pullbox nano .env
+cd /opt/mediapull/server
+sudo -u mediapull python3 -m venv venv
+sudo -u mediapull ./venv/bin/pip install -r requirements.txt
+sudo -u mediapull cp .env.production.example .env
+sudo -u mediapull nano .env
 ```
 
 For a production box, in `.env`:
 - `CORS_ORIGINS=https://your-client-domain.example` — pin it, don't leave `*`.
   (With `*`, the app disables credentialed CORS, because browsers reject
   `Access-Control-Allow-Origin: *` together with credentials.)
-- `COOKIE_FILE=/opt/pullbox/server/cookies.txt` if using server-side cookies
-  (`chmod 600`, owned by `pullbox`).
+- `COOKIE_FILE=/opt/mediapull/server/cookies.txt` if using server-side cookies
+  (`chmod 600`, owned by `mediapull`).
 - `PROXY_ALLOWED_HOSTS=googlevideo.com,cdninstagram.com,fbcdn.net,…` if you
   expose the box publicly — see [Security](#security).
 - Leave `PORT` alone here; the bound port comes from the systemd unit (step 4).
@@ -165,13 +168,13 @@ The unit uses `__…__` placeholders; fill them in (skip `sed` values you want a
 their default):
 
 ```bash
-sed 's#__REPO_DIR__#/opt/pullbox#g; s/__SERVICE_USER__/pullbox/g; s/__PORT__/8000/; s/__MEMORY_MAX__/1024M/; s/__CPU_QUOTA__/100%/' \
-  /opt/pullbox/deploy/systemd/pullbox.service \
-  | sudo tee /etc/systemd/system/pullbox.service > /dev/null
+sed 's#__REPO_DIR__#/opt/mediapull#g; s/__SERVICE_USER__/mediapull/g; s/__PORT__/8000/; s/__MEMORY_MAX__/1024M/; s/__CPU_QUOTA__/100%/' \
+  /opt/mediapull/deploy/systemd/mediapull.service \
+  | sudo tee /etc/systemd/system/mediapull.service > /dev/null
 sudo systemctl daemon-reload
-sudo systemctl enable --now pullbox
-sudo systemctl status pullbox
-journalctl -u pullbox -f
+sudo systemctl enable --now mediapull
+sudo systemctl status mediapull
+journalctl -u mediapull -f
 ```
 
 ### 5. Reverse proxy + domain + TLS
@@ -181,9 +184,9 @@ Point your domain's A/AAAA record at the server IP first, then:
 **nginx:**
 ```bash
 sed 's/api.example.com/YOUR_DOMAIN/; s/__PORT__/8000/; s/__PUBLIC_PORT__/80/' \
-  /opt/pullbox/deploy/nginx/backend.conf.example \
-  | sudo tee /etc/nginx/sites-available/pullbox-api > /dev/null
-sudo ln -s /etc/nginx/sites-available/pullbox-api /etc/nginx/sites-enabled/
+  /opt/mediapull/deploy/nginx/backend.conf.example \
+  | sudo tee /etc/nginx/sites-available/mediapull-api > /dev/null
+sudo ln -s /etc/nginx/sites-available/mediapull-api /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 
 sudo apt install -y certbot python3-certbot-nginx
@@ -193,7 +196,7 @@ sudo certbot --nginx -d YOUR_DOMAIN
 **Caddy (automatic HTTPS, no certbot):**
 ```bash
 sed 's/api.example.com/YOUR_DOMAIN/; s/__PORT__/8000/' \
-  /opt/pullbox/deploy/caddy/Caddyfile.example \
+  /opt/mediapull/deploy/caddy/Caddyfile.example \
   | sudo tee /etc/caddy/Caddyfile > /dev/null
 sudo systemctl reload caddy
 ```
@@ -228,13 +231,13 @@ to the video ID). The supported fix is the companion service
 which fetches a fresh token per extraction.
 
 `install.sh` sets this up (default yes): a pip plugin yt-dlp auto-detects, plus
-a small Node server running as its own systemd service (`pullbox-pot`) on
+a small Node server running as its own systemd service (`mediapull-pot`) on
 `127.0.0.1:4416`. If you chose a different port, it sets
 `YOUTUBE_POT_BASE_URL=http://127.0.0.1:<port>` in `.env` accordingly. Check it:
 
 ```bash
-sudo systemctl status pullbox-pot
-journalctl -u pullbox-pot -n 50
+sudo systemctl status mediapull-pot
+journalctl -u mediapull-pot -n 50
 ```
 
 `update.sh` keeps the plugin and server version-matched (they speak a
@@ -248,13 +251,13 @@ Most of X/Twitter and private/login-only Instagram refuse to serve content
 `COOKIE_FILE` at it:
 
 ```bash
-sudo nano /opt/pullbox/server/cookies.txt
+sudo nano /opt/mediapull/server/cookies.txt
 ```
 
 Paste Netscape-format `cookies.txt` — export with
 ["Get cookies.txt LOCALLY"](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc),
 ideally from a **throwaway account**. Save, then `sudo systemctl restart
-pullbox`. This file is never touched by `update.sh`/`uninstall.sh`.
+mediapull`. This file is never touched by `update.sh`/`uninstall.sh`.
 
 ## Resource limits
 
@@ -266,14 +269,14 @@ CPU-heavy ffmpeg work).
 
 These caps are re-applied on every `update.sh` (it re-templates the unit from
 `.vps-deploy.env`), so editing the installed
-`/etc/systemd/system/pullbox.service` is overwritten next update. For a
-permanent override use `systemctl edit pullbox` (a drop-in), then
-`systemctl daemon-reload && systemctl restart pullbox`.
+`/etc/systemd/system/mediapull.service` is overwritten next update. For a
+permanent override use `systemctl edit mediapull` (a drop-in), then
+`systemctl daemon-reload && systemctl restart mediapull`.
 
 ## Updating later
 
 ```bash
-sudo /opt/pullbox/deploy/update.sh
+sudo /opt/mediapull/deploy/update.sh
 ```
 
 Pulls, reinstalls deps, upgrades yt-dlp/gallery-dl, rebuilds the client (if
@@ -284,22 +287,22 @@ credential, so even a private repo never re-prompts.
 disk are valid, not which commit):
 
 ```bash
-cd /opt/pullbox
-sudo -u pullbox git log --oneline -5
-sudo -u pullbox git checkout <good-commit-hash>
-sudo -u pullbox server/venv/bin/pip install -r server/requirements.txt
-sudo systemctl restart pullbox
+cd /opt/mediapull
+sudo -u mediapull git log --oneline -5
+sudo -u mediapull git checkout <good-commit-hash>
+sudo -u mediapull server/venv/bin/pip install -r server/requirements.txt
+sudo systemctl restart mediapull
 ```
 
 Return to the tip with `git checkout <branch>` afterward (running `update.sh`
 on a detached HEAD refuses and tells you this). Tail logs with
-`journalctl -u pullbox -f`.
+`journalctl -u mediapull -f`.
 
 ## Removing it later
 
 ```bash
-sudo /opt/pullbox/deploy/uninstall.sh            # stop + remove service/nginx, keep data
-sudo /opt/pullbox/deploy/uninstall.sh --purge    # + wipe repo, venv, user, TLS cert(s)
+sudo /opt/mediapull/deploy/uninstall.sh            # stop + remove service/nginx, keep data
+sudo /opt/mediapull/deploy/uninstall.sh --purge    # + wipe repo, venv, user, TLS cert(s)
 ```
 
 `uninstall.sh` reads your saved domain/client answers automatically. `--purge`
@@ -333,4 +336,4 @@ don't leak sessions.
   [Server-wide cookies](#server-wide-cookies).
 - **"Unknown or expired job" on subtitles**: caused by running >1 worker (the
   in-memory job store isn't shared across processes). Confirm
-  `pullbox.service`'s `--workers` is `1` and restart.
+  `mediapull.service`'s `--workers` is `1` and restart.

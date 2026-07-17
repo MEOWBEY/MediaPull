@@ -1,4 +1,4 @@
-"""Pullbox API — application factory and routes."""
+"""MediaPull API — application factory and routes."""
 
 from __future__ import annotations
 
@@ -58,7 +58,7 @@ def _configure_logging() -> None:
     root.handlers = [handler]
 
 
-logger = logging.getLogger("pullbox")
+logger = logging.getLogger("mediapull")
 
 
 def _resolve_client_dir() -> Path | None:
@@ -106,10 +106,11 @@ async def lifespan(app: FastAPI):
     # None when unconfigured -- /transcribe responds 503 rather than the
     # whole app failing to start over a missing optional feature's key.
     app.state.transcriber = GroqTranscriber(settings) if settings.groq_api_keys else None
-    # Advisory only (not fatal): normal extraction never touches ffmpeg, so a
-    # broken install shouldn't block startup -- but it silently breaks
-    # /transcribe otherwise, so surface it now instead of mid-job. Checked
-    # even when transcription is unconfigured, since gallery-dl always matters.
+    # Advisory only (not fatal): normal video extraction never touches ffmpeg,
+    # so a missing install must not block startup. We still probe at boot so
+    # GET /health and logs show ffmpegAvailable=false before anyone hits
+    # /transcribe (where it would fail mid-job). Always checked — even when
+    # GROQ_API_KEY is empty — so deploy tooling can catch a broken PATH early.
     app.state.ffmpeg_available = _check_binary("ffmpeg", settings.ffmpeg_binary)
     app.state.ffprobe_available = _check_binary("ffprobe", settings.ffprobe_binary)
     if settings.gallery_dl_binary == "gallery-dl":
@@ -121,7 +122,7 @@ async def lifespan(app: FastAPI):
             logger.warning("gallery_dl Python package is not installed -- /extract-gallery will fail")
     else:
         app.state.gallery_dl_available = _check_binary("gallery-dl", settings.gallery_dl_binary)
-    logger.info("Pullbox API %s ready", __version__)
+    logger.info("MediaPull API %s ready", __version__)
     try:
         yield
     finally:
@@ -133,13 +134,16 @@ async def lifespan(app: FastAPI):
         # Close the shared audio-download session (lazily created on the
         # impersonated-download fallback path; no-op if never used).
         await close_download_session()
-        logger.info("Pullbox API shut down")
+        logger.info("MediaPull API shut down")
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
-        title="Pullbox API",
-        description="Extract direct video links and metadata from any webpage.",
+        title="MediaPull API",
+        description=(
+            "Paste a URL to extract downloadable video formats and image galleries. "
+            "Optional proxy streaming and speech-to-text subtitles."
+        ),
         version=__version__,
         debug=settings.debug,
         lifespan=lifespan,
@@ -221,6 +225,9 @@ def create_app() -> FastAPI:
         cookies = payload.cookies
         cache: TTLCache[GalleryInfo] = app.state.gallery_cache
 
+        # Same cookie-bucket rule as /extract-videos: login-gated galleries
+        # (Instagram/X) differ by session, so authed and anon results must not
+        # share a cache key.
         cache_key = url
         if cookies:
             digest = hashlib.sha256(cookies.encode("utf-8", "ignore")).hexdigest()[:16]
@@ -279,7 +286,7 @@ def create_app() -> FastAPI:
     # (/transcribe/{id}/events); GET below still exists as a plain one-shot
     # status check (and a fallback for any client that can't hold an SSE
     # connection open). Only viable single-worker (already required -- see
-    # the comment in pullbox.service -- so there's no cross-worker
+    # the comment in mediapull.service -- so there's no cross-worker
     # fan-out to worry about for the in-memory subscriber queues below).
 
     def _build_status(job: TranscriptionJob) -> TranscribeStatus:

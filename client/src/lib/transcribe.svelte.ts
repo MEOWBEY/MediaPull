@@ -234,6 +234,7 @@ export class TranscriptionController {
 											srtUrl: segmentsToSrtUrl(segments),
 											dialogueMap
 										});
+
 										return;
 									}
 									resolve({

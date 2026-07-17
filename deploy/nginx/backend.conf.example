@@ -1,10 +1,10 @@
-# Reverse proxy for the Pullbox BACKEND (api.example.com). If you also serve
+# Reverse proxy for the MediaPull BACKEND (api.example.com). If you also serve
 # the web client from this box, see ./client.conf.example for its server block
 # -- they live side by side in the same nginx install.
 #
 # install.sh fills this in and installs it for you. To do it by hand, install
-# at /etc/nginx/sites-available/pullbox-api, then:
-#   ln -s /etc/nginx/sites-available/pullbox-api /etc/nginx/sites-enabled/
+# at /etc/nginx/sites-available/mediapull-api, then:
+#   ln -s /etc/nginx/sites-available/mediapull-api /etc/nginx/sites-enabled/
 #   nginx -t && systemctl reload nginx
 # TLS: run certbot afterwards (see README.md) -- it edits this file in place
 # to add the listen 443/ssl_certificate directives.

@@ -25,7 +25,7 @@ from .extractor import ExtractionError, classify_extraction_error, is_valid_url
 from .models import GalleryImage, GalleryInfo, GalleryWarning
 from .net_common import cookie_tempfile, get_cookie_pool, normalize_cookies
 
-logger = logging.getLogger("pullbox.gallery")
+logger = logging.getLogger("mediapull.gallery")
 
 # classify_extraction_error's needles are tuned for yt-dlp's error vocabulary
 # ("confirm you're not a bot", etc.), which gallery-dl's stderr essentially

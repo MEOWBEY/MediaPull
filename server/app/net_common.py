@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from .config import Settings
 
-logger = logging.getLogger("pullbox.net_common")
+logger = logging.getLogger("mediapull.net_common")
 
 
 class CookiePool:
@@ -33,6 +33,8 @@ class CookiePool:
     doesn't.
     """
 
+    # How long a rate-limited / bot-flagged account sits out (5 min). Kept in
+    # code (not env) — short enough to recover, long enough to stop thrashing.
     _COOLDOWN_SECONDS = 300.0
 
     def __init__(self, paths: list[str]) -> None:
