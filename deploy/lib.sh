@@ -16,6 +16,7 @@ DEPLOY_DIR="${DEPLOY_DIR:-$REPO_DIR/deploy}"
 OBSOLETE_ENV_KEYS=(
   TRANSCRIBE_CHUNK_SECONDS
   GROQ_CHUNK_CONCURRENCY
+  YOUTUBE_PO_TOKEN
 )
 
 # ---- misc guards -----------------------------------------------------------

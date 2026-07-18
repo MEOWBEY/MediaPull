@@ -387,15 +387,14 @@ class Extractor:
 
         Lets the deploy choose player clients (e.g. ``default,tv,web_safari`` —
         keeps the full quality ladder while adding age-gate-capable clients) and
-        pass PO token(s) so a datacenter IP can clear bot-detection.
+        point yt-dlp's bgutil plugin at the PO-token provider sidecar so a
+        datacenter IP can clear bot-detection.
         """
         s = self._settings
         args: dict[str, dict[str, list[str]]] = {}
         youtube: dict[str, list[str]] = {}
         if s.youtube_player_client_list:
             youtube["player_client"] = s.youtube_player_client_list
-        if s.youtube_po_token_list:
-            youtube["po_token"] = s.youtube_po_token_list
         if youtube:
             args["youtube"] = youtube
         # Point yt-dlp's bgutil HTTP plugin at a non-default provider port. Only

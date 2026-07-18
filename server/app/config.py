@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     cookie_file_paths_raw: str = Field(default="", alias="COOKIE_FILE_PATHS")
     # Hard cap on the per-request cookie blob the client may paste (bytes).
     max_cookie_bytes: int = Field(default=262_144, ge=0)
+    # Shared secret gating the admin cookie-refresh endpoint (POST /admin/cookies).
+    # Empty = endpoint disabled (returns 404), so the feature is opt-in and a
+    # default deploy exposes no new surface. Set a long random value to enable
+    # pushing freshly-exported cookies to the server without a redeploy.
+    admin_token: str = Field(default="", alias="ADMIN_TOKEN")
 
     # Outbound proxy (http/https/socks5) for extraction, link probing AND the
     # media proxy — routes around datacenter-IP blocks and rate limits. e.g.
@@ -60,10 +65,6 @@ class Settings(BaseSettings):
     # 360p, so prefer a list that keeps "default", e.g.
     # "default,tv,web_safari". "tv_embedded"/"mweb" help with age-gates.
     youtube_player_clients: str = Field(default="", alias="YOUTUBE_PLAYER_CLIENTS")
-    # Optional PO token(s) for YouTube (maps to extractor_args youtube:po_token),
-    # comma-separated "CLIENT.CONTEXT+TOKEN" values. Lets a datacenter IP pass
-    # bot-detection. Usually supplied by a bgutil PO-token provider sidecar.
-    youtube_po_token: str = Field(default="", alias="YOUTUBE_PO_TOKEN")
     # Base URL of the bgutil PO-token provider sidecar (see the VPS installer).
     # yt-dlp's bgutil HTTP plugin auto-detects http://127.0.0.1:4416, so this
     # only needs setting when the provider runs on a NON-default port (e.g. 4416
@@ -275,8 +276,12 @@ class Settings(BaseSettings):
         return [c.strip() for c in self.youtube_player_clients.split(",") if c.strip()]
 
     @property
-    def youtube_po_token_list(self) -> list[str]:
-        return [t.strip() for t in self.youtube_po_token.split(",") if t.strip()]
+    def pot_probe_url(self) -> str:
+        """Base URL to health-check the bgutil PO-token sidecar at boot. Uses
+        YOUTUBE_POT_BASE_URL when set, else the plugin's auto-detect default
+        (127.0.0.1:4416) -- so /health reflects the same provider yt-dlp will
+        actually reach."""
+        return self.youtube_pot_base_url.strip() or "http://127.0.0.1:4416"
 
     @property
     def proxy_allowed_hosts(self) -> list[str]:

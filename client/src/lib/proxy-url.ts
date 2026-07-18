@@ -57,10 +57,13 @@ export function buildProxiedUrl(
 		protocol: protocol || 'https'
 	});
 
-	const userAgent = pick(httpHeaders, 'User-Agent', 'user-agent');
 	const referer = pick(httpHeaders, 'Referer', 'referer');
 
-	if (userAgent) {params.set('userAgent', userAgent);}
+	// User-Agent is deliberately NOT sent: the server proxies with curl_cffi
+	// browser impersonation by default, which sets its own UA to match the TLS
+	// fingerprint and ignores this param; in the rare no-impersonation fallback
+	// it uses its own default UA. Omitting it also keeps the URL (and its QR
+	// code) shorter.
 	if (referer) {params.set('referer', referer);}
 	if (cookieToken) {params.set('ctok', cookieToken);}
 

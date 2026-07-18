@@ -247,8 +247,6 @@ if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
   fi
 fi
 
-ask YOUTUBE_PO_TOKEN "Static YouTube PO token (optional manual override, leave blank to rely on the automatic provider -- most people should leave this blank)" ""
-
 if [[ ! -f "$REPO_DIR/server/.env" ]]; then
   echo "==> creating server/.env from the production template (EDIT THIS AFTERWARDS)"
   sudo -u "$SERVICE_USER" cp "$REPO_DIR/server/.env.production.example" "$REPO_DIR/server/.env"
@@ -261,9 +259,6 @@ fi
 sudo -u "$SERVICE_USER" sed -i "s#^PORT=.*#PORT=$PORT#" "$REPO_DIR/server/.env"
 if [[ -n "$GROQ_API_KEY" ]]; then
   sudo -u "$SERVICE_USER" sed -i "s#^GROQ_API_KEY=.*#GROQ_API_KEY=$GROQ_API_KEY#" "$REPO_DIR/server/.env"
-fi
-if [[ -n "$YOUTUBE_PO_TOKEN" ]]; then
-  sudo -u "$SERVICE_USER" sed -i "s#^YOUTUBE_PO_TOKEN=.*#YOUTUBE_PO_TOKEN=$YOUTUBE_PO_TOKEN#" "$REPO_DIR/server/.env"
 fi
 # Point yt-dlp's bgutil plugin at the provider's port (needed when it's not the
 # 4416 the plugin auto-detects; harmless to set explicitly either way).

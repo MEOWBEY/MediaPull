@@ -158,6 +158,8 @@ For a production box, in `.env`:
   `Access-Control-Allow-Origin: *` together with credentials.)
 - `COOKIE_FILE_PATHS=/opt/mediapull/server/cookies.txt` if using server-side cookies
   (`chmod 600`, owned by `mediapull`).
+- `ADMIN_TOKEN=…` to enable refreshing those cookies over HTTP without SSH — see
+  [Server-wide cookies](#server-wide-cookies). Empty = disabled.
 - `PROXY_ALLOWED_HOSTS=googlevideo.com,cdninstagram.com,fbcdn.net,…` if you
   expose the box publicly — see [Security](#security).
 - Leave `PORT` alone here; the bound port comes from the systemd unit (step 4).
@@ -216,7 +218,9 @@ curl https://YOUR_DOMAIN/health
 ```
 
 `ffmpegAvailable` / `galleryDlAvailable` should both be `true` — if not, see
-[Troubleshooting](#troubleshooting).
+[Troubleshooting](#troubleshooting). `potAvailable` shows whether the PO-token
+provider answered (see [YouTube PO tokens](#youtube-po-tokens)); `false` means
+YouTube age-gated / bot-checked videos will likely fail.
 
 ## YouTube PO tokens
 
@@ -258,6 +262,31 @@ Paste Netscape-format `cookies.txt` — export with
 ["Get cookies.txt LOCALLY"](https://chromewebstore.google.com/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc),
 ideally from a **throwaway account**. Save, then `sudo systemctl restart
 mediapull`. This file is never touched by `update.sh`/`uninstall.sh`.
+
+### Refreshing cookies without SSH (optional)
+
+Exported cookies go stale (the account's session rotates), and each refresh
+otherwise means an SSH session. To update them over HTTP instead, set a secret
+in `.env` and restart once:
+
+```bash
+ADMIN_TOKEN=$(openssl rand -hex 32)   # put this line's value in server/.env
+```
+
+Then push a fresh export any time — no restart, it takes effect on the next
+extraction:
+
+```bash
+read -rs TOKEN            # paste the ADMIN_TOKEN value (keeps it out of history)
+curl -X POST https://YOUR_DOMAIN/admin/cookies \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  --data "$(jq -Rs '{cookies:.}' < fresh-cookies.txt)"
+```
+
+It writes the first path in `COOKIE_FILE_PATHS`. Leave `ADMIN_TOKEN` empty to
+disable the endpoint (it returns 404). **Only call it over HTTPS** — the token
+is a bearer secret. Rotate it by changing `.env` and restarting.
 
 ## Resource limits
 
@@ -332,11 +361,6 @@ don't leak sessions.
 - **"This site or URL isn't supported" on a link that used to work**: the
   pinned `yt-dlp`/`gallery-dl` is behind. `update.sh` always upgrades both to
   latest — run it even without new app code.
-- **X/Twitter "No images found"**: most X content needs a session — see
-  [Server-wide cookies](#server-wide-cookies).
-- **"Unknown or expired job" on subtitles**: caused by running >1 worker (the
-  in-memory job store isn't shared across processes). Confirm
-  `mediapull.service`'s `--workers` is `1` and restart.
 - **Site stays on HTTP — no HTTPS after install**: certbot couldn't complete
   the Let's Encrypt challenge, so the install fell back to plain HTTP. The
   challenge reaches this box on **port 80** and the cert then serves on **443**;

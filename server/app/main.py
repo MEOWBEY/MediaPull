@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import importlib.util
 import logging
+import secrets
 import shutil
 import sys
 from collections.abc import AsyncGenerator
@@ -17,6 +18,8 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+import httpx
+
 
 from . import __version__
 from .audio import close_download_session
@@ -26,7 +29,10 @@ from .extractor import ExtractionError, Extractor
 from .gallery import GalleryExtractor
 from .jobs import JobStore, TranscriptionJob, run_transcription_job
 from .logging_context import LogContextMiddleware, RequestContextFilter
+from .net_common import normalize_cookies
 from .models import (
+    CookieUploadRequest,
+    CookieUploadResponse,
     ExtractRequest,
     ExtractResponse,
     GalleryInfo,
@@ -50,15 +56,33 @@ def _configure_logging() -> None:
     handler.addFilter(RequestContextFilter())
     handler.setFormatter(
         logging.Formatter(
-            "%(asctime)s %(levelname)s %(name)s [ip=%(client_ip)s ua=%(user_agent)s] - %(message)s"
+            "%(asctime)s %(levelname)s %(name)s [ip=%(client_ip)s req=%(request_id)s] - %(message)s"
         )
     )
     root = logging.getLogger()
     root.setLevel(getattr(logging, settings.log_level.upper(), logging.INFO))
     root.handlers = [handler]
+    # httpx logs an INFO line per request; the Groq transcription path fires one
+    # per audio chunk, so a single subtitle job spams several "HTTP Request: ...
+    # 200 OK" lines that bury the app's own progress. Lift it to WARNING.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
 
 
 logger = logging.getLogger("mediapull")
+
+
+def _cookie_tag(cookies: str | None) -> str:
+    """``no`` / ``yes(N)`` for logs — N counts non-comment, non-blank cookie
+    lines so an empty or comment-only cookie blob reads as ``yes(0)`` instead of
+    a misleading bare ``yes``."""
+    if not cookies:
+        return "no"
+    count = sum(
+        1
+        for line in cookies.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
+    return f"yes({count})"
 
 
 def _resolve_client_dir() -> Path | None:
@@ -88,6 +112,30 @@ def _check_binary(name: str, configured: str) -> bool:
             configured,
         )
     return available
+
+
+async def _check_pot_provider(base_url: str) -> bool:
+    """Ping the bgutil PO-token sidecar so /health and boot logs show whether
+    YouTube bot-detection bypass is actually available -- age-restricted /
+    datacenter-IP extraction leans on it. Advisory only (like ffmpeg): a down
+    provider must not block startup. The sidecar answers GET /ping."""
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get(f"{base_url.rstrip('/')}/ping")
+        ok = resp.status_code < 500
+    except Exception as exc:  # noqa: BLE001 - any transport error = unreachable
+        logger.warning(
+            "PO-token provider at %s is unreachable (%s) -- YouTube age-gated / "
+            "bot-checked extraction may fail. Is mediapull-pot running?",
+            base_url,
+            exc,
+        )
+        return False
+    if ok:
+        logger.info("PO-token provider at %s: reachable", base_url)
+    else:
+        logger.warning("PO-token provider at %s returned %s", base_url, resp.status_code)
+    return ok
 
 
 @asynccontextmanager
@@ -122,6 +170,10 @@ async def lifespan(app: FastAPI):
             logger.warning("gallery_dl Python package is not installed -- /extract-gallery will fail")
     else:
         app.state.gallery_dl_available = _check_binary("gallery-dl", settings.gallery_dl_path)
+    # Advisory PO-token provider probe -- see _check_pot_provider. Surfaced in
+    # /health so you can tell at a glance whether YouTube bot-detection bypass
+    # is live, instead of inferring it from the sidecar's own log.
+    app.state.pot_available = await _check_pot_provider(settings.pot_probe_url)
     logger.info("MediaPull API %s ready", __version__)
     try:
         yield
@@ -200,7 +252,7 @@ def create_app() -> FastAPI:
                 video=to_client_video(cached), method=cached.method, cached=True
             )
 
-        logger.info("extracting: %s (cookies=%s)", url, "yes" if cookies else "no")
+        logger.info("extracting: %s (cookies=%s)", url, _cookie_tag(cookies))
         try:
             await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
         except TimeoutError as exc:
@@ -240,7 +292,7 @@ def create_app() -> FastAPI:
                 gallery=to_client_gallery(cached), method=cached.method, cached=True
             )
 
-        logger.info("extracting gallery: %s (cookies=%s)", url, "yes" if cookies else "no")
+        logger.info("extracting gallery: %s (cookies=%s)", url, _cookie_tag(cookies))
         try:
             await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
         except TimeoutError as exc:
@@ -278,7 +330,67 @@ def create_app() -> FastAPI:
             timestamp=datetime.now(timezone.utc).isoformat(),
             ffmpeg_available=app.state.ffmpeg_available and app.state.ffprobe_available,
             gallery_dl_available=app.state.gallery_dl_available,
+            pot_available=app.state.pot_available,
         )
+
+    @app.post("/admin/cookies", response_model=CookieUploadResponse)
+    async def admin_cookies(payload: CookieUploadRequest, request: Request) -> CookieUploadResponse:
+        # Replace the server-side default cookie file without a redeploy:
+        # extraction opens the file fresh every request (see Extractor._ytdlp_sync),
+        # so the new cookies take effect on the next call. Use it when the saved
+        # cookies stop working -- re-export from a logged-in browser and POST them.
+        #
+        # Gated by ADMIN_TOKEN. Unset = feature off: 404 (not 401) so an
+        # unconfigured deploy doesn't advertise the endpoint exists.
+        expected = settings.admin_token
+        if not expected:
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        # Bearer token, constant-time compare so a wrong guess can't be timed.
+        header = request.headers.get("Authorization", "")
+        scheme, _, token = header.partition(" ")
+        if scheme.lower() != "bearer" or not secrets.compare_digest(token, expected):
+            raise HTTPException(status_code=401, detail="Invalid or missing admin token")
+
+        # A shared default cookie file is multi-domain, so the Netscape export is
+        # the only sensible shape -- a bare "a=b; c=d" header has no host and
+        # would need a URL we don't have here. normalize_cookies returns None for
+        # unusable input; the url arg only matters for the header path we reject.
+        normalized = normalize_cookies(payload.cookies, "")
+        if not normalized:
+            raise HTTPException(
+                status_code=422,
+                detail="Cookies must be a Netscape/Mozilla cookies.txt export (tab-separated rows)",
+            )
+
+        paths = settings.cookie_file_paths
+        if not paths:
+            raise HTTPException(
+                status_code=409,
+                detail="No COOKIE_FILE_PATHS configured -- set one before uploading cookies",
+            )
+
+        # Write the first path in the rotation. Atomic replace (temp + rename in
+        # the same dir) so a concurrent extraction never reads a half-written
+        # file. Cookie files are secrets -> 0600.
+        target = Path(paths[0])
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(target.suffix + ".tmp")
+        tmp.write_text(normalized, encoding="utf-8")
+        try:
+            tmp.chmod(0o600)
+        except OSError:
+            # Best-effort on filesystems/OSes that don't honor POSIX modes.
+            pass
+        tmp.replace(target)
+
+        cookie_lines = sum(
+            1 for ln in normalized.splitlines() if ln.strip() and not ln.startswith("#")
+        )
+        logger.info(
+            "admin cookie upload: wrote %d cookie lines to %s", cookie_lines, target
+        )
+        return CookieUploadResponse(path=str(target), cookie_lines=cookie_lines)
 
     # ---- Auto-subtitles (speech-to-text via Groq Whisper) ---------------
     # Opt-in, explicit, minutes-long job -- the only place in the app that

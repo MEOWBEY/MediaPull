@@ -205,6 +205,21 @@ class ProxyTokenResponse(BaseModel):
     token: str
 
 
+class CookieUploadRequest(BaseModel):
+    """Admin pushes freshly-exported cookies to replace a server-side default
+    cookie file (see POST /admin/cookies). The blob is normalized to Netscape
+    format server-side, same as per-request cookies."""
+
+    cookies: str = Field(max_length=262_144)
+
+
+class CookieUploadResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    path: str
+    cookie_lines: int = Field(alias="cookieLines")
+
+
 class HealthResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -218,6 +233,10 @@ class HealthResponse(BaseModel):
     # /extract-gallery request fails.
     ffmpeg_available: bool = Field(default=True, alias="ffmpegAvailable")
     gallery_dl_available: bool = Field(default=True, alias="galleryDlAvailable")
+    # Whether the bgutil PO-token sidecar answered at boot. False means YouTube
+    # age-gated / bot-checked extraction will likely fail even with cookies --
+    # check that mediapull-pot is running.
+    pot_available: bool = Field(default=False, alias="potAvailable")
 
 
 # ----- transcription (auto-subtitles) ---------------------------------------------

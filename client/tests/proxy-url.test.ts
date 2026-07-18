@@ -32,7 +32,7 @@ describe('buildProxiedUrl', () => {
 		expect(out).toContain('ctok=tok123');
 	});
 
-	it('still forwards non-secret referer/userAgent', () => {
+	it('forwards referer but omits userAgent (server impersonation ignores it)', () => {
 		const out = buildProxiedUrl(
 			'https://cdn.example.com/v.mp4',
 			{ Referer: 'https://site.example/', 'User-Agent': 'UA/1' },
@@ -40,6 +40,7 @@ describe('buildProxiedUrl', () => {
 		);
 
 		expect(out).toContain(`referer=${encodeURIComponent('https://site.example/')}`);
-		expect(out).toContain('userAgent=UA%2F1');
+		expect(out).not.toContain('userAgent=');
+		expect(out).not.toContain('UA%2F1');
 	});
 });

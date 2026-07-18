@@ -338,29 +338,43 @@ async def run_transcription_job(
                 ]
                 spawned += transcribe_tasks
 
+                # dialogue_map_task is consumed by _finalize (it awaits the
+                # waveform result), so it must survive the teardown below.
+                # Everything else is torn down as soon as transcription settles.
+                teardown = [t for t in spawned if t is not dialogue_map_task]
                 try:
-                    await asyncio.gather(*transcribe_tasks)
-                finally:
-                    # Teardown on success, failure, AND cancel/timeout — guarantees
-                    # no extract/transcribe/reporter/dialogue_map task (and its
-                    # ffmpeg child) outlives this frame.
-                    for t in spawned:
-                        if not t.done():
-                            t.cancel()
-                    await asyncio.gather(*spawned, return_exceptions=True)
-                    if not results or any(r is None for r in results):
-                        for leftover in work_dir.glob(f"chunk_*.{plan.codec.ext}"):
-                            leftover.unlink(missing_ok=True)
+                    try:
+                        await asyncio.gather(*transcribe_tasks)
+                    finally:
+                        # Runs on success, failure, and cancel — guarantees no
+                        # extract/transcribe/reporter task (and its ffmpeg child)
+                        # outlives this frame.
+                        for t in teardown:
+                            if not t.done():
+                                t.cancel()
+                        await asyncio.gather(*teardown, return_exceptions=True)
+                        if not results or any(r is None for r in results):
+                            for leftover in work_dir.glob(f"chunk_*.{plan.codec.ext}"):
+                                leftover.unlink(missing_ok=True)
 
-                finished = [r for r in results if r is not None]
-                if len(finished) != total:
-                    raise GroqError(
-                        f"Transcription incomplete: {len(finished)}/{total} chunks "
-                        "returned no result — the Groq API may have dropped a request"
-                    )
-                ordered_chunks = [c for c in chunks if c is not None]
-                await _finalize(ordered_chunks, finished, dialogue_map_task)
-                return True
+                    finished = [r for r in results if r is not None]
+                    if len(finished) != total:
+                        raise GroqError(
+                            f"Transcription incomplete: {len(finished)}/{total} chunks "
+                            "returned no result — the Groq API may have dropped a request"
+                        )
+                    ordered_chunks = [c for c in chunks if c is not None]
+                    await _finalize(ordered_chunks, finished, dialogue_map_task)
+                    return True
+                except BaseException:
+                    # Any failure/cancel before _finalize consumes the dialogue-map
+                    # task: cancel it here so it (and its ffmpeg child) can't
+                    # outlive the job. On the success path _finalize already
+                    # awaited it, so this is a no-op.
+                    if not dialogue_map_task.done():
+                        dialogue_map_task.cancel()
+                        await asyncio.gather(dialogue_map_task, return_exceptions=True)
+                    raise
 
             async def _run_single_pass() -> None:
                 await store.update(
@@ -488,7 +502,12 @@ async def run_transcription_job(
     try:
         await asyncio.wait_for(_pipeline(), timeout=settings.transcribe_job_timeout)
     except asyncio.CancelledError:
-        logger.info("transcription job %s cancelled", job_id)
+        # The job task was cancelled — either the client asked to stop
+        # (DELETE /transcribe/{id}) or the process is shutting down. Log the
+        # progress reached so an unexpected cancel is easy to spot.
+        cancelled_job = await store.get(job_id)
+        at = f"{cancelled_job.progress:.2f}" if cancelled_job else "?"
+        logger.info("transcription job %s cancelled at progress=%s", job_id, at)
         await store.update(job_id, status="cancelled", step_label="Cancelled", progress=1.0)
     except asyncio.TimeoutError:
         # wait_for cancels _pipeline(), so its finally blocks still tear down

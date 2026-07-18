@@ -1,25 +1,34 @@
-"""Per-request context (client IP, user agent) attached to every log line.
+"""Per-request context (client IP, request id) attached to every log line.
 
 Set once per request by the middleware in ``main.py``; read back by
 ``RequestContextFilter`` so every logger under the root — extractor, proxy,
 main — gets it for free, with no per-call-site changes.
+
+The request id is a short random token that groups the several log lines a
+single request emits (an extraction alone logs ~6).
 """
 
 from __future__ import annotations
 
 import logging
+import uuid
 from contextvars import ContextVar
 
 from starlette.datastructures import Headers
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 _client_ip: ContextVar[str] = ContextVar("client_ip", default="-")
-_user_agent: ContextVar[str] = ContextVar("user_agent", default="-")
+_request_id: ContextVar[str] = ContextVar("request_id", default="-")
 
 
-def set_request_context(client_ip: str, user_agent: str) -> None:
+def new_request_id() -> str:
+    """Short opaque id for grouping one request's log lines."""
+    return uuid.uuid4().hex[:8]
+
+
+def set_request_context(client_ip: str, request_id: str) -> None:
     _client_ip.set(client_ip or "-")
-    _user_agent.set(user_agent or "-")
+    _request_id.set(request_id or "-")
 
 
 def client_ip_from_headers(headers, client_host: str | None) -> str:
@@ -34,7 +43,7 @@ def client_ip_from_headers(headers, client_host: str | None) -> str:
 class RequestContextFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
         record.client_ip = _client_ip.get()
-        record.user_agent = _user_agent.get()
+        record.request_id = _request_id.get()
         return True
 
 
@@ -62,6 +71,6 @@ class LogContextMiddleware:
         client_host = scope["client"][0] if scope.get("client") else None
         set_request_context(
             client_ip_from_headers(headers, client_host),
-            headers.get("user-agent", "-"),
+            new_request_id(),
         )
         await self.app(scope, receive, send)
