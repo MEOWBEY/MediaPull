@@ -8,8 +8,9 @@
 
 	const { t } = i18n;
 
-	// Theme is owned by preferences (the single source of truth applied via
-	// mode-watcher in +page). Toggle flips to the opposite of what's showing now.
+	// Theme is owned by preferences (the single source of truth, applied as a
+	// `.dark` class on <html> in +page). Toggle flips to the opposite of what's
+	// showing now.
 	function toggle() {
 		const isDark = document.documentElement.classList.contains('dark');
 

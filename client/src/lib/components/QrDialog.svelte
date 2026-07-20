@@ -39,7 +39,11 @@
 </script>
 
 <Dialog.Root bind:open>
-	<Dialog.Content class="max-w-sm" closeLabel={t('common.close')}>
+	<Dialog.Content
+		class="max-w-sm"
+		closeLabel={t('common.close')}
+		onOpenAutoFocus={(e) => e.preventDefault()}
+	>
 		<Dialog.Header>
 			<Dialog.Title>{t('qr.title')}</Dialog.Title>
 			<Dialog.Description>{t('qr.desc')}</Dialog.Description>
@@ -50,13 +54,13 @@
 			     from the old 240px box -- a bigger on-screen target with fewer
 			     modules (see the 'L' error-correction note above) is what actually
 			     makes a phone camera lock on quickly. -->
-			<div class="mx-auto w-full max-w-72 rounded-xl bg-white p-4 [&_svg]:h-full [&_svg]:w-full">
+			<div class="mx-auto w-full max-w-72 rounded-md bg-white p-4 [&_svg]:h-full [&_svg]:w-full">
 				<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 				{@html svg}
 			</div>
 			<!-- Clamp very long links to a few lines so the dialog doesn't sprawl;
 			     the full URL is still available via the copy button below. -->
-			<p dir="ltr" class="text-muted-foreground mt-3 line-clamp-3 break-all text-center text-xs">
+			<p dir="ltr" class="text-muted-foreground mt-3 line-clamp-3 break-all text-center font-mono text-xs">
 				{url}
 			</p>
 			{#if onCopy}

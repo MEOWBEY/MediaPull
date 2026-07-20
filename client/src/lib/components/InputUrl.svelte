@@ -1,12 +1,12 @@
 <script lang="ts">
-	import Globe from '@lucide/svelte/icons/globe';
+	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import Search from '@lucide/svelte/icons/search';
-	import Settings from '@lucide/svelte/icons/settings';
 	import Sparkles from '@lucide/svelte/icons/sparkles';
 	import VideoIcon from '@lucide/svelte/icons/video';
 	import X from '@lucide/svelte/icons/x';
+	import { toast } from 'svelte-sonner';
 
 	import { Button } from '$lib/components/ui/button';
 	import { i18n } from '$lib/i18n/index.svelte';
@@ -19,8 +19,7 @@
 		cancelActiveOperation,
 		isVideoExtractRunning,
 		batchTotal = 0,
-		batchDone = 0,
-		isPreferencesDialogOpen = $bindable()
+		batchDone = 0
 	} = $props();
 
 	let inputUrl = $state('');
@@ -56,33 +55,80 @@
 		inputUrl = '';
 	}
 
-	function onKeydown(event: KeyboardEvent) {
-		if (event.key === 'Enter' && inputUrl.trim() && !isOperationRunning) {
+	// Paste from the clipboard into the field. The async Clipboard API
+	// (navigator.clipboard.readText) is unavailable or blocked on many mobile
+	// browsers, so we try it first, and on any failure fall back to focusing the
+	// field and surfacing a hint — the user's own paste gesture / keyboard then
+	// works normally.
+	async function pasteFromClipboard() {
+		if (isOperationRunning) {
+			return;
+		}
+
+		const field = document.getElementById('video-url') as HTMLInputElement | null;
+		const canUseAsyncApi = window.isSecureContext && navigator.clipboard?.readText;
+
+		if (!canUseAsyncApi) {
+			field?.focus();
+			field?.select();
+			toast.info(t('input.pasteHint'));
+
+			return;
+		}
+
+		try {
+			const text = await navigator.clipboard.readText();
+
+			if (text) {
+				inputUrl = text.trim();
+				field?.focus();
+			} else {
+				field?.focus();
+				field?.select();
+				toast.info(t('input.pasteHint'));
+			}
+		} catch {
+			field?.focus();
+			field?.select();
+			toast.info(t('input.pasteHint'));
+		}
+	}
+
+	// Native form submit -- lets the browser record submitted URLs in its own
+	// autofill history (name="url" + a real submit), so past links reappear as
+	// suggestions next time. preventDefault stops an actual page navigation, and
+	// Enter in the single-line field triggers this submit natively.
+	function onSubmit(event: SubmitEvent) {
+		event.preventDefault();
+		if (inputUrl.trim() && !isOperationRunning) {
 			runVideoExtractFromServer(inputUrl);
 		}
 	}
 </script>
 
 <div class="mx-auto w-full text-start">
-	<div class="bg-card/80 border-border/60 shadow-soft rounded-4xl border p-2 sm:p-2.5">
-		<!-- Input row -->
-		<div class="flex items-center gap-2">
+	<form class="ds-glass shadow-float overflow-hidden rounded-lg" onsubmit={onSubmit}>
+		<!-- Input row: a mono `URL>` prompt makes the field read as a command line. -->
+		<div class="flex items-center gap-2 ps-3.5 pe-2 py-2">
+			<span
+				class="text-signal font-mono text-sm font-bold select-none"
+				aria-hidden="true"
+			>
+				URL&gt;
+			</span>
 			<div class="relative flex-1">
-				<Globe
-					class="text-muted-foreground absolute top-1/2 inset-s-3.5 h-5 w-5 -translate-y-1/2"
-				/>
 				<input
 					id="video-url"
+					name="url"
 					bind:value={inputUrl}
-					onkeydown={onKeydown}
 					placeholder={contentTypeMode === 'gallery'
 						? t('input.placeholderGallery')
 						: t('input.placeholder')}
 					disabled={isOperationRunning}
-					autocomplete="off"
+					autocomplete="on"
 					autocapitalize="off"
 					spellcheck="false"
-					class="h-12 w-full rounded-full border-0 bg-transparent pe-10 ps-11 text-base outline-none placeholder:text-muted-foreground/70 disabled:opacity-60"
+					class="placeholder:text-muted-foreground/60 h-10 w-full border-0 bg-transparent pe-9 font-mono text-sm outline-none disabled:opacity-60 sm:text-base"
 				/>
 				{#if inputUrl}
 					<button
@@ -90,57 +136,71 @@
 						onclick={clearInputUrl}
 						disabled={isOperationRunning}
 						aria-label={t('input.clear')}
-						class="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 inset-e-2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full transition-colors"
+						class="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 inset-e-0 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md transition-colors"
 					>
 						<X class="h-4 w-4" />
 					</button>
 				{/if}
 			</div>
 
-			<button
-				type="button"
-				onclick={() => (isPreferencesDialogOpen = true)}
-				title={t('input.preferences')}
-				aria-label={t('input.preferences')}
-				class="text-muted-foreground hover:bg-muted hover:text-foreground flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors"
+			<!-- Paste is the first thing most visits do, so it's a labeled action
+			     right in the field rather than relying on the OS paste gesture. -->
+			<Button
+				variant="outline"
+				size="sm"
+				onclick={pasteFromClipboard}
+				disabled={isOperationRunning}
+				class="h-9 shrink-0"
+				title={t('input.paste')}
 			>
-				<Settings class="h-5 w-5" />
-			</button>
+				<ClipboardPaste class="h-4 w-4 sm:me-1.5" />
+				<span class="hidden sm:inline">{t('input.paste')}</span>
+			</Button>
 		</div>
 
 		{#if urlCount > 1 && !isOperationRunning}
-			<p class="text-muted-foreground mt-2 px-3 text-xs">{t('input.batchHint', { n: urlCount })}</p>
+			<p class="text-muted-foreground border-border/60 border-t px-3.5 py-2 font-mono text-xs">
+				{t('input.batchHint', { n: urlCount })}
+			</p>
 		{/if}
 
 		<!-- Action row -->
-		<div class="mt-2 flex flex-wrap items-center gap-2 border-t border-border/60 pt-2">
-			<!-- The mode selector only appears once the user forces video/gallery.
-			     In 'auto' (the default) it's hidden -- the label would just clutter
-			     the input, and auto is what most pastes want anyway. Mode stays
-			     changeable from Preferences. -->
+		<div class="border-border/60 flex flex-wrap items-center gap-2 border-t p-2">
+			<!-- Mode selector only appears once the user has forced video/gallery.
+			     In 'auto' (the default) it's hidden — most pastes want auto and the
+			     buttons would just add clutter. Mode stays changeable in Preferences. -->
 			{#if contentTypeMode !== 'auto'}
-				<div class="bg-muted/50 flex shrink-0 items-center gap-0.5 rounded-full p-0.5">
-					{#each contentTypeOptions as option (option.mode)}
-						<Button
-							variant={contentTypeMode === option.mode ? 'default' : 'ghost'}
-							size="sm"
+				<div
+					class="border-border/70 flex shrink-0 items-center overflow-hidden rounded-md border font-mono text-xs"
+					role="group"
+					aria-label={t('input.mode')}
+				>
+					{#each contentTypeOptions as option, i (option.mode)}
+						<button
+							type="button"
 							disabled={isOperationRunning}
 							onclick={() => setContentTypeMode(option.mode)}
-							class="gap-1 rounded-full px-2.5 py-1 text-xs"
 							aria-pressed={contentTypeMode === option.mode}
 							title={t(option.labelKey)}
+							class={[
+								'flex items-center gap-1.5 px-2.5 py-1.5 transition-colors disabled:opacity-50',
+								i > 0 && 'border-border/70 border-s',
+								contentTypeMode === option.mode
+									? 'bg-signal/15 text-signal font-semibold'
+									: 'text-muted-foreground hover:bg-muted hover:text-foreground'
+							]}
 						>
-							<option.icon class="h-3 w-3" />
-							<span>{t(option.labelKey)}</span>
-						</Button>
+							<option.icon class="h-3.5 w-3.5" />
+							<span class="hidden sm:inline">{t(option.labelKey)}</span>
+						</button>
 					{/each}
 				</div>
 			{/if}
 
 			<Button
-				onclick={() => runVideoExtractFromServer(inputUrl)}
+				type="submit"
 				disabled={!inputUrl.trim() || isOperationRunning}
-				class="bg-primary text-primary-foreground hover:bg-primary/90 h-11 flex-1 cursor-pointer rounded-full font-semibold transition-colors sm:flex-none sm:px-6"
+				class="h-9 flex-1 font-bold sm:flex-none sm:px-6"
 			>
 				{#if isVideoExtractRunning || isBatchRunning}
 					<Loader2 class="me-2 h-4 w-4 animate-spin" />
@@ -158,7 +218,7 @@
 					<Button
 						variant="destructive"
 						onclick={cancelActiveOperation}
-						class="h-11 cursor-pointer rounded-full px-4"
+						class="h-9 px-4"
 						title={t('input.cancel')}
 						aria-label={t('input.cancel')}
 					>
@@ -168,5 +228,5 @@
 				</div>
 			{/if}
 		</div>
-	</div>
+	</form>
 </div>

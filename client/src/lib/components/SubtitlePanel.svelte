@@ -39,30 +39,16 @@
 		onSeek: (time: number) => void;
 		canDownload?: boolean;
 		onDownload?: () => void;
-		/** Lets the empty state kick off generation right away, instead of
-		 *  closing the panel and hunting for the card's own Subtitles button. */
 		onGenerate?: () => void;
 		generating?: boolean;
-		/** Real job progress (0..1) and the pipeline stage it's in -- shown
-		 *  while `generating` so the user sees actual movement, not a spinner. */
 		progress?: number;
 		stepLabel?: string;
-		/** Stops an in-flight Groq job -- shown next to the generating spinner. */
 		onCancel?: () => void;
-		/** Hide lines shorter than this many words from the panel only (the
-		 *  video's own captions are untouched). 0 = show every line. */
 		minWords?: number;
 	} = $props();
 
 	let filterQuery = $state('');
-	// The scroll container -- the "scroll to current line" button reaches into
-	// it to bring the highlighted row into view on demand.
 	let listEl = $state<HTMLDivElement | null>(null);
-
-	// No *automatic* scroll on purpose: the list never moves on its own while
-	// playing (clicks/taps used to trigger surprise jumps). The active line is
-	// only highlighted -- but a header button now lets the user jump to it when
-	// they want, see `scrollToActive`.
 
 	function wordCount(text: string): number {
 		const trimmed = text.trim();
@@ -70,15 +56,10 @@
 		return trimmed ? trimmed.split(/\s+/).length : 0;
 	}
 
-	// Short-line filter: applied to the panel list ONLY. The video keeps every
-	// cue (it renders from the VTT track, not from this list), so single-word
-	// lines like "Justin" still show on the player -- just not here.
 	const visibleSegments = $derived(
 		minWords > 0 ? segments.filter((seg) => wordCount(seg.text) >= minWords) : segments
 	);
 
-	// Filter by text OR timestamp — typing "1:23" jumps you to lines around
-	// that time, typing words filters by content.
 	const filteredSegments = $derived.by(() => {
 		const q = filterQuery.trim().toLowerCase();
 
@@ -91,11 +72,6 @@
 		);
 	});
 
-	// The segment currently under the playhead. During a silence gap (no cue
-	// spans `currentTime`) we keep the most recent line that has already started
-	// highlighted, instead of clearing it -- otherwise the green highlight
-	// flickers off every time the speaker pauses. Computed over the *visible*
-	// list so the highlighted row is always one that's actually shown.
 	const activeSeg = $derived.by(() => {
 		let candidate: SubtitleSegment | null = null;
 
@@ -103,8 +79,6 @@
 			if (currentTime >= seg.start && currentTime <= seg.end) {
 				return seg;
 			}
-			// Segments are ordered by start time: once one starts in the future,
-			// no later one can be active or the current gap-fallback candidate.
 			if (seg.start > currentTime) {
 				break;
 			}
@@ -125,31 +99,31 @@
 	<Sheet.Content
 		side={desktop.matches ? 'right' : 'bottom'}
 		closeLabel={t('common.close')}
-		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-4 sm:max-w-lg sm:p-6 {desktop.matches
+		onOpenAutoFocus={(e) => e.preventDefault()}
+		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg {desktop.matches
 			? ''
-			: 'h-[65vh] rounded-t-3xl'}"
+			: 'h-[65vh] rounded-t-2xl'}"
 	>
-		<!-- Header keeps room on the end for the sheet's corner close (X) button.
-		     Title on top, then the actions row aligned to the start edge (under the
-		     title) -- both actions are matching labeled pills, and because the row
-		     uses the start edge + logical padding it mirrors correctly for Farsi. -->
-		<Sheet.Header class="flex-col items-start gap-3 px-0 pe-10 text-start">
-			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">
-				{t('subtitles.panel.title')}
+		<Sheet.Header
+			class="flex flex-row flex-nowrap items-start justify-between gap-3 px-4 pt-12  text-start sm:px-6"
+		>
+			<Sheet.Title class="font-heading flex min-w-0 shrink items-center gap-2 truncate text-xl font-bold sm:text-2xl">
+				<Captions class="text-signal h-5 w-5 shrink-0 sm:h-6 sm:w-6" />
+				<span class="truncate">{t('subtitles.panel.title')}</span>
 			</Sheet.Title>
 			{#if (segments.length && activeSeg) || canDownload}
-				<div class="flex flex-wrap items-center gap-2">
+				<div class="mt-0.5 flex shrink-0 flex-nowrap items-center gap-2">
 					{#if canDownload}
 						<Button
 							variant="outline"
 							size="sm"
 							onclick={onDownload}
-							class="h-9 shrink-0 gap-1.5 rounded-full px-3"
+							class="h-9 shrink-0 gap-1.5 px-3"
 							title={t('subtitles.download')}
 							aria-label={t('subtitles.download')}
 						>
 							<Download class="h-4 w-4" />
-							<span class="text-xs font-semibold">SRT</span>
+							<span class="font-mono text-xs font-semibold">SRT</span>
 						</Button>
 					{/if}
 					{#if segments.length && activeSeg}
@@ -157,7 +131,7 @@
 							variant="outline"
 							size="sm"
 							onclick={scrollToActive}
-							class="h-9 shrink-0 gap-1.5 rounded-full px-3"
+							class="h-9 shrink-0 gap-1.5 px-3"
 							title={t('subtitles.panel.scrollToActive')}
 							aria-label={t('subtitles.panel.scrollToActive')}
 						>
@@ -170,36 +144,33 @@
 		</Sheet.Header>
 
 		{#if segments.length}
-			<div class="relative mt-3 shrink-0">
+			<div class="relative mt-2 shrink-0 px-4 sm:px-6">
 				<Search
-					class="text-muted-foreground pointer-events-none absolute top-1/2 inset-s-3 h-4 w-4 -translate-y-1/2"
+					class="text-muted-foreground pointer-events-none absolute top-1/2 inset-s-7 h-4 w-4 -translate-y-1/2 sm:inset-s-9"
 				/>
 				<input
 					bind:value={filterQuery}
 					type="search"
 					placeholder={t('subtitles.panel.search')}
 					aria-label={t('subtitles.panel.search')}
-					class="bg-card/60 border-border/60 focus:ring-primary/40 h-10 w-full rounded-full border ps-9 pe-3 text-sm outline-none focus:ring-2"
+					class="bg-card/60 border-border/70 focus:ring-signal/40 h-10 w-full rounded-md border ps-9 pe-3 font-mono text-sm outline-none focus:ring-2"
 				/>
 			</div>
 
-			<!-- GPU-promote the scroller (translateZ) and contain its paint so the
-			     row text doesn't rasterize blank-then-late during momentum scroll
-			     on mobile -- the browser keeps the painted layer instead of
-			     re-painting each frame. `overscroll-contain` stops the gesture
-			     from chaining to the page behind the sheet. -->
 			<div
 				bind:this={listEl}
-				class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain pe-1 [contain:paint] [transform:translateZ(0)]"
+				class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto overscroll-contain px-4 pe-3 sm:px-6 sm:pe-5 contain-[paint] transform-[translateZ(0)]"
 			>
 				{#each filteredSegments as seg (seg)}
 					<button
 						type="button"
 						data-active={seg === activeSeg}
-						class="hover:bg-muted data-[active=true]:bg-primary/20 data-[active=true]:text-primary data-[active=true]:border-primary flex w-full items-start gap-3 rounded-lg border-s-2 border-transparent px-3 py-2 text-start transition-colors data-[active=true]:font-medium"
+						class="hover:bg-muted data-[active=true]:bg-signal/15 data-[active=true]:text-signal data-[active=true]:border-signal flex w-full cursor-pointer items-start gap-3 rounded-md border-s-2 border-transparent px-3 py-2 text-start transition-colors data-[active=true]:font-medium"
 						onclick={() => onSeek(seg.start)}
 					>
-						<span class="text-muted-foreground shrink-0 pt-0.5 text-xs font-medium tabular-nums">
+						<span
+							class="text-muted-foreground shrink-0 pt-0.5 font-mono text-xs font-medium tabular-nums"
+						>
 							{formatSecondsToTime(seg.start)}
 						</span>
 						<span class="text-sm leading-snug">{seg.text}</span>
@@ -217,8 +188,6 @@
 				</p>
 				{#if onGenerate}
 					{#if generating}
-						<!-- Progress is status, not a button: a bar + percentage + the
-						     pipeline stage, with cancel as its own explicit action. -->
 						<div class="w-full max-w-xs space-y-2" role="status" aria-live="polite">
 							<div class="bg-muted h-1.5 w-full overflow-hidden rounded-full">
 								<div
@@ -239,7 +208,7 @@
 								variant="outline"
 								size="sm"
 								onclick={onCancel}
-								class="gap-1.5 rounded-full"
+								class="gap-1.5"
 								aria-label={t('subtitles.cancel')}
 							>
 								<X class="h-4 w-4" />
@@ -247,7 +216,7 @@
 							</Button>
 						{/if}
 					{:else}
-						<Button size="sm" onclick={onGenerate} class="gap-1.5 rounded-full">
+						<Button size="sm" onclick={onGenerate} class="gap-1.5">
 							<Captions class="h-4 w-4" />
 							{t('subtitles.generate')}
 						</Button>

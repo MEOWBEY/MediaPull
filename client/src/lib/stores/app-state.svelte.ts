@@ -39,7 +39,7 @@ export type {
 
 class AppStore {
 	private readonly prefs = new PreferencesStore();
-	private readonly library = new LibraryStore(this.prefs);
+	private readonly library = new LibraryStore();
 	private readonly cookieStore = new CookieStore();
 
 	isVideoExtractRunning = $state(false);

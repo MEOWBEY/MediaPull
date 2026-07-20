@@ -4,9 +4,8 @@
 
 	let { ...restProps }: SonnerProps = $props();
 
-	// Theme is preference-driven and applied as a `.dark` class on <html> (we no
-	// longer use mode-watcher). Mirror that class so toasts match light/dark from a
-	// single source of truth.
+	// Theme is preference-driven and applied as a `.dark` class on <html>. Mirror
+	// that class so toasts match light/dark from a single source of truth.
 	let isDark = $state(false);
 
 	onMount(() => {
@@ -28,29 +27,31 @@
 	position="bottom-right"
 	richColors
 	closeButton
+	expand
+	visibleToasts={5}
 	duration={3500}
 	style="
-		--normal-bg: color-mix(in oklch, var(--color-popover) 88%, transparent);
+		--normal-bg: var(--color-popover);
 		--normal-text: var(--color-popover-foreground);
-		--normal-border: color-mix(in oklch, var(--color-border) 80%, transparent);
-		--border-radius: 1.3rem;
-		--success-bg: color-mix(in oklch, var(--color-primary) 16%, var(--color-popover));
-		--success-text: var(--color-primary);
-		--success-border: color-mix(in oklch, var(--color-primary) 38%, transparent);
-		--error-bg: color-mix(in oklch, var(--color-destructive) 16%, var(--color-popover));
+		--normal-border: var(--color-border);
+		--border-radius: var(--radius);
+		--success-bg: color-mix(in oklch, oklch(0.7 0.16 150) 22%, var(--color-popover));
+		--success-text: oklch(0.72 0.16 150);
+		--success-border: oklch(0.7 0.16 150 / 0.5);
+		--error-bg: color-mix(in oklch, var(--color-destructive) 22%, var(--color-popover));
 		--error-text: var(--color-destructive);
-		--error-border: color-mix(in oklch, var(--color-destructive) 38%, transparent);
-		--warning-bg: color-mix(in oklch, var(--color-secondary) 18%, var(--color-popover));
-		--warning-text: var(--color-secondary);
-		--warning-border: color-mix(in oklch, var(--color-secondary) 40%, transparent);
-		--info-bg: color-mix(in oklch, var(--color-accent) 60%, var(--color-popover));
-		--info-text: var(--color-accent-foreground);
-		--info-border: color-mix(in oklch, var(--color-border) 80%, transparent);
+		--error-border: color-mix(in oklch, var(--color-destructive) 55%, transparent);
+		--warning-bg: color-mix(in oklch, var(--color-warning) 22%, var(--color-popover));
+		--warning-text: var(--color-warning);
+		--warning-border: color-mix(in oklch, var(--color-warning) 55%, transparent);
+		--info-bg: color-mix(in oklch, var(--color-signal) 20%, var(--color-popover));
+		--info-text: var(--color-signal);
+		--info-border: color-mix(in oklch, var(--color-signal) 50%, transparent);
 	"
 	toastOptions={{
 		class: 'ds-toast',
 		style:
-			'backdrop-filter: blur(14px) saturate(1.3); -webkit-backdrop-filter: blur(14px) saturate(1.3); box-shadow: var(--shadow-float); font-weight: 600; padding: 0.9rem 1rem;'
+			'box-shadow: var(--shadow-float); font-weight: 600; padding: 0.9rem 1rem;'
 	}}
 	{...restProps}
 />

@@ -68,12 +68,10 @@
 		disabled={switching}
 		onclick={() => (menuOpen = !menuOpen)}
 	>
-		<!-- While switching, the sliders icon pulses in the accent color instead of
+		<!-- While switching, the sliders icon pulses (opacity only) instead of
 		     spinning: a non-circular glyph spinning reads as broken, whereas a soft
-		     opacity+color pulse clearly says "working" without the jarring rotation. -->
-		<SlidersHorizontal
-			class="h-3.5 w-3.5 transition-colors {switching ? 'text-primary animate-pulse' : ''}"
-		/>
+		     pulse clearly says "working" without the jarring rotation or a recolor. -->
+		<SlidersHorizontal class="h-3.5 w-3.5 {switching ? 'animate-pulse' : ''}" />
 		<span>{qualityLabel(qualities[activeIndex], activeIndex)}</span>
 	</button>
 

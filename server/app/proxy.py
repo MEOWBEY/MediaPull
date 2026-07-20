@@ -409,8 +409,10 @@ class ProxyService:
 
         async def body():
             # Stop pulling from the origin the instant the browser disconnects.
+            # A 64 KiB read granularity keeps per-chunk overhead (and the
+            # disconnect check below) low relative to the bytes moved.
             try:
-                async for chunk in upstream.aiter_content():
+                async for chunk in upstream.aiter_content(chunk_size=65536):
                     if await request.is_disconnected():
                         break
                     yield chunk

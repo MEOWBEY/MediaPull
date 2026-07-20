@@ -6,94 +6,113 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ============================================================================
+   PRECISION UTILITY — design tokens
+   ----------------------------------------------------------------------------
+   Two layers, so a future restyle is ~1 line:
+     1. PALETTE + STYLE-LANGUAGE tokens (:root / .dark below) — the knobs.
+     2. Semantic shadcn tokens (--background, --primary, …) derive FROM them.
+   To reskin (e.g. "make it glassmorphism" / "make it brutalist") you edit the
+   style-language block (--surface-*, --radius, --accent) — components never
+   reference raw values, only these tokens, so the change cascades everywhere.
+
+   Direction: dense, tool-like. Monospace voice, hairline rules over shadows,
+   one warm "signal" accent (active transfer / primary action). Dark is the
+   source of truth here (a tool used in long sessions); light is derived.
+   ========================================================================== */
 :root {
-	/* Organic design system — warm, earthy, soft. Light mode is the source of truth.
-	   Hex sources noted; values converted to oklch (shadcn-svelte token format). */
-	--radius: 1rem;
-	--background: oklch(0.991 0.004 95); /* Rice Paper  #FDFCF8 */
-	--foreground: oklch(0.273 0.008 110); /* Deep Loam   #2C2C24 */
-	--card: oklch(1 0 0); /* pure white — lifts off the rice-paper page */
-	--card-foreground: oklch(0.273 0.008 110);
+	/* --- style-language knobs (edit these to reskin) --- */
+	--radius: 0.25rem; /* near-sharp corners — precise, not soft */
+	--signal: oklch(0.7 0.19 47); /* #FF7A18 — warm transfer amber, the one accent */
+	--signal-foreground: oklch(0.15 0.01 260); /* ink, for text on the accent */
+	/* Surface language: components read these, never raw colors. Flat + hairline
+	   by default (blur 0). A glass restyle raises --surface-blur and lowers the
+	   card translucency; a brutalist one zeroes --radius and hardens the shadow. */
+	--surface-blur: 0px;
+	--surface-translucency: 100%; /* card alpha vs page; <100% + blur = glass */
+
+	/* --- light palette (derived from the dark source of truth) --- */
+	--background: oklch(0.945 0.003 250); /* cool light-gray page */
+	--foreground: oklch(0.2 0.006 260); /* near-black ink text */
+	--card: oklch(1 0 0); /* pure white panel, clearly above the page */
+	--card-foreground: oklch(0.2 0.006 260);
 	--popover: oklch(1 0 0);
-	--popover-foreground: oklch(0.273 0.008 110);
-	--primary: oklch(0.525 0.048 135); /* Moss Green  #5D7052 */
-	--primary-foreground: oklch(0.963 0.003 130); /* Pale Mist   #F3F4F1 */
-	--secondary: oklch(0.665 0.075 64); /* Terracotta  #C18C5D */
-	--secondary-foreground: oklch(1 0 0); /* #FFFFFF */
-	--muted: oklch(0.939 0.008 80); /* Stone       #F0EBE5 */
-	--muted-foreground: oklch(0.535 0.012 100); /* Dried Grass #78786C */
-	--accent: oklch(0.892 0.018 82); /* Sand        #E6DCCD */
-	--accent-foreground: oklch(0.395 0.009 105); /* Bark        #4A4A40 */
-	--destructive: oklch(0.515 0.105 32); /* Burnt Sienna #A85448 */
-	--warning: oklch(
-		0.62 0.13 75
-	); /* Amber -- distinct from destructive (used for
-		"heads up" states like video-only formats, playback fallbacks, cookie
-		safety notes; not errors) */
-	--warning-foreground: oklch(0.28 0.06 75);
-	--border: oklch(0.879 0.009 85); /* Raw Timber  #DED8CF */
-	--input: oklch(0.879 0.009 85);
-	--ring: oklch(0.525 0.048 135); /* Moss focus ring */
-	--chart-1: oklch(0.525 0.048 135);
-	--chart-2: oklch(0.665 0.075 64);
-	--chart-3: oklch(0.515 0.105 32);
-	--chart-4: oklch(0.892 0.018 82);
-	--chart-5: oklch(0.535 0.012 100);
-	--sidebar: oklch(0.991 0.004 95);
-	--sidebar-foreground: oklch(0.273 0.008 110);
-	--sidebar-primary: oklch(0.525 0.048 135);
-	--sidebar-primary-foreground: oklch(0.963 0.003 130);
-	--sidebar-accent: oklch(0.892 0.018 82);
-	--sidebar-accent-foreground: oklch(0.395 0.009 105);
-	--sidebar-border: oklch(0.879 0.009 85);
-	--sidebar-ring: oklch(0.525 0.048 135);
+	--popover-foreground: oklch(0.2 0.006 260);
+	--primary: var(--signal); /* primary action = the signal accent */
+	--primary-foreground: var(--signal-foreground);
+	--secondary: oklch(0.9 0.004 260); /* quiet neutral fill, distinct from card */
+	--secondary-foreground: oklch(0.3 0.006 260);
+	--muted: oklch(0.915 0.004 260); /* section fill between page and card */
+	--muted-foreground: oklch(0.46 0.008 260); /* haze — metadata, readable */
+	--accent: oklch(0.9 0.004 260); /* shadcn `accent` slot = neutral hover fill */
+	--accent-foreground: oklch(0.3 0.006 260);
+	--destructive: oklch(0.55 0.21 25);
+	--warning: oklch(0.68 0.16 70); /* heads-up amber, distinct from destructive */
+	--warning-foreground: oklch(0.28 0.06 70);
+	--border: oklch(0.84 0.006 260); /* hairline on white + on page */
+	--input: oklch(0.84 0.006 260);
+	--ring: var(--signal);
+	--chart-1: var(--signal);
+	--chart-2: oklch(0.6 0.11 200);
+	--chart-3: oklch(0.58 0.2 25);
+	--chart-4: oklch(0.7 0.14 130);
+	--chart-5: oklch(0.5 0.006 260);
+	--sidebar: oklch(0.97 0.002 260);
+	--sidebar-foreground: oklch(0.22 0.006 260);
+	--sidebar-primary: var(--signal);
+	--sidebar-primary-foreground: var(--signal-foreground);
+	--sidebar-accent: oklch(0.93 0.003 260);
+	--sidebar-accent-foreground: oklch(0.3 0.006 260);
+	--sidebar-border: oklch(0.9 0.003 260);
+	--sidebar-ring: var(--signal);
 }
 
 .dark {
-	/* Dark equivalents are INVENTED — the organic palette ships light-only.
-	   Warm near-black loam base with brightened moss/terracotta accents.
-	   (Flagged as a suggestion: tweak to taste.) */
-	--background: oklch(0.21 0.008 110);
-	--foreground: oklch(0.95 0.005 95);
-	--card: oklch(0.252 0.009 110);
-	--card-foreground: oklch(0.95 0.005 95);
-	--popover: oklch(0.252 0.009 110);
-	--popover-foreground: oklch(0.95 0.005 95);
-	--primary: oklch(0.68 0.06 135);
-	--primary-foreground: oklch(0.2 0.02 135);
-	--secondary: oklch(0.62 0.08 62);
-	--secondary-foreground: oklch(0.98 0 0);
-	--muted: oklch(0.285 0.008 100);
-	--muted-foreground: oklch(0.72 0.012 95);
-	--accent: oklch(0.33 0.022 82);
-	--accent-foreground: oklch(0.88 0.02 82);
-	--destructive: oklch(0.62 0.13 32);
-	--warning: oklch(0.75 0.14 75);
-	--warning-foreground: oklch(0.22 0.05 75);
-	--border: oklch(1 0 0 / 12%);
-	--input: oklch(1 0 0 / 15%);
-	--ring: oklch(0.68 0.06 135);
-	--chart-1: oklch(0.68 0.06 135);
-	--chart-2: oklch(0.62 0.08 62);
-	--chart-3: oklch(0.62 0.13 32);
-	--chart-4: oklch(0.7 0.04 82);
-	--chart-5: oklch(0.72 0.012 95);
-	--sidebar: oklch(0.252 0.009 110);
-	--sidebar-foreground: oklch(0.95 0.005 95);
-	--sidebar-primary: oklch(0.68 0.06 135);
-	--sidebar-primary-foreground: oklch(0.2 0.02 135);
-	--sidebar-accent: oklch(0.33 0.022 82);
-	--sidebar-accent-foreground: oklch(0.88 0.02 82);
-	--sidebar-border: oklch(1 0 0 / 12%);
-	--sidebar-ring: oklch(0.68 0.06 135);
+	/* Dark is the source of truth for Precision Utility. Ink base, hairline lines,
+	   paper text, single signal accent. */
+	--background: oklch(0.155 0.008 250); /* ink   #0C0E10 */
+	--foreground: oklch(0.92 0.004 250); /* paper #E9ECEE */
+	--card: oklch(0.225 0.009 250); /* panel — clearly lifted above the ink page */
+	--card-foreground: oklch(0.92 0.004 250);
+	--popover: oklch(0.225 0.009 250);
+	--popover-foreground: oklch(0.92 0.004 250);
+	--signal: oklch(0.72 0.19 47); /* brightens slightly on ink for contrast */
+	--signal-foreground: oklch(0.15 0.01 260);
+	--primary: var(--signal);
+	--primary-foreground: var(--signal-foreground);
+	--secondary: oklch(0.27 0.009 250);
+	--secondary-foreground: oklch(0.92 0.004 250);
+	--muted: oklch(0.26 0.009 250);
+	--muted-foreground: oklch(0.68 0.012 250); /* haze  #8B949C */
+	--accent: oklch(0.27 0.009 250); /* neutral hover fill */
+	--accent-foreground: oklch(0.92 0.004 250);
+	--destructive: oklch(0.62 0.19 25);
+	--warning: oklch(0.75 0.15 70);
+	--warning-foreground: oklch(0.2 0.05 70);
+	--border: oklch(0.36 0.009 250); /* line — hairline, visible on panels */
+	--input: oklch(0.36 0.009 250);
+	--ring: var(--signal);
+	--chart-1: var(--signal);
+	--chart-2: oklch(0.65 0.11 200);
+	--chart-3: oklch(0.62 0.19 25);
+	--chart-4: oklch(0.72 0.14 130);
+	--chart-5: oklch(0.66 0.012 250);
+	--sidebar: oklch(0.2 0.008 250);
+	--sidebar-foreground: oklch(0.92 0.004 250);
+	--sidebar-primary: var(--signal);
+	--sidebar-primary-foreground: var(--signal-foreground);
+	--sidebar-accent: oklch(0.24 0.008 250);
+	--sidebar-accent-foreground: oklch(0.92 0.004 250);
+	--sidebar-border: oklch(0.29 0.008 250);
+	--sidebar-ring: var(--signal);
 }
 
 @theme inline {
-	--radius-sm: calc(var(--radius) - 6px);
-	--radius-md: calc(var(--radius) - 3px);
-	--radius-lg: var(--radius);
-	--radius-xl: calc(var(--radius) + 6px);
-	--radius-2xl: calc(var(--radius) + 12px);
+	--radius-sm: calc(var(--radius) - 2px);
+	--radius-md: var(--radius);
+	--radius-lg: calc(var(--radius) + 2px);
+	--radius-xl: calc(var(--radius) + 4px);
+	--radius-2xl: calc(var(--radius) + 8px);
 	--color-background: var(--background);
 	--color-foreground: var(--foreground);
 	--color-card: var(--card);
@@ -108,6 +127,8 @@
 	--color-muted-foreground: var(--muted-foreground);
 	--color-accent: var(--accent);
 	--color-accent-foreground: var(--accent-foreground);
+	--color-signal: var(--signal);
+	--color-signal-foreground: var(--signal-foreground);
 	--color-destructive: var(--destructive);
 	--color-warning: var(--warning);
 	--color-warning-foreground: var(--warning-foreground);
@@ -130,25 +151,35 @@
 }
 
 @theme {
-	/* Body type. Nunito (rounded terminals) first; Vazirmatn kept in the stack so
-	   Persian glyphs fall back to it automatically (Nunito is Latin-only). */
+	/* Monospace IS the voice of this design — labels, buttons, URLs, format/codec/
+	   size metadata, section eyebrows. Vazirmatn kept in the stack so Persian
+	   glyphs fall back cleanly (JetBrains Mono is Latin-only). */
+	--font-mono:
+		'JetBrains Mono', 'Vazirmatn Variable', ui-monospace, 'SF Mono', 'Cascadia Code',
+		'Roboto Mono', Menlo, Consolas, monospace;
+
+	/* Body reading copy — humanist mono-adjacent sans, still tool-like but easy on
+	   longer text (instructions, descriptions). */
 	--font-sans:
-		'Nunito', 'Vazirmatn Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
-		'Helvetica Neue', Arial, 'Noto Sans', sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+		'Space Grotesk', 'Vazirmatn Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+		Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
 
-	/* Display headings. Fraunces variable; Vazirmatn fallback for Persian. */
-	--font-heading: 'Fraunces', 'Vazirmatn Variable', ui-serif, Georgia, 'Times New Roman', serif;
+	/* Display headings — Space Grotesk at its heavier weights; Vazirmatn for Persian. */
+	--font-heading: 'Space Grotesk', 'Vazirmatn Variable', ui-sans-serif, system-ui, sans-serif;
 
-	/* Organic accents, kept under the old aurora-* names so existing utilities
-	   (text-aurora-2, bg-aurora-2, …) stay valid — now moss / terracotta / sand. */
-	--color-aurora-1: oklch(0.525 0.048 135); /* moss */
-	--color-aurora-2: oklch(0.665 0.075 64); /* terracotta */
-	--color-aurora-3: oklch(0.892 0.018 82); /* sand */
+	/* aurora-* accent aliases: utilities like text-aurora-2 / bg-aurora-2 resolve
+	   to the signal accent + a neutral, all via tokens so a palette swap
+	   propagates (no hardcoded literals). */
+	--color-aurora-1: var(--signal);
+	--color-aurora-2: var(--signal);
+	--color-aurora-3: var(--muted-foreground);
 
-	/* Reusable soft, warm shadows (Tailwind 4 generates shadow-soft / shadow-float). */
-	--shadow-soft: 0 4px 20px -2px rgba(93, 112, 82, 0.15);
-	--shadow-float: 0 10px 40px -10px rgba(193, 140, 93, 0.2);
-	--shadow-glow: 0 1px 2px oklch(0 0 0 / 0.06), 0 8px 24px -14px oklch(0.525 0.048 135 / 0.4);
+	/* Shadows are near-flat in this system — structure comes from hairline borders,
+	   not elevation. Kept subtle and derived from ink so they read on any surface.
+	   (Tailwind 4 generates shadow-soft / shadow-float / shadow-glow.) */
+	--shadow-soft: 0 1px 0 0 color-mix(in oklch, var(--foreground) 6%, transparent);
+	--shadow-float: 0 8px 24px -12px oklch(0 0 0 / 0.45);
+	--shadow-glow: 0 0 0 1px color-mix(in oklch, var(--signal) 45%, transparent);
 }
 
 @layer base {
@@ -164,9 +195,30 @@
 		-moz-osx-font-smoothing: grayscale;
 		text-rendering: optimizeLegibility;
 	}
-	/* Headings use the clean body sans by default; the display serif (Fraunces) is
-	   opt-in via the `font-heading` utility on brand/hero only, so functional
-	   titles (video cards, instructions, sections) stay legible and on-the-job. */
+	/* Every enabled button/label-role control shows a pointer on desktop. Catches
+	   the many hand-rolled <button>s (mode selector, proxy/CC toggles, tabs) that
+	   would otherwise show a text cursor; disabled ones keep the default. */
+	button:not(:disabled),
+	[role='button']:not([aria-disabled='true']),
+	[role='tab']:not(:disabled) {
+		cursor: pointer;
+	}
+	/* Autofilled fields: Chrome/Safari force an opaque near-white background +
+	   dark text via a UA style that plain `background` can't override -- it looks
+	   broken over the dark glass input bar. There's no way to actually clear that
+	   internal fill, so mask it with a long box-shadow inset in our card color and
+	   force the text/caret back to the foreground token so it stays readable. */
+	input:-webkit-autofill,
+	input:-webkit-autofill:hover,
+	input:-webkit-autofill:focus {
+		-webkit-text-fill-color: var(--color-foreground);
+		caret-color: var(--color-foreground);
+		-webkit-box-shadow: 0 0 0 1000px var(--color-card) inset;
+		transition: background-color 100000s ease-in-out 0s;
+	}
+	/* Functional titles (video cards, sections) stay on the mono/sans body stack for
+	   density and legibility; the `font-heading` utility (Space Grotesk) is applied
+	   explicitly on brand + hero. Eyebrows and metadata use `font-mono`. */
 }
 
 /* ---- Unified scrollbar -------------------------------------------------
@@ -220,38 +272,28 @@
 }
 
 @layer components {
-	/* Soft organic surface for the floating nav, panels, and translucent bars.
-	   Warm, lightly translucent, gentle blur — replaces the old frosted glass. */
+	/* The one surface primitive: a raised panel. Flat + hairline by default; reads
+	   the style-language tokens so a reskin (glass / brutalist) needs no edits here.
+	   --surface-translucency 100% + blur 0 = solid flat panel. Lower the
+	   translucency and raise --surface-blur (in :root) to turn every ds-glass
+	   surface to frosted glass at once. */
 	.ds-glass {
-		background: color-mix(in oklch, var(--color-card) 82%, transparent);
-		backdrop-filter: blur(12px) saturate(1.2);
-		-webkit-backdrop-filter: blur(12px) saturate(1.2);
-		border: 1px solid color-mix(in oklch, var(--color-border) 70%, transparent);
+		background: color-mix(in oklch, var(--color-card) var(--surface-translucency), transparent);
+		backdrop-filter: blur(var(--surface-blur));
+		-webkit-backdrop-filter: blur(var(--surface-blur));
+		border: 1px solid var(--color-border);
 	}
 
-	/* Solid brand-colored text (moss). */
+	/* Accent-colored text (the signal amber). Named ds-gradient-text for back-compat
+	   with existing markup; it's a solid accent, not a gradient. */
 	.ds-gradient-text {
-		color: var(--color-aurora-1);
-	}
-	:root.dark .ds-gradient-text {
-		color: oklch(0.75 0.06 135);
-	}
-
-	/* Subtle green border highlight on hover/focus — flat, no gradient. */
-	.ds-glow-ring {
-		transition:
-			border-color 0.2s ease,
-			box-shadow 0.2s ease;
-	}
-	.ds-glow-ring:hover,
-	.ds-glow-ring:focus-within {
-		border-color: color-mix(in oklch, var(--color-aurora-1) 55%, transparent);
+		color: var(--color-signal);
 	}
 }
 
-/* Full-page organic backdrop (Step 4 global texture): a fixed SVG grain at very
-   low opacity (multiply) for a paper-like feel, plus a barely-there warm wash
-   from the top. Replaces the old aurora glow blobs. */
+/* Full-page backdrop: a fixed low-opacity scan texture (fine horizontal lines,
+   evoking a transfer/readout) plus a faint signal wash from the top. Reads the
+   accent token, so it recolors with the palette. */
 .ds-aurora {
 	position: fixed;
 	inset: 0;
@@ -259,33 +301,37 @@
 	overflow: hidden;
 	pointer-events: none;
 }
-/* Grain layer — ~3.5% opacity, multiply blend so it darkens the paper subtly. */
+/* Scanline texture — 3px repeating hairlines, very low opacity. */
 .ds-aurora::before {
 	content: '';
 	position: absolute;
 	inset: 0;
-	opacity: 0.035;
-	mix-blend-mode: multiply;
-	background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	opacity: 0.4;
+	background-image: repeating-linear-gradient(
+		to bottom,
+		color-mix(in oklch, var(--color-foreground) 5%, transparent) 0px,
+		color-mix(in oklch, var(--color-foreground) 5%, transparent) 1px,
+		transparent 1px,
+		transparent 3px
+	);
 }
-/* Warm wash — a faint terracotta/sand bloom at the top for organic depth. */
+/* Signal wash — a faint amber bloom at the top for depth. */
 .ds-aurora::after {
 	content: '';
 	position: absolute;
 	inset: 0;
-	opacity: 0.5;
+	opacity: 0.06;
 	background: radial-gradient(
 		ellipse 80% 50% at 50% -5%,
-		color-mix(in oklch, var(--color-secondary) 14%, transparent),
+		var(--color-signal),
 		transparent 70%
 	);
 }
 :root.dark .ds-aurora::before {
-	opacity: 0.06;
-	mix-blend-mode: screen;
+	opacity: 0.5;
 }
 :root.dark .ds-aurora::after {
-	opacity: 0.32;
+	opacity: 0.1;
 }
 
 /* ---- video.js v10 (@videojs/html) — minimal skin ---- */
@@ -299,7 +345,10 @@
 	width: 100%;
 	height: 100%;
 
-	--media-border-radius: 0.75rem;
+	/* Match the container's radius exactly so the poster/video corners line up
+	   with the wrapper's rounded-md — otherwise a rounder media corner leaves
+	   dark gaps against the squarer container. */
+	--media-border-radius: var(--radius);
 	--media-icon-size: 18px;
 	font-family: inherit;
 }
@@ -331,11 +380,9 @@
    Mirrors v10's own media-surface / media-menu styling (glass surface, pill
    rows, right-aligned check) so it reads as part of the player. Its visibility
    is driven by `data-visible`, mirrored from the skin's control-bar state, so it
-   fades in/out together with the controls. Lives outside .ds-player now, so
-   .ds-player's overflow-hidden can never clip it. z-index just needs to beat
-   the video element / poster / overlay — it no longer has to fight the skin's
-   popover top-layer because it doesn't visually collide with those (they
-   anchor to the bottom control bar). */
+   fades in/out together with the controls. Lives outside .ds-player so the
+   overflow-hidden can't clip it; z-index only needs to beat the video element /
+   poster / overlay. */
 .ds-player-wrap {
 	isolation: isolate;
 }
@@ -369,11 +416,12 @@
 	gap: 0.4rem;
 	height: 2.1rem;
 	padding: 0 0.85rem;
+	font-family: var(--font-mono);
 	font-size: 0.8125rem;
 	font-weight: 500;
 	color: inherit;
-	border-radius: calc(infinity * 1px);
-	background-color: oklch(0 0 0 / 0.25);
+	border-radius: var(--radius);
+	background-color: oklch(0 0 0 / 0.35);
 	box-shadow:
 		0 0 0 1px oklch(0 0 0 / 0.1),
 		0 1px 3px 0 oklch(0 0 0 / 0.15);
@@ -407,8 +455,9 @@
 	flex-direction: column;
 	gap: 0.25rem;
 	color: #fff;
-	border-radius: 1.25rem;
-	background-color: oklch(0 0 0 / 0.25);
+	font-family: var(--font-mono);
+	border-radius: var(--radius);
+	background-color: oklch(0 0 0 / 0.35);
 	box-shadow:
 		0 0 0 1px oklch(0 0 0 / 0.1),
 		0 8px 24px -6px oklch(0 0 0 / 0.35),
@@ -437,93 +486,16 @@
 	font-variant-numeric: tabular-nums;
 	color: inherit;
 	text-align: left;
-	border-radius: calc(infinity * 1px);
+	border-radius: calc(var(--radius) - 2px);
 	cursor: pointer;
 	transition: background-color 0.1s ease-in-out;
-	/* No margin needed any more — spacing comes from the menu's flex `gap` above,
-	   which is what actually fixes overlapping hover backgrounds (margin can
-	   collapse/behave oddly on flex children; gap can't). */
 }
 .ds-quality__item:hover,
 .ds-quality__item:focus-visible {
-	background-color: oklch(1 0 0 / 0.12);
+	background-color: color-mix(in oklch, var(--color-muted-foreground) 22%, transparent);
 }
 .ds-quality__item[data-active='true'] {
-	background-color: oklch(1 0 0 / 0.08);
-}
-
-/* ---- Dialogue map bar ----
-   A separate row, not a pixel-perfect overlay on the skin's own (shadow-DOM)
-   seek bar -- see the project plan's ADR for why. Sits just above the
-   control bar; the offset is an approximation since the skin's exact
-   control-bar height isn't reachable from light DOM without reaching into
-   its shadow root (accepted trade-off, same spirit as the seek-bar decision). */
-.ds-dialogue-map {
-	position: absolute;
-	left: 0.6rem;
-	right: 0.6rem;
-	bottom: 2.75rem;
-	z-index: 30;
-	display: flex;
-	align-items: flex-end;
-	gap: 0.4rem;
-	opacity: 0;
-	transform: translateY(0.25rem);
-	pointer-events: none;
-	transition:
-		opacity 0.2s ease,
-		transform 0.2s ease;
-}
-.ds-dialogue-map[data-visible='true'] {
-	opacity: 1;
-	transform: translateY(0);
-	pointer-events: auto;
-}
-.ds-dialogue-map__nav {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	width: 1.75rem;
-	height: 1.75rem;
-	flex-shrink: 0;
-	margin-bottom: 0.4rem;
-	color: #fff;
-	border-radius: calc(infinity * 1px);
-	background-color: oklch(0 0 0 / 0.35);
-	backdrop-filter: blur(12px) saturate(1.5);
-	cursor: pointer;
-	transition: background-color 0.15s ease;
-}
-.ds-dialogue-map__nav:hover {
-	background-color: oklch(0 0 0 / 0.55);
-}
-.ds-dialogue-map__track {
-	position: relative;
-	flex: 1;
-	height: 4.5rem;
-	cursor: pointer;
-	overflow: hidden;
-	/* No boxed background -- the silhouette itself (drawn in the canvas)
-	   is the only visual, floating directly over the video like a
-	   dialogue-density mountain range rather than a filled control. */
-}
-.ds-dialogue-map__canvas {
-	display: block;
-	width: 100%;
-	height: 100%;
-}
-.ds-dialogue-map__tooltip {
-	position: absolute;
-	bottom: calc(100% + 0.4rem);
-	max-width: 14rem;
-	padding: 0.3rem 0.55rem;
-	font-size: 0.75rem;
-	color: #fff;
-	white-space: normal;
-	border-radius: 0.5rem;
-	background-color: oklch(0 0 0 / 0.85);
-	transform: translateX(-50%);
-	pointer-events: none;
+	background-color: color-mix(in oklch, var(--color-signal) 15%, transparent);
 }
 
 /* ---- Mobile: shrink quality control + native v10 controls ---- */
@@ -538,7 +510,7 @@
 
 	.ds-player video-player video::cue,
 	.ds-player video-player hls-video::cue {
-		font-size: 2.7rem;
+		font-size: 3.4rem;
 	}
 
 	.ds-quality {
@@ -561,24 +533,12 @@
 		max-height: 9rem;
 		padding: 0.25rem;
 		gap: 0.25rem;
-		border-radius: 1rem;
+		border-radius: var(--radius);
 	}
 	.ds-quality__item {
 		min-height: 1.65rem;
 		padding: 0 0.5rem;
 		font-size: 0.6875rem;
-	}
-
-	.ds-dialogue-map {
-		bottom: 2.4rem;
-	}
-	.ds-dialogue-map__track {
-		height: 3rem;
-	}
-	.ds-dialogue-map__nav {
-		width: 1.5rem;
-		height: 1.5rem;
-		margin-bottom: 0.3rem;
 	}
 }
 

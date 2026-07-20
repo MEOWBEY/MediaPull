@@ -45,11 +45,11 @@
 </script>
 
 <div
-	class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
+	class="border-border/70 bg-card/60 overflow-hidden rounded-lg border py-3.5 sm:p-4"
 >
 	<!-- Group label: origin link + group-wide actions. -->
 	<div
-		class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
+		class="border-border/60 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
 	>
 		<Link class="text-muted-foreground h-3.5 w-3.5 shrink-0" />
 		<div class="flex min-w-0 flex-1 items-center gap-2">
@@ -61,19 +61,19 @@
 					target="_blank"
 					rel="noreferrer noopener"
 					title={sourceUrl}
-					class="text-muted-foreground hover:text-foreground min-w-0 truncate text-start text-xs font-medium underline-offset-2 hover:underline"
+					class="text-muted-foreground hover:text-foreground min-w-0 truncate text-start font-mono text-xs underline-offset-2 hover:underline"
 				>
 					<bdi>{sourceUrl}</bdi>
 				</a>
 				<!-- eslint-enable svelte/no-navigation-without-resolve -->
 			{:else}
-				<span class="text-muted-foreground min-w-0 truncate text-xs"
+				<span class="text-muted-foreground min-w-0 truncate font-mono text-xs"
 					>{t('extract.sourceUnknown')}</span
 				>
 			{/if}
 			{#if itemCount > 1}
 				<span
-					class="bg-muted text-muted-foreground shrink-0 rounded-full px-1.5 py-0.5 text-[0.65rem] font-semibold"
+					class="bg-muted text-muted-foreground shrink-0 rounded-sm px-1.5 py-0.5 font-mono text-[0.65rem] font-semibold tabular-nums"
 				>
 					{itemCount}
 				</span>
@@ -85,7 +85,7 @@
 					variant="ghost"
 					size="icon"
 					onclick={onCopyUrl}
-					class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+					class="text-muted-foreground hover:text-foreground h-7 w-7"
 					title={t('extract.copyOriginalUrl')}
 					aria-label={t('extract.copyOriginalUrl')}
 				>
@@ -97,7 +97,7 @@
 					variant="ghost"
 					size="icon"
 					onclick={onExportTxt}
-					class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+					class="text-muted-foreground hover:text-foreground h-7 w-7"
 					title={t('extract.exportTxt')}
 					aria-label={t('extract.exportTxt')}
 				>
@@ -108,7 +108,7 @@
 						variant="ghost"
 						size="icon"
 						onclick={onExportM3u}
-						class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+						class="text-muted-foreground hover:text-foreground h-7 w-7"
 						title={t('extract.exportM3u')}
 						aria-label={t('extract.exportM3u')}
 					>
@@ -121,7 +121,7 @@
 				size="icon"
 				onclick={onRefresh}
 				disabled={refreshing}
-				class="text-muted-foreground hover:text-foreground h-7 w-7 rounded-full"
+				class="text-muted-foreground hover:text-foreground h-7 w-7"
 				title={t('extract.refreshGroup')}
 				aria-label={t('extract.refreshGroup')}
 			>
@@ -131,7 +131,7 @@
 				variant="ghost"
 				size="icon"
 				onclick={onRemove}
-				class="text-muted-foreground hover:text-destructive h-7 w-7 rounded-full"
+				class="text-muted-foreground hover:text-destructive h-7 w-7"
 				title={t('extract.removeGroup')}
 				aria-label={t('extract.removeGroup')}
 			>
@@ -142,7 +142,7 @@
 
 	<!-- Items in this group -- plain content, no per-item card. Caller owns the
 	     per-item divider styling (first item vs. rest). -->
-	<div class="divide-border/50 divide-y">
+	<div class="divide-border/60 divide-y">
 		{@render children()}
 	</div>
 </div>

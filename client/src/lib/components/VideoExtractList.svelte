@@ -162,7 +162,7 @@
 </script>
 
 {#if videoExtractResults.length > 0}
-	<div class="mb-10">
+	<div class="mb-4">
 		<!-- Screen-reader-only live region: announces the result count as it changes
 		     (e.g. "5 links extracted") without moving sighted-user focus. -->
 		<p class="sr-only" aria-live="polite" role="status">
@@ -171,10 +171,10 @@
 
 		<!-- Section header -->
 		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-			<h2 class="flex items-center gap-2 text-lg font-bold tracking-tight">
-				<ListVideo class="text-aurora-1 h-5 w-5" />
+			<h2 class="font-heading flex items-center gap-2 text-lg font-bold tracking-tight">
+				<ListVideo class="text-signal h-5 w-5" />
 				{t('extract.heading')}
-				<span class="text-muted-foreground font-normal">({videoExtractResults.length})</span>
+				<span class="text-muted-foreground font-mono text-sm font-normal">({videoExtractResults.length})</span>
 			</h2>
 		</div>
 

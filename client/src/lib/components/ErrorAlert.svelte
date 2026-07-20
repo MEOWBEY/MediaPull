@@ -4,6 +4,7 @@
 	import KeyRound from '@lucide/svelte/icons/key-round';
 	import RefreshCw from '@lucide/svelte/icons/refresh-cw';
 	import Video from '@lucide/svelte/icons/video';
+	import X from '@lucide/svelte/icons/x';
 
 	import * as Alert from '$lib/components/ui/alert';
 	import { Button } from '$lib/components/ui/button';
@@ -45,10 +46,23 @@
 
 <Alert.Root
 	variant="destructive"
-	class="ds-glass shadow-soft mb-6 rounded-[1.75rem] border-0 ring-1 ring-destructive/25"
+	class="relative mb-6 rounded-lg border border-destructive/40 bg-destructive/5"
 >
+	<!-- Dismiss as a corner X (pinned to the end/top) rather than a text button in
+	     the action row -- keeps the recovery actions (Retry / cookies / other type)
+	     visually separate from "close this". inset-e-2 mirrors for RTL. -->
+	<button
+		type="button"
+		onclick={() => appStore.clearErrors()}
+		aria-label={t('error.dismiss')}
+		title={t('error.dismiss')}
+		class="border-destructive/30 text-destructive/70 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 absolute top-2 inset-e-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors"
+	>
+		<X class="h-4 w-4" />
+	</button>
+
 	<AlertCircle class="h-4 w-4" />
-	<Alert.Description class="flex min-w-0 flex-col gap-3">
+	<Alert.Description class="flex min-w-0 flex-col gap-3 pe-8">
 		<div class="min-w-0">
 			<p class="mb-1 font-medium">{title}</p>
 			<p class="text-xs wrap-break-word">{message}</p>
@@ -57,8 +71,8 @@
 			</p>
 		</div>
 
-		<div class="flex flex-wrap items-center gap-2">
-			{#if failure}
+		{#if failure}
+			<div class="flex flex-wrap items-center gap-2">
 				<Button
 					variant="default"
 					size="sm"
@@ -97,16 +111,7 @@
 						{t('error.tryVideo')}
 					</Button>
 				{/if}
-			{/if}
-
-			<Button
-				variant="ghost"
-				size="sm"
-				onclick={() => appStore.clearErrors()}
-				class="ms-auto shrink-0 cursor-pointer"
-			>
-				{t('error.dismiss')}
-			</Button>
-		</div>
+			</div>
+		{/if}
 	</Alert.Description>
 </Alert.Root>

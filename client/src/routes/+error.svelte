@@ -17,42 +17,42 @@
 <div class="min-h-screen">
 	<div class="flex min-h-screen items-center justify-center px-4">
 		<div class="w-full max-w-md">
-			<div class="ds-glass rounded-2xl border-0 p-8 text-center shadow-glow">
+			<div class="ds-glass rounded-lg p-8 text-center">
 				<div class="mb-6 flex justify-center">
-					<div class="rounded-2xl bg-red-500/15 p-4">
-						<AlertTriangle class="h-8 w-8 text-red-500" />
+					<div class="bg-destructive/15 rounded-md p-4">
+						<AlertTriangle class="text-destructive h-8 w-8" />
 					</div>
 				</div>
 
 				{#if page.status === 404}
-					<h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-zinc-100">404</h1>
-					<h2 class="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+					<h1 class="font-heading text-foreground mb-2 text-4xl font-bold">404</h1>
+					<h2 class="text-foreground mb-4 text-xl font-semibold">
 						{t('errorPage.404Title')}
 					</h2>
-					<p class="mb-6 text-zinc-600 dark:text-zinc-400">
+					<p class="text-muted-foreground mb-6">
 						{t('errorPage.404Body')}
 					</p>
 				{:else if page.status === 500}
-					<h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-zinc-100">500</h1>
-					<h2 class="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+					<h1 class="font-heading text-foreground mb-2 text-4xl font-bold">500</h1>
+					<h2 class="text-foreground mb-4 text-xl font-semibold">
 						{t('errorPage.500Title')}
 					</h2>
-					<p class="mb-6 text-zinc-600 dark:text-zinc-400">
+					<p class="text-muted-foreground mb-6">
 						{t('errorPage.500Body')}
 						{page.error?.message || t('errorPage.unknown')}
 					</p>
 				{:else}
-					<h1 class="mb-2 text-4xl font-bold text-zinc-900 dark:text-zinc-100">{page.status}</h1>
-					<h2 class="mb-4 text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+					<h1 class="font-heading text-foreground mb-2 text-4xl font-bold">{page.status}</h1>
+					<h2 class="text-foreground mb-4 text-xl font-semibold">
 						{t('errorPage.genericTitle')}
 					</h2>
-					<p class="mb-6 text-zinc-600 dark:text-zinc-400">
+					<p class="text-muted-foreground mb-6">
 						{t('errorPage.genericBody')}
 						{page.error?.message || t('errorPage.unknown')}
 					</p>
 				{/if}
 
-				<Button href="/" class="bg-primary text-primary-foreground hover:bg-primary/90 gap-2">
+				<Button href="/" class="gap-2">
 					<Home class="h-4 w-4" />
 					{t('errorPage.home')}
 				</Button>

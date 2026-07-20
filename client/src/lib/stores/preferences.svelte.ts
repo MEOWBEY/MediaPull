@@ -4,7 +4,7 @@
  * Persisted in localStorage under `preferences`. Defaults live in
  * `DEFAULT_PREFERENCES`; unknown keys from older clients are ignored by
  * Object.assign (extra fields stay harmlessly on the object until reset).
- * Applied by components (+page for theme, extract list for sort/filters, etc.).
+ * Applied by components (+page for theme, extract list for layout, etc.).
  */
 
 import { browser } from '$app/environment';
@@ -14,11 +14,7 @@ const STORAGE_KEY = 'preferences';
 
 export const DEFAULT_PREFERENCES: Preferences = {
 	theme: 'system',
-	layoutList: 'grid',
-	videoSortField: 'quality',
-	videoSortOrder: 'desc',
-	enableAnimations: true,
-	enableCompact: false,
+	layoutList: 'row',
 	enableProxyForVideoExtract: true,
 	enableVideoMute: false,
 	enableVideoPreloadMetadata: false,
@@ -26,7 +22,6 @@ export const DEFAULT_PREFERENCES: Preferences = {
 	showHlsTypeDownloadButton: true,
 	showExportButtons: false,
 	showVideoOnlyFormats: false,
-	autoOpenSubtitlePanel: false,
 	subtitlePanelMinWords: 0,
 	contentTypeMode: 'auto'
 };

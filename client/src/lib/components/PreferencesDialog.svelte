@@ -11,7 +11,6 @@
 	import Monitor from '@lucide/svelte/icons/monitor';
 	import Palette from '@lucide/svelte/icons/palette';
 	import Plus from '@lucide/svelte/icons/plus';
-	import SortAsc from '@lucide/svelte/icons/sort-asc';
 	import Trash2 from '@lucide/svelte/icons/trash-2';
 	import Volume2 from '@lucide/svelte/icons/volume-2';
 	import Waypoints from '@lucide/svelte/icons/waypoints';
@@ -25,6 +24,7 @@
 	import { i18n, LOCALES } from '$lib/i18n/index.svelte';
 	import type { MessageKey } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
 	import { MediaQuery } from '$lib/viewport.svelte';
 
 	import type { Component, Snippet } from 'svelte';
@@ -59,6 +59,16 @@
 		}
 	});
 
+	// Deep-link: when a caller opened the dialog targeting a specific tab (error
+	// banner → cookies, YouTube note → playback), switch to it once, then clear
+	// the request so a manual tab change afterward isn't overridden.
+	$effect(() => {
+		if (isPreferencesDialogOpen && ui.preferencesTab) {
+			tab = ui.preferencesTab;
+			ui.preferencesTab = null;
+		}
+	});
+
 	type SettingItem = {
 		id: string;
 		labelKey: MessageKey;
@@ -67,27 +77,15 @@
 		defaultTrue?: boolean;
 	};
 
-	// Toggle groups, now assigned to tabs. General holds interface prefs;
-	// Playback holds playback + proxy + captions toggles. Keys are unchanged --
-	// this only regroups existing preferences, it does not invent new ones.
+	// Toggle groups, assigned to tabs. General holds interface prefs; Player
+	// holds playback + proxy toggles. Keys are unchanged -- this only groups
+	// existing preferences, it does not invent new ones.
 	const interfaceSettings: SettingItem[] = [
 		{
 			id: 'show-thumbnails',
 			labelKey: 'prefs.showThumbnails.label',
 			key: 'showVideoThumbnail',
 			descKey: 'prefs.showThumbnails.desc'
-		},
-		{
-			id: 'animations-enabled',
-			labelKey: 'prefs.animations.label',
-			key: 'enableAnimations',
-			descKey: 'prefs.animations.desc'
-		},
-		{
-			id: 'compact-mode',
-			labelKey: 'prefs.compact.label',
-			key: 'enableCompact',
-			descKey: 'prefs.compact.desc'
 		}
 	];
 
@@ -142,15 +140,6 @@
 		}
 	];
 
-	const captionSettings: SettingItem[] = [
-		{
-			id: 'auto-open-subtitle-panel',
-			labelKey: 'prefs.autoOpenSubs.label',
-			key: 'autoOpenSubtitlePanel',
-			descKey: 'prefs.autoOpenSubs.desc'
-		}
-	];
-
 	// Clamp the subtitle-panel minimum-word filter to a sane range. 0 disables
 	// the filter (every line shows); the ceiling just stops the stepper running
 	// away -- most caption lines are only a handful of words.
@@ -171,19 +160,14 @@
 	function resetToDefaults() {
 		appStore.updatePreferences({
 			theme: 'system',
-			layoutList: 'grid',
-			videoSortField: 'quality',
-			videoSortOrder: 'desc',
+			layoutList: 'row',
 			showVideoThumbnail: true,
-			enableAnimations: true,
-			enableCompact: false,
 			enableVideoMute: false,
 			enableVideoPreloadMetadata: false,
 			enableProxyForVideoExtract: true,
 			showHlsTypeDownloadButton: true,
 			showExportButtons: false,
 			showVideoOnlyFormats: false,
-			autoOpenSubtitlePanel: false,
 			subtitlePanelMinWords: 0
 		});
 		toast.success(t('toast.prefsReset'));
@@ -248,18 +232,20 @@
 		closeLabel={t('common.close')}
 		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl {desktop.matches
 			? ''
-			: 'h-[88vh] rounded-t-3xl'}"
+			: 'h-[65vh] rounded-t-2xl'}"
 	>
-		<Sheet.Header class="px-4 pt-4 text-start sm:px-6 sm:pt-6">
-			<Sheet.Title class="ds-gradient-text text-xl font-bold sm:text-2xl">
+		<Sheet.Header class="px-4 pt-12 text-start sm:px-6">
+			<Sheet.Title class="font-heading text-xl font-bold sm:text-2xl">
 				{t('prefs.title')}
 			</Sheet.Title>
 		</Sheet.Header>
 
-		<!-- Tab bar: underline style, matching the video player's format tabs
-		     (no divider line under the row). Extra bottom margin gives the tabs
-		     breathing room before the content below. -->
-		<div class="mt-2 mb-4 px-4 sm:mb-5 sm:px-6" role="tablist">
+		<!-- Tab bar: mono underline style, matching the video player's format tabs.
+		     Each tab's bottom edge overlaps the container border-b (-mb-px); the
+		     active tab's 2px bar sits flush at that same line (bottom-0), so it
+		     reads as the border thickening under the active tab rather than a
+		     separate floating underline. -->
+		<div class="border-border/70 mt-3 border-b px-4 sm:px-6" role="tablist">
 			<div class="flex w-full items-stretch gap-5">
 				{#each tabs as tabItem (tabItem.id)}
 					<button
@@ -267,21 +253,21 @@
 						role="tab"
 						aria-selected={tab === tabItem.id}
 						onclick={() => (tab = tabItem.id)}
-						class="relative -mb-px pt-1 pb-2 text-sm font-semibold transition-colors {tab ===
+						class="relative -mb-px cursor-pointer pt-1 pb-2.5 font-mono text-xs font-semibold tracking-wide uppercase transition-colors sm:text-sm {tab ===
 						tabItem.id
-							? 'text-primary'
+							? 'text-signal'
 							: 'text-muted-foreground hover:text-foreground'}"
 					>
 						{t(tabItem.labelKey)}
 						{#if tab === tabItem.id}
-							<span class="bg-primary absolute inset-x-0 -bottom-px h-0.5 rounded-full"></span>
+							<span class="bg-signal absolute inset-x-0 bottom-0 h-0.5"></span>
 						{/if}
 					</button>
 				{/each}
 			</div>
 		</div>
 
-		<div class="flex-1 space-y-4 overflow-y-auto px-4 py-4 pb-8 sm:space-y-6 sm:px-6 sm:pb-10">
+		<div class="flex-1 space-y-4 overflow-y-auto px-4 pt-2 pb-8 sm:space-y-6 sm:px-6 sm:pb-10">
 			{#if tab === 'general'}
 				{#snippet interfaceBody()}
 					{@render toggleGroup(interfaceSettings)}
@@ -358,13 +344,13 @@
 							{t('prefs.gridView')}
 						</Button>
 						<Button
-							variant={preferences.layoutList === 'list' ? 'default' : 'outline'}
+							variant={preferences.layoutList === 'row' ? 'default' : 'outline'}
 							size="sm"
-							onclick={() => appStore.updatePreferences({ layoutList: 'list' })}
+							onclick={() => appStore.updatePreferences({ layoutList: 'row' })}
 							class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
 						>
 							<LayoutList class="me-2 h-4 w-4" />
-							{t('prefs.listView')}
+							{t('prefs.rowView')}
 						</Button>
 					</div>
 				{/snippet}
@@ -374,48 +360,6 @@
 					{@render toggleGroup(exportSettings)}
 				{/snippet}
 				{@render sectionCard('prefs.section.exports', Download, 'text-sky-600', exportsBody)}
-
-				{#snippet sortingBody()}
-					<div class="space-y-4">
-						<div class="space-y-2">
-							<Label class="text-sm font-medium">{t('prefs.sortBy')}</Label>
-							<div class="flex flex-col gap-2 sm:flex-row">
-								{#each ['name', 'size', 'quality'] as const as sortOption (sortOption)}
-									<Button
-										variant={preferences.videoSortField === sortOption ? 'default' : 'outline'}
-										size="sm"
-										onclick={() => appStore.updatePreferences({ videoSortField: sortOption })}
-										class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
-									>
-										{t(`prefs.sort.${sortOption}`)}
-									</Button>
-								{/each}
-							</div>
-						</div>
-						<div class="space-y-2">
-							<Label class="text-sm font-medium">{t('prefs.sortOrder')}</Label>
-							<div class="flex flex-col gap-2 sm:flex-row">
-								<Button
-									variant={preferences.videoSortOrder === 'asc' ? 'default' : 'outline'}
-									size="sm"
-									onclick={() => appStore.updatePreferences({ videoSortOrder: 'asc' })}
-									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
-								>
-									{t('prefs.ascending')}
-								</Button>
-								<Button
-									variant={preferences.videoSortOrder === 'desc' ? 'default' : 'outline'}
-									size="sm"
-									onclick={() => appStore.updatePreferences({ videoSortOrder: 'desc' })}
-									class="h-12 py-2 flex-1 cursor-pointer justify-center px-4 sm:h-10 sm:py-1.5 sm:flex-none sm:justify-start"
-								>
-									{t('prefs.descending')}
-								</Button>
-							</div>
-						</div>
-					</div>
-				{/snippet}
-				{@render sectionCard('prefs.sorting', SortAsc, 'text-orange-600', sortingBody)}
 
 				{#snippet storedBody()}
 					<div class="space-y-4">
@@ -482,11 +426,6 @@
 					{@render toggleGroup(proxySettings)}
 				{/snippet}
 				{@render sectionCard('prefs.section.proxy', Waypoints, 'text-cyan-600', proxyBody)}
-
-				{#snippet captionsBody()}
-					{@render toggleGroup(captionSettings)}
-				{/snippet}
-				{@render sectionCard('prefs.section.captions', Captions, 'text-violet-600', captionsBody)}
 
 				{#snippet minWordsBody()}
 					<div class="bg-muted/60 flex items-start justify-between gap-3 rounded-lg p-3">

@@ -1,7 +1,4 @@
 <script lang="ts">
-	import ArrowUp from '@lucide/svelte/icons/arrow-up';
-	import HelpCircle from '@lucide/svelte/icons/circle-help';
-	import Clapperboard from '@lucide/svelte/icons/clapperboard';
 	import { onMount } from 'svelte';
 
 	import ErrorAlert from '$lib/components/ErrorAlert.svelte';
@@ -14,10 +11,9 @@
 	import { extraction } from '$lib/extraction.svelte';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
 
 	const {t} = i18n;
-
-	let isPreferencesDialogOpen = $state(false);
 
 	let isVideoExtractRunning = $derived(appStore.isVideoExtractRunning);
 
@@ -81,7 +77,6 @@
 		};
 
 		applyTheme();
-		document.documentElement.classList.toggle('no-animations', !preferences.enableAnimations);
 
 		// Only follow live OS changes while on 'system'.
 		if (theme === 'system') {
@@ -101,37 +96,34 @@
 </svelte:head>
 
 <div class="w-full">
-	<section class="relative mx-auto w-full max-w-3xl px-4 pt-12 pb-8 text-center sm:pt-20">
-		<h1 class="font-heading text-4xl font-extrabold tracking-tight text-balance sm:text-6xl">
+	<section class="relative mx-auto w-full max-w-7xl px-2 pt-12 pb-8 sm:px-4 sm:pt-20">
+		<h1
+			class="font-heading max-w-3xl text-4xl font-bold tracking-tight text-balance sm:text-6xl"
+		>
 			{t('hero.titleLead')}
+			<br />
 			<span class="ds-gradient-text">{t('hero.titleHighlight')}</span>
 			{#if t('hero.titleTrail')}
-				<br class="hidden sm:block" />
 				{t('hero.titleTrail')}
 			{/if}
 		</h1>
-		<!-- {#if t('hero.subtitle')}
-			<p class="text-muted-foreground mx-auto mt-4 max-w-2xl text-sm leading-relaxed sm:text-base">
-				{t('hero.subtitle')}
-			</p>
-		{/if} -->
 
-		<div class="mt-8">
+		<!-- Input spans the full row width. -->
+		<div class="mt-8 w-full">
 			<InputUrl
 				{runVideoExtractFromServer}
 				{cancelActiveOperation}
 				{isVideoExtractRunning}
 				{batchTotal}
 				{batchDone}
-				bind:isPreferencesDialogOpen
 			/>
 		</div>
 	</section>
 
 	<!-- Narrower side padding on phones so previews use more width. -->
-	<div class="container mx-auto max-w-6xl px-2 pb-12 sm:px-4">
+	<div class="mx-auto w-full max-w-7xl px-2 pb-2 sm:px-4">
 		{#if videoExtractError}
-			<ErrorAlert {videoExtractError} onOpenCookies={() => (isPreferencesDialogOpen = true)} />
+			<ErrorAlert {videoExtractError} onOpenCookies={() => ui.openPreferences('cookies')} />
 		{/if}
 
 		<VideoExtractList {preferences} />
@@ -144,76 +136,24 @@
 
 		{#if showEmptyState}
 			<div
-				class="border-border/60 my-10 flex w-full flex-col items-center rounded-[2.5rem] border-2 border-dashed px-6 py-20 text-center sm:py-28"
+				class="border-border text-muted-foreground my-6 flex w-full flex-col items-start rounded-lg border border-dashed px-6 py-10 text-start sm:py-12"
 			>
-				<span
-					class="ds-breathe bg-primary/10 text-primary mb-6 flex h-24 w-24 items-center justify-center rounded-full"
-				>
-					<Clapperboard class="h-11 w-11" />
-				</span>
-				<h2 class="text-2xl font-bold tracking-tight sm:text-3xl">{t('empty.title')}</h2>
-				<p class="text-muted-foreground mt-3 max-w-md text-sm leading-relaxed sm:text-base">
+				<h2 class="font-heading text-xl font-bold tracking-tight sm:text-2xl">
+					{t('empty.title')}
+				</h2>
+				<p class="text-muted-foreground mt-2 max-w-md text-sm leading-relaxed">
 					{t('empty.body')}
 				</p>
 			</div>
 		{/if}
 
-		{#if hasResults}
-			<!-- After the first success, the how-it-works guide collapses into a
-			     disclosure so it stops dominating the workspace but stays reachable. -->
-			<details class="border-border/60 bg-card/40 mt-12 rounded-2xl border px-4">
-				<summary
-					class="text-muted-foreground hover:text-foreground flex cursor-pointer list-none items-center justify-center gap-1.5 py-3 text-sm font-medium"
-				>
-					<HelpCircle class="h-4 w-4" />
-					{t('how.heading')}
-				</summary>
-				<div class="pb-4">
-					<Instructions {preferences} nested />
-				</div>
-			</details>
-		{:else}
-			<Instructions {preferences} />
+		{#if !hasResults}
+			<!-- The guide only shows before the first result. Once the user has
+			     extracted something they've clearly learned the flow, so it's
+			     dropped entirely rather than kept as a collapsed disclosure. -->
+			<Instructions />
 		{/if}
 	</div>
 </div>
 
-<PreferencesDialog {preferences} bind:isPreferencesDialogOpen />
-
-<!-- Quick jump back to the URL field once results have pushed it off-screen. -->
-{#if hasResults}
-	<button
-		type="button"
-		onclick={() => focusInput()}
-		title={t('input.jumpToInput')}
-		aria-label={t('input.jumpToInput')}
-		class="ds-glass shadow-float text-primary hover:bg-primary hover:text-primary-foreground fixed inset-e-5 bottom-5 z-40 hidden h-12 w-12 items-center justify-center rounded-full transition-colors sm:flex"
-	>
-		<ArrowUp class="h-5 w-5" />
-	</button>
-{/if}
-
-<style>
-	:global(.no-animations) * {
-		animation-duration: 0.01ms !important;
-		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
-	}
-
-	/* Gentle idle "breathing" for the empty-state icon blob — signals waiting/active,
-	   not broken. Slow and low-delta to stay calm. */
-	.ds-breathe {
-		animation: ds-breathe 4s ease-in-out infinite;
-	}
-	@keyframes ds-breathe {
-		0%,
-		100% {
-			transform: scale(1);
-			opacity: 0.9;
-		}
-		50% {
-			transform: scale(1.06);
-			opacity: 1;
-		}
-	}
-</style>
+<PreferencesDialog {preferences} bind:isPreferencesDialogOpen={ui.preferencesOpen} />

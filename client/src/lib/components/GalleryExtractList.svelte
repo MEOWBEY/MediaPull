@@ -211,16 +211,16 @@
 </script>
 
 {#if galleries.length > 0}
-	<div class="mb-10">
+	<div class="mb-4">
 		<p class="sr-only" aria-live="polite" role="status">
 			{t('gallery.resultCount', { n: totalImages })}
 		</p>
 
 		<div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-			<h2 class="flex items-center gap-2 text-lg font-bold tracking-tight">
-				<ImagesIcon class="text-aurora-1 h-5 w-5" />
+			<h2 class="font-heading flex items-center gap-2 text-lg font-bold tracking-tight">
+				<ImagesIcon class="text-signal h-5 w-5" />
 				{t('gallery.heading')}
-				<span class="text-muted-foreground font-normal">({galleries.length})</span>
+				<span class="text-muted-foreground font-mono text-sm font-normal">({galleries.length})</span>
 			</h2>
 		</div>
 
@@ -246,9 +246,8 @@
 						{#if gallery.images.length > 1}
 							<div class="mb-2 flex flex-wrap items-center gap-2">
 								<Button
-									variant="outline"
 									size="sm"
-									class="h-7 gap-1.5 rounded-full text-xs"
+									class="h-7 gap-1.5"
 									disabled={bulkDownloading.get(gallery)}
 									onclick={() => downloadAll(gallery)}
 								>
@@ -258,13 +257,13 @@
 							</div>
 						{/if}
 						{#if gallery.skippedCount}
-							<p class="text-muted-foreground mb-2 flex items-center gap-1.5 text-xs">
+							<p class="text-muted-foreground mb-2 flex items-center gap-1.5 font-mono text-xs">
 								<TriangleAlert class="h-3 w-3 shrink-0" />
 								{t('gallery.someSkipped', { n: gallery.skippedCount })}
 							</p>
 						{/if}
 						{#each gallery.warnings ?? [] as warning (warning.code + warning.message)}
-							<p class="text-muted-foreground mb-1.5 flex items-center gap-1.5 text-xs">
+							<p class="text-muted-foreground mb-1.5 flex items-center gap-1.5 font-mono text-xs">
 								<TriangleAlert class="h-3 w-3 shrink-0" />
 								{warningLabel(warning.code, warning.message)}
 							</p>
@@ -278,7 +277,7 @@
 							style="grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));"
 						>
 							{#each visibleImages(gallery) as image, index (image.url)}
-								<div class="group relative aspect-square overflow-hidden rounded-xl bg-muted">
+								<div class="group bg-muted relative aspect-square overflow-hidden rounded-md">
 									<button
 										type="button"
 										onclick={() => openLightbox(gallery, index)}
@@ -298,7 +297,7 @@
 										onclick={() => downloadImage(gallery, image, index)}
 										title={t('gallery.downloadImage')}
 										aria-label={t('gallery.downloadImage')}
-										class="bg-black/60 text-white hover:bg-black/80 absolute bottom-1.5 inset-e-1.5 z-10 flex h-7 items-center gap-1 rounded-full px-2.5 text-xs font-medium backdrop-blur-sm transition-colors"
+										class="bg-signal text-signal-foreground absolute bottom-1.5 inset-e-1.5 z-10 flex h-7 items-center gap-1 rounded-md px-2.5 font-mono text-xs font-semibold transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
 									>
 										<Download class="h-3.5 w-3.5" />
 										<span>{t('extract.download')}</span>
@@ -312,7 +311,7 @@
 								variant="outline"
 								size="sm"
 								onclick={() => toggleExpanded(gallery)}
-								class="mt-3 w-full cursor-pointer rounded-full text-xs"
+								class="mt-3 w-full"
 							>
 								{expandedGalleries.get(gallery)
 									? t('gallery.showLess')
@@ -330,16 +329,16 @@
 <Dialog.Root bind:open={lightboxOpen}>
 	<Dialog.Content
 		onkeydown={onLightboxKeydown}
-		class="bg-black/95 border-none max-w-[95vw] gap-0 p-0 sm:max-w-4xl"
+		class="!grid-cols-1 w-fit max-w-[100vw] justify-items-center gap-0 border-none bg-transparent p-0 shadow-none sm:max-w-[92vw]"
 		closeLabel={t('common.close')}
 		showCloseButton
 	>
 		{#if lightboxImage && lightboxGallery}
-			<div class="relative flex items-center justify-center">
+			<div class="relative flex w-fit items-center justify-center">
 				<img
 					src={lightboxImage.url}
 					alt={t('gallery.imageAlt', { n: lightboxIndex + 1 })}
-					class="max-h-[80vh] w-auto max-w-full rounded-lg object-contain"
+					class="max-h-[88vh] w-auto max-w-[100vw] object-contain sm:max-h-[85vh] sm:rounded-md"
 				/>
 
 				{#if lightboxGallery.images.length > 1}
@@ -347,7 +346,7 @@
 						type="button"
 						onclick={() => stepLightbox(-1)}
 						aria-label={t('gallery.prevImage')}
-						class="bg-black/50 text-white hover:bg-black/70 absolute inset-s-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full backdrop-blur-sm transition-colors"
+						class="bg-black/50 text-white hover:bg-black/70 absolute inset-s-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md backdrop-blur-sm transition-colors"
 					>
 						<ChevronLeft class="h-5 w-5" />
 					</button>
@@ -355,12 +354,12 @@
 						type="button"
 						onclick={() => stepLightbox(1)}
 						aria-label={t('gallery.nextImage')}
-						class="bg-black/50 text-white hover:bg-black/70 absolute inset-e-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full backdrop-blur-sm transition-colors"
+						class="bg-black/50 text-white hover:bg-black/70 absolute inset-e-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-md backdrop-blur-sm transition-colors"
 					>
 						<ChevronRight class="h-5 w-5" />
 					</button>
 					<span
-						class="bg-black/50 text-white absolute top-2 inset-s-2 rounded-full px-2 py-0.5 text-xs font-medium backdrop-blur-sm"
+						class="bg-black/50 text-white absolute top-2 inset-s-2 rounded-md px-2 py-0.5 font-mono text-xs tabular-nums backdrop-blur-sm"
 					>
 						{lightboxIndex + 1} / {lightboxGallery.images.length}
 					</span>
@@ -371,17 +370,16 @@
 						variant="secondary"
 						size="sm"
 						onclick={() => copyToClipboard(lightboxImage?.url ?? '')}
-						class="gap-1.5 rounded-full text-xs"
+						class="gap-1.5"
 					>
 						<Copy class="h-3.5 w-3.5" />
 						{t('gallery.copyImageUrl')}
 					</Button>
 					<Button
-						variant="secondary"
 						size="sm"
 						onclick={() =>
 							lightboxImage && downloadImage(lightboxGallery!, lightboxImage, lightboxIndex)}
-						class="gap-1.5 rounded-full text-xs"
+						class="gap-1.5"
 					>
 						<Download class="h-3.5 w-3.5" />
 						{t('gallery.downloadImage')}
@@ -391,7 +389,7 @@
 						href={lightboxImage.sourceUrl || lightboxImage.url}
 						target="_blank"
 						rel="noreferrer noopener"
-						class="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-medium transition-colors"
+						class="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center gap-1.5 rounded-md px-3 font-mono text-xs font-medium transition-colors"
 					>
 						<ExternalLink class="h-3.5 w-3.5" />
 						{t('gallery.openOriginal')}

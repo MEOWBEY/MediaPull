@@ -1,11 +1,12 @@
 <script lang="ts">
+	import Calendar from '@lucide/svelte/icons/calendar';
 	import Captions from '@lucide/svelte/icons/captions';
 	import Clock from '@lucide/svelte/icons/clock';
 	import Copy from '@lucide/svelte/icons/copy';
 	import Download from '@lucide/svelte/icons/download';
+	import Info from '@lucide/svelte/icons/info';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import QrCode from '@lucide/svelte/icons/qr-code';
-	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import X from '@lucide/svelte/icons/x';
 	import { toast } from 'svelte-sonner';
 
@@ -15,8 +16,10 @@
 		type SubtitleState,
 		type VideoPlayerHandle
 	} from '$lib/components/VideoPlayer.svelte';
-	import { formatBytesToMB, formatSecondsToTime } from '$lib/format';
+	import { safeFilename } from '$lib/export';
+	import { formatBytesToMB, formatSecondsToTime, formatYYYYMMDDToDate, mediaKindLabel, sourceHost } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
+	import { ui } from '$lib/stores/ui.svelte';
 	import type { GroupedVideo, Preferences, SubtitleTrackResult, VideoFormat } from '$lib/types';
 	import { visibleFormatGroups } from '$lib/video-format-groups';
 
@@ -54,6 +57,7 @@
 	let activeGroupIndex = $state(0);
 
 	const formatGroups = $derived(visibleFormatGroups(video, preferences));
+	const isRow = $derived(preferences.layoutList === 'row');
 	const activeGroup = $derived(
 		formatGroups[activeGroupIndex] ?? formatGroups[0] ?? { type: '', qualities: [] }
 	);
@@ -62,6 +66,18 @@
 	/** First existing caption track the source already provides in a usable
 	 *  (WebVTT) format -- free to use, no transcription pipeline needed. */
 	const existingVttTrack = $derived(video.subtitleTracks?.find((track) => track.ext === 'vtt'));
+
+	// Source publish date (yt-dlp "YYYYMMDD"). Shown whenever present.
+	const publishDate = $derived(
+		video.upload_date ? formatYYYYMMDDToDate(video.upload_date) : ''
+	);
+
+	// YouTube hides high-res video-only (silent) streams by default -- surface a
+	// one-line note so users know the higher qualities exist behind the Settings
+	// toggle and can be merged with audio. Only while that toggle is still off
+	// (once shown, the note is redundant).
+	const isYouTube = $derived(/(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(sourceHost(video.webpage_url)));
+	const showYouTubeNote = $derived(isYouTube && !preferences.showVideoOnlyFormats);
 
 	// True as soon as the extractor's own result says a usable caption exists,
 	// even before the user has clicked (which is what actually fetches/parses
@@ -126,7 +142,8 @@
 
 	function downloadQuality(quality: VideoFormat) {
 		try {
-			const filename = `${video?.title}.${quality.resolution}.${quality.ext}`;
+			const stem = safeFilename(video?.title, t('extract.untitled'));
+			const filename = `${stem}.${quality.resolution}.${quality.ext}`;
 
 			if (useProxy && quality.proxiedVideoUrl) {
 				const base = quality.proxiedVideoUrl;
@@ -158,137 +175,197 @@
 </script>
 
 <div class={isFirst ? '' : 'pt-4'}>
-	<div class="overflow-hidden rounded-none sm:rounded-xl">
-		<VideoPlayer
-			poster={video.thumbnail}
-			{formatGroups}
-			{useProxy}
-			{onToggleProxy}
-			webpageUrl={video.webpage_url}
-			duration={video.duration ?? 0}
-			initialSubtitleTrack={video.subtitleTrack}
-			onReady={(handle) => (playerHandle = handle)}
-			onSubtitleState={(s) => (subtitleState = s)}
-			onActiveGroupChange={(i) => (activeGroupIndex = i)}
-			{onSubtitleTrackChange}
-		/>
-	</div>
+	<!-- Row layout: player fixed on the reading-start side, details take the rest.
+	     Kicks in at `lg` (roomy desktop); below that the card stacks, identical to
+	     grid/mobile. `lg:flex-row` uses logical direction so RTL/Farsi mirrors it. -->
+	<div class={isRow ? 'lg:flex lg:items-start lg:gap-3' : ''}>
+		<div
+			class="overflow-hidden rounded-none sm:rounded-md {isRow
+				? 'lg:w-[28rem] lg:shrink-0 xl:w-[32rem]'
+				: ''}"
+		>
+			<VideoPlayer
+				poster={video.thumbnail}
+				{formatGroups}
+				{useProxy}
+				{onToggleProxy}
+				rowLayout={isRow}
+				title={video.title}
+				webpageUrl={video.webpage_url}
+				duration={video.duration ?? 0}
+				initialSubtitleTrack={video.subtitleTrack}
+				onReady={(handle) => (playerHandle = handle)}
+				onSubtitleState={(s) => (subtitleState = s)}
+				onActiveGroupChange={(i) => (activeGroupIndex = i)}
+				{onSubtitleTrackChange}
+			/>
+		</div>
 
-	<div class="space-y-3 px-3.5 pt-3 sm:px-0">
+		<!-- Format-kind tabs as a column BETWEEN the player and details in row
+		     layout. On mobile (stacked) it's a horizontal strip below the player;
+		     at lg it becomes a slim vertical rail beside the player. The player
+		     itself suppresses its own tab strip in row layout (see `rowLayout`),
+		     and switching is driven back through the player handle so it stays one
+		     instance. Only rendered when there's more than one format to switch. -->
+		{#if isRow && formatGroups.length > 1}
+			<div
+				class="border-border/60 mt-3 flex flex-row flex-wrap items-stretch gap-x-4 gap-y-1 border-b lg:mt-0 lg:w-auto lg:shrink-0 lg:flex-col lg:flex-nowrap lg:gap-1 lg:border-b-0 lg:border-s lg:pe-1"
+				role="tablist"
+				aria-label={t('player.formatTabs')}
+			>
+				{#each formatGroups as group, i (i)}
+					<button
+						type="button"
+						role="tab"
+						aria-selected={i === activeGroupIndex}
+						onclick={() => playerHandle?.switchGroup(i)}
+						class="relative shrink-0 cursor-pointer whitespace-nowrap font-mono text-xs font-semibold tracking-wide uppercase transition-colors sm:text-sm -mb-px pt-1 pb-2 lg:mb-0 lg:-ms-px lg:border-s-2 lg:py-1.5 lg:ps-3 lg:text-start {i ===
+						activeGroupIndex
+							? 'text-signal lg:border-signal'
+							: 'text-muted-foreground hover:text-foreground lg:border-transparent'}"
+					>
+						{mediaKindLabel(group.type, t('player.audioLabel'))}
+						{#if i === activeGroupIndex}
+							<span class="bg-signal absolute inset-x-0 -bottom-px h-0.5 lg:hidden"></span>
+						{/if}
+					</button>
+				{/each}
+			</div>
+		{/if}
+
+		<div class="space-y-3 px-3.5 pt-3 sm:px-0 {isRow ? 'lg:min-w-0 lg:flex-1 lg:pt-0' : ''}">
 		<!-- Title -->
 		<h3
 			dir="auto"
-			class="line-clamp-2 font-semibold tracking-tight {preferences.enableCompact
-				? 'text-sm'
-				: 'text-base'}"
+			class="line-clamp-2 text-base font-semibold tracking-tight"
 			title={video.title}
 		>
 			{video.title || t('extract.untitled')}
 		</h3>
 
-		<!-- Duration on the left, subtitle + proxy as a small
-		     labeled tab-style pair on the right. -->
+		<!-- Metadata (duration + publish date) on the start side; the subtitles (CC)
+		     control on the end side. Both metadata chips now show on mobile too --
+		     with the proxy button gone from this row there's room for them. -->
 		<div class="flex flex-wrap items-center justify-between gap-2">
-			{#if video.duration}
-				<span class="hidden text-muted-foreground sm:inline-flex items-center gap-1 text-xs">
-					<Clock class="h-3 w-3" />{formatSecondsToTime(video.duration)}
-				</span>
-			{:else}
-				<span></span>
-			{/if}
+			<div class="text-muted-foreground flex min-w-0 items-center gap-3 font-mono text-xs">
+				{#if video.duration}
+					<span class="inline-flex items-center gap-1">
+						<Clock class="h-3 w-3" />{formatSecondsToTime(video.duration)}
+					</span>
+				{/if}
+				{#if publishDate}
+					<span class="inline-flex min-w-0 items-center gap-1 truncate" title={publishDate}>
+						<Calendar class="h-3 w-3 shrink-0" /><span class="truncate">{publishDate}</span>
+					</span>
+				{/if}
+			</div>
 
-			<div class="bg-muted/50 ms-auto flex shrink-0 items-center gap-1 rounded-full p-0.5">
+			<div class="ms-auto flex min-w-0 shrink items-center gap-1.5">
 				{#if subtitleState?.isRunning}
 					<!-- Progress is a status readout (spinner + stage + real percentage);
 					     cancel is its own explicit button beside it, so a glance at the
 					     number can't accidentally kill the job. The stage text is hidden
 					     on narrow screens (the tooltip still carries it) so the pill
 					     never crowds out the cancel button on mobile. -->
-					<span
-						class="text-muted-foreground inline-flex items-center gap-1 px-2 py-1 text-xs"
-						title={subtitleState.stepLabel}
-						role="status"
-						aria-label={subtitleState.stepLabel}
-					>
-						<Loader2 class="h-3 w-3 animate-spin hidden sm:inline" />
-						<span class="text-xs max-w-36 truncate inline">{subtitleState.stepLabel}</span>
-						<span class="tabular-nums">{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
-					</span>
-					<Button
-						variant="ghost"
-						size="sm"
-						onclick={() => playerHandle?.cancelSubtitles()}
-						title={t('subtitles.cancel')}
-						aria-label={t('subtitles.cancel')}
-						class="hover:text-destructive gap-1 rounded-full px-1 sm:px-2 py-1 text-xs"
-					>
-						<X class="h-3 w-3" />
-						<span class="hidden sm:inline">{t('subtitles.cancel')}</span>
-					</Button>
+					<div class="border-border/70 flex min-w-0 items-center overflow-hidden rounded-md border">
+						<span
+							class="text-muted-foreground inline-flex min-w-0 items-center gap-1 px-2 py-1.5 font-mono text-xs"
+							title={subtitleState.stepLabel}
+							role="status"
+							aria-label={subtitleState.stepLabel}
+						>
+							<Loader2 class="hidden h-3 w-3 animate-spin sm:inline" />
+							<span class="inline max-w-36 truncate text-xs">{subtitleState.stepLabel}</span>
+							<span class="tabular-nums">{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
+						</span>
+						<button
+							type="button"
+							onclick={() => playerHandle?.cancelSubtitles()}
+							title={t('subtitles.cancel')}
+							aria-label={t('subtitles.cancel')}
+							class="border-border/70 text-muted-foreground hover:bg-muted hover:text-destructive flex shrink-0 items-center gap-1 border-s px-2 py-1.5 font-mono text-xs transition-colors"
+						>
+							<X class="h-3 w-3" />
+							<span class="hidden sm:inline">{t('subtitles.cancel')}</span>
+						</button>
+					</div>
 				{:else if subtitleState?.isResolvingExisting}
-					<Button variant="ghost" size="sm" disabled class="gap-1 rounded-full px-2.5 py-1 text-xs">
-						<Loader2 class="h-3 w-3 animate-spin" />
-						<span>{t('subtitles.open')}</span>
-					</Button>
+					<span
+						class="border-border/70 text-muted-foreground animate-in fade-in flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-sm"
+					>
+						<Loader2 class="h-3.5 w-3.5 animate-spin" />
+						<span class="truncate">{t('subtitles.open')}</span>
+					</span>
 				{:else if hasCaptionSource}
-					<Button
-						variant="default"
-						size="sm"
+					<!-- Prominent once a caption actually exists: opening it is free. -->
+					<button
+						type="button"
 						onclick={subtitleAction}
-						class="gap-1 rounded-full px-2.5 py-1 text-xs"
+						title={t('subtitles.openHint')}
+						class="border-signal/40 bg-signal/15 text-signal animate-in fade-in flex min-w-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-sm font-semibold transition-colors hover:bg-signal/25"
 					>
-						<Captions class="h-3 w-3" />
-						<span>{t('subtitles.open')}</span>
-					</Button>
+						<Captions class="h-3.5 w-3.5 shrink-0" />
+						<span class="truncate">{t('subtitles.open')}</span>
+					</button>
 				{:else}
-					<Button
-						variant="ghost"
-						size="sm"
+					<!-- Quiet by default: "Generate" starts paid transcription, so it
+					     shouldn't look like a primary tap. -->
+					<button
+						type="button"
 						onclick={subtitleAction}
-						class="gap-1 rounded-full px-2.5 py-1 text-xs"
+						title={t('subtitles.generateHint')}
+						class="border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground animate-in fade-in flex min-w-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-sm transition-colors"
 					>
-						<Captions class="h-3 w-3" />
-						<span>{t('subtitles.generate')}</span>
-					</Button>
+						<Captions class="h-3.5 w-3.5 shrink-0" />
+						<span class="truncate">{t('subtitles.generate')}</span>
+					</button>
 				{/if}
-
-				<Button
-					variant={useProxy ? 'default' : 'ghost'}
-					size="sm"
-					onclick={onToggleProxy}
-					class="gap-1 rounded-full px-2.5 py-1 text-xs"
-					title={t('extract.proxyMode')}
-				>
-					<Waypoints class="h-3 w-3" />
-					<span>{t('extract.proxyMode')}</span>
-				</Button>
 			</div>
 		</div>
 
-		<!-- Quality list -- a single bordered list with divider lines
-		     between rows, instead of a stack of separately-boxed rows.
-		     Reads like a compact table: badge + size on the left,
-		     tight action icons on the right, row highlights on hover.
-		     Same layout on mobile and desktop. -->
+		<!-- Quality list — a download-manager transfer log: mono, tabular, one row
+		     per format with a signal-accented resolution tag, size, optional
+		     video-only flag, and tight action icons. Hairline dividers between
+		     rows. Same layout on mobile and desktop. -->
+		{#if showYouTubeNote}
+			<div
+				class="border-border/60 bg-muted/40 text-muted-foreground flex items-start gap-2 rounded-md border px-3 py-2 text-xs"
+			>
+				<Info class="text-signal mt-0.5 h-3.5 w-3.5 shrink-0" />
+				<p class="min-w-0 leading-relaxed">
+					{t('extract.youtubeNote')}
+					<button
+						type="button"
+						onclick={() => ui.openPreferences('playback')}
+						class="text-signal cursor-pointer font-medium underline underline-offset-2 hover:opacity-80"
+					>
+						{t('extract.youtubeNoteAction')}
+					</button>
+				</p>
+			</div>
+		{/if}
 		<div
-			class="border-border/50 divide-border/50 max-h-56 divide-y overflow-y-auto rounded-xl border"
+			class="border-border/70 divide-border/70 max-h-56 divide-y overflow-y-auto rounded-md border"
 		>
 			{#each visibleQualities as quality, index (index)}
 				<div
-					class="bg-muted/50 hover:bg-muted flex flex-wrap items-center gap-2 px-3 py-2 transition-colors"
+					class="hover:bg-muted/60 flex flex-wrap items-center gap-2 px-3 py-2 font-mono transition-colors"
 				>
-					<div class="flex min-w-0 flex-1 items-center gap-2">
+					<div class="flex min-w-0 flex-1 items-center gap-2.5">
 						<span
-							class="bg-primary/10 text-primary min-w-11 shrink-0 rounded-md px-1.5 py-0.5 text-center text-xs font-bold"
+							class="text-signal min-w-11 shrink-0 text-start text-xs font-bold tabular-nums"
 						>
 							{quality.resolution ? `${quality.resolution}p` : quality.ext.toUpperCase()}
 						</span>
-						<span class="text-muted-foreground shrink-0 text-xs">
+						<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
 							{(quality.filesize ?? 0) > 0 ? formatBytesToMB(quality.filesize ?? 0) : '—'}
+						</span>
+						<span class="text-muted-foreground/70 hidden shrink-0 text-xs uppercase sm:inline">
+							{quality.ext}
 						</span>
 						{#if quality.videoOnly}
 							<span
-								class="bg-warning/15 text-warning-foreground dark:text-warning shrink-0 rounded px-1.5 py-0.5 text-[0.65rem] font-medium"
+								class="bg-warning/15 text-warning-foreground dark:text-warning shrink-0 rounded-sm px-1.5 py-0.5 text-[0.65rem] font-medium"
 								title={t('extract.videoOnlyHint')}
 							>
 								{t('extract.videoOnly')}
@@ -296,12 +373,14 @@
 						{/if}
 					</div>
 
-					<div class="ms-auto flex shrink-0 items-center">
+					<div class="ms-auto flex shrink-0 items-center gap-1">
+						<!-- Copy + QR are secondary but need to read as buttons: hairline
+						     border so they don't disappear into the panel. -->
 						<Button
-							variant="ghost"
+							variant="outline"
 							size="icon"
 							onclick={() => copyToClipboard(urlForQuality(quality) ?? '')}
-							class="h-7 w-7 rounded-md"
+							class="text-muted-foreground hover:text-foreground h-7 w-7"
 							title={t('extract.copyUrl')}
 							aria-label={t('extract.copyUrl')}
 						>
@@ -309,30 +388,31 @@
 						</Button>
 						<!-- QR is a desktop->phone handoff, so it's hidden on small screens. -->
 						<Button
-							variant="ghost"
+							variant="outline"
 							size="icon"
 							onclick={() => onShowQr(urlForQuality(quality))}
-							class="hidden h-7 w-7 rounded-md sm:inline-flex"
+							class="text-muted-foreground hover:text-foreground hidden h-7 w-7 sm:inline-flex"
 							title={t('extract.showQr')}
 							aria-label={t('extract.showQr')}
 						>
 							<QrCode class="h-3.5 w-3.5" />
 						</Button>
+						<!-- Download is the primary action — accent-filled, labeled. -->
 						{#if !(activeGroup.type === 'application/x-mpegURL') || preferences.showHlsTypeDownloadButton}
 							<Button
-								variant="ghost"
-								size="icon"
+								size="sm"
 								onclick={() => downloadQuality(quality)}
-								class="h-7 w-7 rounded-md"
+								class="ms-1 h-7 gap-1.5 px-2.5"
 								title={t('extract.download')}
-								aria-label={t('extract.download')}
 							>
 								<Download class="h-3.5 w-3.5" />
+								<span>{t('extract.download')}</span>
 							</Button>
 						{/if}
 					</div>
 				</div>
 			{/each}
 		</div>
+	</div>
 	</div>
 </div>

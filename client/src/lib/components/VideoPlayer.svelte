@@ -8,6 +8,7 @@
 	import SubtitlePanel from '$lib/components/SubtitlePanel.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { resolveApiUrl } from '$lib/config';
+	import { safeFilename } from '$lib/export';
 	import { isAudioType, mediaKindLabel, qualityLabel } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
@@ -25,6 +26,10 @@
 		/** Resolves true only when the track actually yielded usable cues. */
 		useExistingTrack: (track: SubtitleTrack) => Promise<boolean>;
 		cancelSubtitles: () => void;
+		/** Switch the active format-group tab. Lets the parent render the tab
+		 *  strip itself (e.g. as a separate column in row layout) while switching
+		 *  still runs through this player's single instance. */
+		switchGroup: (index: number) => void;
 	}
 
 	/** Pushed to the parent whenever subtitle state changes, so the card
@@ -47,6 +52,8 @@
 		formatGroups = [],
 		useProxy = true,
 		onToggleProxy,
+		rowLayout = false,
+		title = '',
 		webpageUrl = '',
 		duration = 0,
 		initialSubtitleTrack = null,
@@ -61,6 +68,12 @@
 		/** Lets the error overlay offer "switch proxy mode" as an actual button
 		 *  instead of just telling the user to go find the toggle elsewhere. */
 		onToggleProxy?: () => void;
+		/** Row-layout card: the player sits in a narrow start-side column, so the
+		 *  format-kind tabs stack vertically (one per line) instead of a horizontal
+		 *  strip that would wrap awkwardly in the tight column. */
+		rowLayout?: boolean;
+		/** Video title -- used to name the downloaded subtitle (.srt) file. */
+		title?: string;
 		webpageUrl?: string;
 		/** Video duration (seconds) as extraction reported it -- forwarded with
 		 *  the transcription request so the server can compute real acquisition
@@ -140,7 +153,6 @@
 
 	let subtitlePanelOpen = $state(false);
 	let playerCurrentTime = $state(0);
-	let hadTrack = false;
 
 	const activeSubtitleTrack = $derived(subtitles.track);
 
@@ -159,17 +171,6 @@
 
 		lastReportedTrack = activeSubtitleTrack;
 		onSubtitleTrackChange?.(activeSubtitleTrack);
-	});
-
-	// Auto-open the subtitle panel the moment a track first becomes available
-	// (existing or generated), per the user's preference.
-	$effect(() => {
-		const has = Boolean(activeSubtitleTrack);
-
-		if (has && !hadTrack && preferences.autoOpenSubtitlePanel) {
-			subtitlePanelOpen = true;
-		}
-		hadTrack = has;
 	});
 
 	// Keep the parent card's header controls in sync (CC button visibility,
@@ -260,7 +261,8 @@
 			requestSubtitles: () => generateSubtitles(),
 			openSubtitlePanel: () => (subtitlePanelOpen = true),
 			useExistingTrack: (track: SubtitleTrack) => subtitles.useExisting(track),
-			cancelSubtitles
+			cancelSubtitles,
+			switchGroup: (index: number) => void switchGroup(index)
 		});	});
 
 	// Removing this card (unmounts VideoPlayer) or navigating away shouldn't
@@ -311,7 +313,7 @@
 			const link = document.createElement('a');
 
 			link.href = url;
-			link.download = 'subtitles.srt';
+			link.download = `${safeFilename(title, 'subtitles')}.srt`;
 			link.click();
 		} catch {
 			toast.error(t('toast.downloadFailed'));
@@ -749,7 +751,7 @@
 	<!-- Audio: video.js audio skin (same control styling as the video player, but no
 	     video frame), with a lightweight quality picker above it. dir=ltr keeps the
 	     control bar stable even when the app mirrors for Farsi. -->
-	<div dir="ltr" class="group relative w-full overflow-hidden rounded-xl bg-black">
+	<div dir="ltr" class="group relative w-full overflow-hidden rounded-md bg-black">
 		<div class="flex items-center justify-between gap-3">
 			{#if showQualityMenu}
 				<select
@@ -786,7 +788,7 @@
 						variant="outline"
 						size="sm"
 						onclick={onToggleProxy}
-						class="w-fit gap-1.5 rounded-full text-xs"
+						class="w-fit gap-1.5 rounded-md text-xs"
 					>
 						<Waypoints class="h-3 w-3" />
 						{t('player.error.switchProxy')}
@@ -800,7 +802,7 @@
 	     player stays left-to-right even when the rest of the app mirrors for Farsi. -->
 	<div
 		dir="ltr"
-		class="ds-player group relative aspect-video w-full overflow-hidden rounded-xl bg-black"
+		class="ds-player animate-in fade-in group relative aspect-video w-full overflow-hidden rounded-md bg-black duration-300"
 	>
 		{#if ready && usable.length}
 			<video-player class="block h-full w-full" use:bindPlayerRoot>
@@ -838,7 +840,7 @@
 						variant="secondary"
 						size="sm"
 						onclick={onToggleProxy}
-						class="gap-1.5 rounded-full text-xs"
+						class="gap-1.5 rounded-md text-xs"
 					>
 						<Waypoints class="h-3 w-3" />
 						{t('player.error.switchProxy')}
@@ -849,14 +851,15 @@
 	</div>
 {/if}
 
-{#if formatGroups.length}
+{#if formatGroups.length && !rowLayout}
 	<!-- Format-kind tabs: one card, several tabs (progressive/HLS/audio-only/...)
 	     -- they're all the same source, so switching tabs stays in this one
 	     player instance (see switchGroup) rather than swapping components.
-	     Underline style: no pill background, just the label in the accent
-	     color with a thin colored bar under the active tab. -->
+	     Horizontal underline strip. In row layout the PARENT card renders the tab
+	     strip instead (as a column between player and details), driving switches
+	     through the exposed `switchGroup` handle -- so this is suppressed there. -->
 	<div
-		class="border-border/60 mt-2 flex w-full items-stretch gap-5 border-b px-1"
+		class="border-border/60 mt-3 flex w-full items-stretch gap-5 border-b px-1.5 sm:px-2"
 		role="tablist"
 		aria-label={t('player.formatTabs')}
 		aria-busy={switching}
@@ -867,15 +870,15 @@
 				role="tab"
 				aria-selected={i === activeGroupIndex}
 				disabled={switching}
-				class="relative -mb-px pt-1 pb-2 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-60 {i ===
+				class="relative -mb-px cursor-pointer pt-1 pb-2 font-mono text-xs font-semibold tracking-wide uppercase transition-colors disabled:cursor-wait disabled:opacity-60 sm:text-sm {i ===
 				activeGroupIndex
-					? 'text-primary'
+					? 'text-signal'
 					: 'text-muted-foreground hover:text-foreground'}"
 				onclick={() => switchGroup(i)}
 			>
 				{mediaKindLabel(group.type, t('player.audioLabel'))}
 				{#if i === activeGroupIndex}
-					<span class="bg-primary absolute inset-x-0 -bottom-px h-0.5 rounded-full"></span>
+					<span class="bg-signal absolute inset-x-0 -bottom-px h-0.5"></span>
 				{/if}
 			</button>
 		{/each}

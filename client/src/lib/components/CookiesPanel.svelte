@@ -44,16 +44,19 @@
 		// Transient dedupe set rebuilt each derivation — not reactive state.
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const seen = new Set<string>(PRESET_DOMAINS);
-		const out: string[] = [...PRESET_DOMAINS];
+		const base: string[] = [...PRESET_DOMAINS];
 
 		for (const d of [...saved, ...extraDomains]) {
 			if (!seen.has(d)) {
 				seen.add(d);
-				out.push(d);
+				base.push(d);
 			}
 		}
 
-		return out;
+		// Float sites that actually have a saved value to the top so a filled
+		// cookie is pinned where it's easy to find/change, while empty presets
+		// keep their original order below. Stable within each partition.
+		return [...base].sort((a, b) => Number(cookies.has(b)) - Number(cookies.has(a)));
 	});
 
 	function isPreset(domain: string): boolean {
@@ -123,44 +126,8 @@
 	<div class="space-y-4 p-3 sm:p-4">
 		<p class="text-muted-foreground text-xs">{t('cookies.desc')}</p>
 
-		<!-- Warnings -->
-		<div
-			class="bg-warning/10 border-warning/40 text-warning-foreground dark:text-white flex gap-2 rounded-lg border p-3 text-xs"
-		>
-			<ShieldAlert class="mt-0.5 h-4 w-4 shrink-0" />
-			<div class="space-y-1">
-				<p class="font-medium">{t('cookies.warnTitle')}</p>
-				<p>{t('cookies.warnThrowaway')}</p>
-				<p>{t('cookies.warnLocal')}</p>
-			</div>
-		</div>
-
-		<!-- How-to guide (collapsible) -->
-		<div class="rounded-lg border">
-			<button
-				type="button"
-				class="flex w-full items-center justify-between p-3 text-sm font-medium"
-				onclick={() => (showGuide = !showGuide)}
-				aria-expanded={showGuide}
-				aria-controls="cookies-guide-steps"
-			>
-				<span>{t('cookies.guideToggle')}</span>
-				<ChevronDown class="h-4 w-4 transition-transform {showGuide ? 'rotate-180' : ''}" />
-			</button>
-			{#if showGuide}
-				<ol
-					id="cookies-guide-steps"
-					class="text-muted-foreground list-decimal space-y-1 p-3 pt-0 ps-8 text-xs"
-				>
-					<li>{t('cookies.guide.s1')}</li>
-					<li>{t('cookies.guide.s2')}</li>
-					<li>{t('cookies.guide.s3')}</li>
-					<li>{t('cookies.guide.s4')}</li>
-				</ol>
-			{/if}
-		</div>
-
-		<!-- Per-site rows -->
+		<!-- Per-site rows first: entering/changing a cookie value is the primary
+		     task here, so it sits at the top instead of below the warning + guide. -->
 		<div class="space-y-2">
 			{#each rows as domain (domain)}
 				<div class="bg-muted/60 rounded-lg p-3">
@@ -208,7 +175,7 @@
 								autocomplete="off"
 								rows="4"
 								placeholder={t('cookies.placeholder', { site: domain })}
-								class="border-input bg-background focus-visible:ring-ring w-full rounded-md border p-2 font-mono text-xs focus-visible:ring-1 focus-visible:outline-none"
+								class="border-input bg-card focus-visible:ring-ring w-full rounded-md border p-2 font-mono text-xs focus-visible:ring-1 focus-visible:outline-none"
 							></textarea>
 							<div class="flex gap-2">
 								<Button size="sm" class="h-8 cursor-pointer px-4" onclick={() => save(domain)}>
@@ -259,5 +226,42 @@
 				{t('cookies.clearAll')}
 			</Button>
 		{/if}
+
+		<!-- Warnings -->
+		<div
+			class="bg-warning/10 border-warning/40 text-warning-foreground dark:text-white flex gap-2 rounded-lg border p-3 text-xs"
+		>
+			<ShieldAlert class="mt-0.5 h-4 w-4 shrink-0" />
+			<div class="space-y-1">
+				<p class="font-medium">{t('cookies.warnTitle')}</p>
+				<p>{t('cookies.warnThrowaway')}</p>
+				<p>{t('cookies.warnLocal')}</p>
+			</div>
+		</div>
+
+		<!-- How-to guide (collapsible) -->
+		<div class="rounded-lg border">
+			<button
+				type="button"
+				class="flex w-full items-center justify-between p-3 text-sm font-medium"
+				onclick={() => (showGuide = !showGuide)}
+				aria-expanded={showGuide}
+				aria-controls="cookies-guide-steps"
+			>
+				<span>{t('cookies.guideToggle')}</span>
+				<ChevronDown class="h-4 w-4 transition-transform {showGuide ? 'rotate-180' : ''}" />
+			</button>
+			{#if showGuide}
+				<ol
+					id="cookies-guide-steps"
+					class="text-muted-foreground list-decimal space-y-1 p-3 pt-0 ps-8 text-xs"
+				>
+					<li>{t('cookies.guide.s1')}</li>
+					<li>{t('cookies.guide.s2')}</li>
+					<li>{t('cookies.guide.s3')}</li>
+					<li>{t('cookies.guide.s4')}</li>
+				</ol>
+			{/if}
+		</div>
 	</div>
 </section>

@@ -11,18 +11,16 @@
 import { browser } from '$app/environment';
 import { createProxyToken } from '$lib/api/proxy-token';
 import { buildProxiedUrl } from '$lib/proxy-url';
-import { groupGalleriesBySource, groupVideosByQuality, maxFilesize, maxResolution } from '$lib/transform';
+import { groupGalleriesBySource, groupVideosByQuality } from '$lib/transform';
 import type {
 	GroupedGallery,
 	GroupedVideo,
 	IncomingGallery,
 	IncomingVideo,
-	Preferences,
 	SubtitleTrackResult
 } from '$lib/types';
 
 import type { CookieStore } from './cookies.svelte';
-import type { PreferencesStore } from './preferences.svelte';
 
 /** Soft cap per list so localStorage stays small on long-lived browsers. */
 const MAX_ENTRIES = 50;
@@ -47,38 +45,12 @@ function sameSource(
 	return false;
 }
 
-function sortVideos(items: GroupedVideo[], preferences: Preferences): GroupedVideo[] {
-	const sorted = [...items].sort((a, b) => {
-		let comparison = 0;
-
-		switch (preferences.videoSortField) {
-			case 'name':
-				comparison = (a.title ?? '').localeCompare(b.title ?? '');
-				break;
-			case 'size':
-				comparison = maxFilesize(a) - maxFilesize(b);
-				break;
-			case 'quality':
-				comparison = maxResolution(a) - maxResolution(b);
-				break;
-		}
-
-		return preferences.videoSortOrder === 'desc' ? -comparison : comparison;
-	});
-
-	return sorted;
-}
-
 export class LibraryStore {
 	extractResults = $state<GroupedVideo[]>([]);
 	galleryResults = $state<GroupedGallery[]>([]);
 
-	constructor(private readonly preferences: PreferencesStore) {
+	constructor() {
 		if (browser) {this.load();}
-	}
-
-	get sortedExtractResults(): GroupedVideo[] {
-		return sortVideos(this.extractResults, this.preferences.current);
 	}
 
 	/** Adds a freshly extracted video to the library. Returns `true` if it was

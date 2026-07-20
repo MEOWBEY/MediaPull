@@ -103,11 +103,10 @@ export interface IncomingVideo {
 
 export interface Preferences {
 	theme: 'light' | 'dark' | 'system';
-	layoutList: 'grid' | 'list';
-	videoSortField: 'name' | 'size' | 'quality';
-	videoSortOrder: 'asc' | 'desc';
-	enableAnimations: boolean;
-	enableCompact: boolean;
+	/** Result-card layout: `'grid'` = 1 col on mobile / 2 cols on desktop;
+	 *  `'row'` = one full-width horizontal card per row (player start-side,
+	 *  details end-side) on desktop, stacked on mobile. */
+	layoutList: 'grid' | 'row';
 	/** Route media through `/proxy-video` (Referer/Cookie/UA the player can't set).
 	 *  Off = direct CDN URLs — faster, but breaks many gated sources. */
 	enableProxyForVideoExtract: boolean;
@@ -123,8 +122,6 @@ export interface Preferences {
 	showExportButtons: boolean;
 	/** Show adaptive video-only (no-audio) qualities, e.g. YouTube >720p. Off by default. */
 	showVideoOnlyFormats: boolean;
-	/** Open the subtitle search panel automatically once a track is ready. */
-	autoOpenSubtitlePanel: boolean;
 	/** Hide caption lines shorter than this many words from the subtitle
 	 *  panel only (the video track still shows every line). 0 = show all. */
 	subtitlePanelMinWords: number;

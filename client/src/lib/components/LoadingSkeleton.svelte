@@ -22,33 +22,43 @@
 			: 'grid-cols-1'}"
 	>
 		<div
-			class="border-border/60 bg-card/60 shadow-soft overflow-hidden rounded-2xl border py-3.5 sm:p-4"
+			class="border-border/70 bg-card/60 overflow-hidden rounded-lg border py-3.5 sm:p-4"
 		>
 			<!-- Header: source icon + label + a small action cluster -->
 			<div
-				class="border-border/40 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
+				class="border-border/60 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
 			>
-				<div class="bg-muted h-3.5 w-3.5 shrink-0 animate-pulse rounded-full"></div>
-				<div class="bg-muted h-3.5 w-40 max-w-full animate-pulse rounded"></div>
+				<div class="bg-muted h-3.5 w-3.5 shrink-0 animate-pulse rounded-sm"></div>
+				<div class="bg-muted h-3.5 w-40 max-w-full animate-pulse rounded-sm"></div>
 				<div class="ms-auto flex shrink-0 items-center gap-1.5">
 					{#each [0, 1, 2] as j (j)}
-						<div class="bg-muted h-7 w-7 animate-pulse rounded-full"></div>
+						<div class="bg-muted h-7 w-7 animate-pulse rounded-sm"></div>
 					{/each}
 				</div>
 			</div>
 
-			<!-- Neutral content block: a plain rounded rectangle, not tied to a
-			     specific media shape. -->
-			<div class="overflow-hidden rounded-none sm:rounded-xl">
-				<div class="bg-muted aspect-[16/10] w-full animate-pulse"></div>
-			</div>
+			<!-- In row layout the media block sits on the start side with the text
+			     lines beside it (at lg+, matching the real card); otherwise it stacks. -->
+			<div class={preferences.layoutList === 'row' ? 'lg:flex lg:items-start lg:gap-5' : ''}>
+				<div
+					class="overflow-hidden rounded-none sm:rounded-md {preferences.layoutList === 'row'
+						? 'lg:w-[28rem] lg:shrink-0 xl:w-[32rem]'
+						: ''}"
+				>
+					<div class="bg-muted aspect-[16/10] w-full animate-pulse"></div>
+				</div>
 
-			<!-- A couple of text lines + a pill, common to both result kinds. -->
-			<div class="space-y-3 px-3.5 pt-3 sm:px-0">
-				<div class="bg-muted h-4 w-3/4 animate-pulse rounded"></div>
-				<div class="flex items-center justify-between gap-2">
-					<div class="bg-muted/70 h-3 w-16 animate-pulse rounded"></div>
-					<div class="bg-muted/70 h-6 w-28 animate-pulse rounded-full"></div>
+				<!-- A couple of text lines + a pill, common to both result kinds. -->
+				<div
+					class="space-y-3 px-3.5 pt-3 sm:px-0 {preferences.layoutList === 'row'
+						? 'lg:flex-1 lg:pt-0'
+						: ''}"
+				>
+					<div class="bg-muted h-4 w-3/4 animate-pulse rounded-sm"></div>
+					<div class="flex items-center justify-between gap-2">
+						<div class="bg-muted/70 h-3 w-16 animate-pulse rounded-sm"></div>
+						<div class="bg-muted/70 h-6 w-28 animate-pulse rounded-sm"></div>
+					</div>
 				</div>
 			</div>
 		</div>

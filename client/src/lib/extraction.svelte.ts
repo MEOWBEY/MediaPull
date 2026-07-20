@@ -52,6 +52,12 @@ function splitUrls(raw: string): string[] {
 		.filter(Boolean);
 }
 
+// Hard cap on a single pasted batch. Each successful extract mounts a full
+// video.js player, so an unbounded paste (hundreds of URLs) freezes/OOMs the
+// tab. Anything past the cap is dropped with a heads-up toast rather than
+// silently, so the user knows to split the list.
+const MAX_BATCH = 20;
+
 export class ExtractionController {
 	elapsedSeconds = $state(0);
 
@@ -86,15 +92,24 @@ export class ExtractionController {
 	async extractMany(rawUrls: string[]): Promise<void> {
 		// One-shot dedupe of the pasted batch — not reactive state, so a plain Set is fine.
 		// eslint-disable-next-line svelte/prefer-svelte-reactivity
-		const urls = Array.from(new Set(splitUrls(rawUrls.join(' '))));
+		const deduped = Array.from(new Set(splitUrls(rawUrls.join(' '))));
 
-		if (!urls.length) {
+		if (!deduped.length) {
 			return;
 		}
-		if (urls.length === 1) {
-			await this.extractLinks(urls[0]);
+		if (deduped.length === 1) {
+			await this.extractLinks(deduped[0]);
 
 			return;
+		}
+
+		// Cap the batch so a huge paste can't spawn hundreds of players and lock
+		// the tab. Trim the overflow up front and tell the user what was dropped.
+		const urls = deduped.slice(0, MAX_BATCH);
+		const dropped = deduped.length - urls.length;
+
+		if (dropped > 0) {
+			toast.warning(t('toast.batchCapped', { max: MAX_BATCH, dropped }));
 		}
 
 		this.batchAborted = false;

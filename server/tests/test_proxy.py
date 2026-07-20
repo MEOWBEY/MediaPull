@@ -161,7 +161,7 @@ class _FakeUpstream:
         self.status_code = status
         self._body = body
 
-    async def aiter_content(self):
+    async def aiter_content(self, chunk_size=None, decode_unicode=False):
         yield self._body
 
     async def aclose(self):
