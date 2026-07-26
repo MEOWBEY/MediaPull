@@ -9,16 +9,20 @@ export function formatBytesToMB(bytes: number): string {
 	return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MB`;
 }
 
-/** Seconds → "m:ss". */
+/** Seconds → "m:ss", or "h:mm:ss" from one hour up. */
 export function formatSecondsToTime(seconds: number): string {
-	if (!seconds) {
+	if (!seconds || seconds < 0) {
 		return '0:00';
 	}
 
-	const mins = Math.floor(seconds / 60);
-	const secs = Math.floor(seconds % 60)
-		.toString()
-		.padStart(2, '0');
+	const total = Math.floor(seconds);
+	const hours = Math.floor(total / 3600);
+	const mins = Math.floor((total % 3600) / 60);
+	const secs = (total % 60).toString().padStart(2, '0');
+
+	if (hours > 0) {
+		return `${hours}:${mins.toString().padStart(2, '0')}:${secs}`;
+	}
 
 	return `${mins}:${secs}`;
 }

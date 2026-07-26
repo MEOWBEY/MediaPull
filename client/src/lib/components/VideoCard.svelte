@@ -17,9 +17,10 @@
 		type VideoPlayerHandle
 	} from '$lib/components/VideoPlayer.svelte';
 	import { safeFilename } from '$lib/export';
-	import { formatBytesToMB, formatSecondsToTime, formatYYYYMMDDToDate, mediaKindLabel, sourceHost } from '$lib/format';
+	import { formatBytesToMB, formatSecondsToTime, formatYYYYMMDDToDate, mediaKindLabel } from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
+	import { allQualities } from '$lib/transform';
 	import type { GroupedVideo, Preferences, SubtitleTrackResult, VideoFormat } from '$lib/types';
 	import { visibleFormatGroups } from '$lib/video-format-groups';
 
@@ -63,27 +64,37 @@
 	);
 	const visibleQualities = $derived(activeGroup.qualities);
 
-	/** First existing caption track the source already provides in a usable
-	 *  (WebVTT) format -- free to use, no transcription pipeline needed. */
-	const existingVttTrack = $derived(video.subtitleTracks?.find((track) => track.ext === 'vtt'));
+	/** First existing caption track the source already provides in a format the
+	 *  client can parse (WebVTT or SRT -- see `parseVtt`) -- free to use, no
+	 *  transcription pipeline needed. Manually-authored tracks win over
+	 *  auto-generated ones. */
+	const existingCaptionTrack = $derived.by(() => {
+		const parseable = (video.subtitleTracks ?? []).filter(
+			(track) => track.ext === 'vtt' || track.ext === 'srt'
+		);
+
+		return parseable.find((track) => !track.isAuto) ?? parseable[0];
+	});
 
 	// Source publish date (yt-dlp "YYYYMMDD"). Shown whenever present.
 	const publishDate = $derived(
 		video.upload_date ? formatYYYYMMDDToDate(video.upload_date) : ''
 	);
 
-	// YouTube hides high-res video-only (silent) streams by default -- surface a
-	// one-line note so users know the higher qualities exist behind the Settings
-	// toggle and can be merged with audio. Only while that toggle is still off
-	// (once shown, the note is redundant).
-	const isYouTube = $derived(/(^|\.)youtube\.com$|(^|\.)youtu\.be$/i.test(sourceHost(video.webpage_url)));
-	const showYouTubeNote = $derived(isYouTube && !preferences.showVideoOnlyFormats);
+	// The "Show video-only qualities" preference (off by default) hides silent
+	// adaptive streams -- on some sources those are all the higher resolutions.
+	// When that filter is hiding formats for THIS video (detected from the
+	// format metadata, so it works for any site), surface a one-line note so
+	// users know more qualities exist behind the Settings toggle.
+	const showVideoOnlyNote = $derived(
+		allQualities(video).length > formatGroups.reduce((n, g) => n + g.qualities.length, 0)
+	);
 
 	// True as soon as the extractor's own result says a usable caption exists,
 	// even before the user has clicked (which is what actually fetches/parses
 	// it into `subtitleState`). Lets the CC button show its "open" state
 	// immediately instead of only after the first click resolves.
-	const hasCaptionSource = $derived(Boolean(subtitleState?.hasTrack) || Boolean(existingVttTrack));
+	const hasCaptionSource = $derived(Boolean(subtitleState?.hasTrack) || Boolean(existingCaptionTrack));
 
 	// The subtitles/CC action for this card. One button covers the whole flow:
 	// open the panel if a track already exists, else reuse an existing caption
@@ -108,11 +119,11 @@
 			return;
 		}
 
-		if (existingVttTrack) {
+		if (existingCaptionTrack) {
 			// Await so the panel opens once segments are actually populated --
 			// and only if the track really resolved; opening it against a
 			// failed fetch would just show "no captions" under a green button.
-			if (await playerHandle.useExistingTrack(existingVttTrack)) {
+			if (await playerHandle.useExistingTrack(existingCaptionTrack)) {
 				playerHandle.openSubtitlePanel();
 			}
 		} else {
@@ -143,7 +154,10 @@
 	function downloadQuality(quality: VideoFormat) {
 		try {
 			const stem = safeFilename(video?.title, t('extract.untitled'));
-			const filename = `${stem}.${quality.resolution}.${quality.ext}`;
+			// Formats without a numeric resolution (audio-only, unknown) skip the
+			// quality tag instead of embedding a meaningless "0".
+			const qualityTag = quality.resolution ? `.${quality.resolution}p` : '';
+			const filename = `${stem}${qualityTag}.${quality.ext}`;
 
 			if (useProxy && quality.proxiedVideoUrl) {
 				const base = quality.proxiedVideoUrl;
@@ -244,8 +258,7 @@
 		</h3>
 
 		<!-- Metadata (duration + publish date) on the start side; the subtitles (CC)
-		     control on the end side. Both metadata chips now show on mobile too --
-		     with the proxy button gone from this row there's room for them. -->
+		     control on the end side. Both metadata chips show on mobile too. -->
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="text-muted-foreground flex min-w-0 items-center gap-3 font-mono text-xs">
 				{#if video.duration}
@@ -327,19 +340,19 @@
 		     per format with a signal-accented resolution tag, size, optional
 		     video-only flag, and tight action icons. Hairline dividers between
 		     rows. Same layout on mobile and desktop. -->
-		{#if showYouTubeNote}
+		{#if showVideoOnlyNote}
 			<div
 				class="border-border/60 bg-muted/40 text-muted-foreground flex items-start gap-2 rounded-md border px-3 py-2 text-xs"
 			>
 				<Info class="text-signal mt-0.5 h-3.5 w-3.5 shrink-0" />
 				<p class="min-w-0 leading-relaxed">
-					{t('extract.youtubeNote')}
+					{t('extract.videoOnlyNote')}
 					<button
 						type="button"
 						onclick={() => ui.openPreferences('playback')}
 						class="text-signal cursor-pointer font-medium underline underline-offset-2 hover:opacity-80"
 					>
-						{t('extract.youtubeNoteAction')}
+						{t('extract.videoOnlyNoteAction')}
 					</button>
 				</p>
 			</div>
@@ -351,16 +364,18 @@
 				<div
 					class="hover:bg-muted/60 flex flex-wrap items-center gap-2 px-3 py-2 font-mono transition-colors"
 				>
+					<!-- Fixed-width label columns (resolution / size / container) so the
+					     values line up vertically across rows, transfer-log style. -->
 					<div class="flex min-w-0 flex-1 items-center gap-2.5">
 						<span
-							class="text-signal min-w-11 shrink-0 text-start text-xs font-bold tabular-nums"
+							class="text-signal w-12 shrink-0 text-start text-[0.7rem] font-bold tabular-nums"
 						>
 							{quality.resolution ? `${quality.resolution}p` : quality.ext.toUpperCase()}
 						</span>
-						<span class="text-muted-foreground shrink-0 text-xs tabular-nums">
+						<span class="text-muted-foreground w-16 shrink-0 text-[0.7rem] tabular-nums">
 							{(quality.filesize ?? 0) > 0 ? formatBytesToMB(quality.filesize ?? 0) : '—'}
 						</span>
-						<span class="text-muted-foreground/70 hidden shrink-0 text-xs uppercase sm:inline">
+						<span class="text-muted-foreground/70 hidden w-12 shrink-0 text-[0.7rem] uppercase sm:inline">
 							{quality.ext}
 						</span>
 						{#if quality.videoOnly}

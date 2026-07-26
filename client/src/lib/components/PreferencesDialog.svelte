@@ -60,8 +60,8 @@
 	});
 
 	// Deep-link: when a caller opened the dialog targeting a specific tab (error
-	// banner → cookies, YouTube note → playback), switch to it once, then clear
-	// the request so a manual tab change afterward isn't overridden.
+	// banner → cookies, video-only note → playback), switch to it once, then
+	// clear the request so a manual tab change afterward isn't overridden.
 	$effect(() => {
 		if (isPreferencesDialogOpen && ui.preferencesTab) {
 			tab = ui.preferencesTab;

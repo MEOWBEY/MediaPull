@@ -418,9 +418,9 @@
 			// Seek and play immediately rather than waiting for a `loadedmetadata`
 			// event: per the media element spec, setting `currentTime`/calling
 			// `play()` before metadata has loaded is well-defined and queued
-			// internally by the browser. Waiting on the event here was unreliable
+			// internally by the browser. Waiting on the event would be unreliable
 			// (the `hls-video` custom element doesn't reliably forward it) and,
-			// worse, meant `play()` ran from inside an async gap or a `setTimeout`
+			// worse, would run `play()` from inside an async gap or a `setTimeout`
 			// fallback -- detached from the click's user-activation context, which
 			// some browsers' autoplay policy silently rejects. Calling `play()`
 			// straight away keeps it in the same call chain as the user's click.
@@ -813,8 +813,8 @@
 						<!-- Slotted into the skin so it overlays correctly, even in fullscreen.
 						     Light DOM, so the app's own theme tokens style it directly.
 						     Visibility tracks the control bar (see bindSkin). Keyed on the
-						     active group so switching format-group tabs remounts it -- closing
-						     any open menu, same as the old inline menuOpen reset used to. -->
+						     active group so switching format-group tabs remounts it -- which
+						     closes any open menu. -->
 						{#key activeGroupIndex}
 							<QualityMenu
 								qualities={usable}

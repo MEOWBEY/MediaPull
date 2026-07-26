@@ -33,6 +33,7 @@ from .net_common import (
     impersonate_kwarg,
     normalize_cookies,
 )
+from .ssrf import assert_public_http_url
 
 logger = logging.getLogger("mediapull.extractor")
 
@@ -157,12 +158,21 @@ def is_direct_video(url: str) -> bool:
 
 def is_valid_url(url: str) -> bool:
     try:
-        from .ssrf import assert_public_http_url
-
         assert_public_http_url(url)
         return True
     except ValueError:
         return False
+
+
+async def _reject_nonpublic_request(request: httpx.Request) -> None:
+    """httpx request hook: fires for EVERY request, including each hop of a
+    followed redirect chain -- so a public page can't bounce the direct/scrape
+    fetches into localhost or a private address. Raises the httpx error type
+    the calling code already handles."""
+    try:
+        assert_public_http_url(str(request.url))
+    except ValueError as exc:
+        raise httpx.RequestError(str(exc), request=request) from exc
 
 
 def _normalize_caption_url(url: str, ext: str) -> tuple[str, str]:
@@ -170,11 +180,10 @@ def _normalize_caption_url(url: str, ext: str) -> tuple[str, str]:
 
     YouTube's timedtext endpoint serves whatever ``fmt`` the query asks for
     (json3/srv3/ttml/vtt); yt-dlp often lists a non-vtt entry first, which the
-    client's WebVTT/SRT parser can't read -- so the "use existing caption"
-    button failed with "could not load this subtitle track". Rewriting
-    ``fmt=vtt`` onto any timedtext URL guarantees WebVTT regardless of which
-    entry was picked. Non-timedtext URLs (real .vtt/.srt files other sites
-    provide) pass through untouched.
+    client's WebVTT/SRT parser can't read. Rewriting ``fmt=vtt`` onto any
+    timedtext URL guarantees WebVTT regardless of which entry was picked.
+    Non-timedtext URLs (real .vtt/.srt files other sites provide) pass
+    through untouched.
     """
     try:
         parsed = urlparse(url)
@@ -211,6 +220,7 @@ class Extractor:
             headers={"User-Agent": settings.user_agent},
             limits=httpx.Limits(max_connections=50, max_keepalive_connections=20),
             proxy=self._proxy,
+            event_hooks={"request": [_reject_nonpublic_request]},
         )
         # Impersonating session used only to validate format URLs — it mirrors
         # what the proxy does, so a probe that fails is a genuinely dead link
@@ -303,7 +313,10 @@ class Extractor:
         )
         seen: dict[str, dict | None] = {}
         for fmt in ranked:
-            if fmt.url not in seen:
+            # Never probe a non-public destination (private IP / localhost) --
+            # skipped URLs are kept, same as an unprobed format, and the media
+            # proxy independently refuses to fetch them.
+            if fmt.url not in seen and is_valid_url(fmt.url):
                 seen[fmt.url] = fmt.http_headers
             if len(seen) >= self._settings.validate_max_formats:
                 break
@@ -337,10 +350,14 @@ class Extractor:
             headers.pop("user-agent", None)
 
         try:
+            # allow_redirects=False: curl would follow a redirect without any
+            # SSRF re-check on the hop, so a crafted format URL could point the
+            # probe at an internal address. A 3xx lands in the "keep" verdict
+            # below -- conservative, matching this probe's philosophy.
             resp = await self._probe_session.get(
                 url,
                 headers={**headers, "Range": "bytes=0-1"},
-                allow_redirects=True,
+                allow_redirects=False,
                 stream=False,  # 2-byte probe — stream=True + immediate close leaks curl conns
                 **kwargs,
             )
@@ -365,8 +382,19 @@ class Extractor:
         try:
             resp = await self._client.head(url)
             resp.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise ExtractionError(f"Could not process direct video URL: {exc}") from exc
+        except httpx.HTTPError:
+            # Plenty of hosts reject HEAD outright (405/403) while serving GET
+            # fine -- re-ask with a 2-byte ranged GET before giving up. The
+            # stream is closed right after the status check, so at most a
+            # handful of bytes ever transfer.
+            try:
+                async with self._client.stream(
+                    "GET", url, headers={"Range": "bytes=0-1"}
+                ) as resp:
+                    resp.raise_for_status()
+            except httpx.HTTPError as exc:
+                status, message = classify_extraction_error(exc)
+                raise ExtractionError(message, status=status) from exc
 
         filename = (urlparse(url).path.rsplit("/", 1)[-1]) or "video.mp4"
         ext = filename.rsplit(".", 1)[-1] if "." in filename else "mp4"
@@ -403,7 +431,11 @@ class Extractor:
             args["youtubepot-bgutilhttp"] = {"base_url": [s.youtube_pot_base_url.strip()]}
         return args
 
-    def _ytdlp_sync(self, url: str, generic: bool, cookies: str | None = None) -> VideoInfo:
+    def _build_ydl_opts(self, *, generic: bool) -> dict[str, object]:
+        """The yt-dlp options for one metadata-only ``extract_info`` run.
+
+        Kept as its own method so tests can assert on the options without
+        touching the network."""
         s = self._settings
         opts: dict[str, object] = {
             "quiet": True,
@@ -421,6 +453,14 @@ class Extractor:
             "geo_bypass": True,
             "no_color": True,
             "no_progress": True,
+            # Most extractors (Vimeo, Twitter, …) only populate
+            # info["subtitles"] / info["automatic_captions"] when these params
+            # are set (InfoExtractor.extract_subtitles returns {} otherwise);
+            # YouTube fills them unconditionally, which is why it alone would
+            # show caption tracks without this. With download=False nothing is
+            # ever written -- the flags just unlock the metadata.
+            "writesubtitles": True,
+            "writeautomaticsub": True,
             # NOTE: youtube player_client is NOT pinned by default. yt-dlp's
             # default selection returns the full ladder (144p–2160p); forcing a
             # single mobile client collapses YouTube to 360p. Override via
@@ -448,6 +488,11 @@ class Extractor:
 
         if generic:
             opts.update(force_generic_extractor=True, nocheckcertificate=True)
+        return opts
+
+    def _ytdlp_sync(self, url: str, generic: bool, cookies: str | None = None) -> VideoInfo:
+        s = self._settings
+        opts = self._build_ydl_opts(generic=generic)
 
         # Authentication cookies: per-request blob (from the user's Settings)
         # wins; otherwise the next server-side default file in the rotation
@@ -657,6 +702,10 @@ class Extractor:
             http_headers=fmt.get("http_headers"),
             resolution=fmt.get("height"),
             video_only=video_only,
+            # Raw codec strings so the client can tell "no audio track"
+            # ("none") apart from "unknown" (None) for any extractor.
+            acodec=fmt.get("acodec") or None,
+            vcodec=fmt.get("vcodec") or None,
         )
 
     async def _scrape(self, url: str) -> VideoInfo:

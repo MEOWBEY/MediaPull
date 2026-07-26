@@ -3,9 +3,9 @@
  *
  * The backend's `/proxy-video` replays the request to the source with the right
  * Referer/Cookie/User-Agent (which a browser can't set on a media element) and
- * rewrites HLS playlists. This used to be baked server-side; building it on the
- * client keeps the backend ignorant of its own public URL and makes "skip the
- * proxy" (e.g. on Android) trivial.
+ * rewrites HLS playlists. Building the URL on the client keeps the backend
+ * ignorant of its own public URL and makes "skip the proxy" (e.g. on Android)
+ * trivial.
  */
 
 import { API_BASE_URL } from '$lib/config';

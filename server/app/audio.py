@@ -9,7 +9,7 @@ Built for latency: ffmpeg reads the source URL directly whenever it can (HLS
 *and* progressive), so downloading and transcoding are one overlapped pass
 with nothing but the final mono/16kHz/32kbps opus track ever touching disk.
 Only when a host rejects ffmpeg's plain TLS (anti-bot CDNs) does it fall back
-to the old two-step: curl_cffi download with browser impersonation, then a
+to a two-step: curl_cffi download with browser impersonation, then a
 local transcode. Every step reports real progress -- ffmpeg's ``-progress``
 stream for transcodes, byte counts for downloads -- so the job can show the
 user an honest percentage instead of a stalled bar.
@@ -26,7 +26,7 @@ import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from curl_cffi.requests import AsyncSession
 
@@ -34,6 +34,7 @@ from . import proc_util
 from .config import Settings
 from .models import VideoFormat
 from .net_common import impersonate_kwarg
+from .ssrf import assert_public_http_url
 
 logger = logging.getLogger("mediapull.audio")
 
@@ -189,6 +190,8 @@ _FFMPEG_SEGMENT_TIMEOUT = 120
 _FFPROBE_TIMEOUT = 30
 # ffmpeg's own per-read network timeout (microseconds) -- 30s.
 _FFMPEG_RW_TIMEOUT = "30000000"
+# Redirect-hop cap for the fallback curl_cffi download (matches the proxy's).
+_MAX_DOWNLOAD_REDIRECTS = 5
 
 # Reports fractional progress of one step, 0.0..1.0.
 ProgressFn = Callable[[float], None]
@@ -316,8 +319,6 @@ async def plan_acquisition(
     real_url, extra_headers = _unwrap_proxied(
         fmt.url or "", resolve_cookie_token=resolve_cookie_token
     )
-    from .ssrf import assert_public_http_url
-
     try:
         assert_public_http_url(real_url)
     except ValueError as exc:
@@ -592,11 +593,31 @@ async def _download_stream(
     # Shared, long-lived session (see _get_download_session) -- NOT an
     # `async with`, which would tear down the connection pool after one job.
     session = _get_download_session(settings)
-    kwargs: dict = {"headers": headers, "stream": True, "allow_redirects": True}
+    kwargs: dict = {"headers": headers, "stream": True, "allow_redirects": False}
     kwargs.update(impersonate_kwarg(settings))
 
+    # Redirects are followed by hand so EVERY hop re-passes the public-URL
+    # gate -- an origin must not be able to bounce this server-side download
+    # into localhost or a private address.
     try:
-        resp = await session.get(url, **kwargs)
+        current = url
+        for _ in range(_MAX_DOWNLOAD_REDIRECTS):
+            resp = await session.get(current, **kwargs)
+            if resp.status_code not in (301, 302, 303, 307, 308):
+                break
+            location = resp.headers.get("location")
+            await resp.aclose()
+            if not location:
+                raise AudioError("Source media redirect had no destination")
+            current = urljoin(current, location)
+            try:
+                assert_public_http_url(current)
+            except ValueError as exc:
+                raise AudioError(str(exc)) from exc
+        else:
+            raise AudioError("Source media redirected too many times")
+    except AudioError:
+        raise
     except NotImplementedError as exc:
         # curl_cffi raises a bare (often message-less) NotImplementedError
         # when the configured IMPERSONATE_CLIENT needs a TLS feature the
@@ -810,8 +831,6 @@ async def acquire_audio(
     real_url, extra_headers = _unwrap_proxied(
         fmt.url or "", resolve_cookie_token=resolve_cookie_token
     )
-    from .ssrf import assert_public_http_url
-
     try:
         assert_public_http_url(real_url)
     except ValueError as exc:

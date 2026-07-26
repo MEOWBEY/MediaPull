@@ -4,7 +4,8 @@ import pytest
 
 import app.proxy as proxy_mod
 from app.config import Settings
-from app.proxy import ProxyService, _is_blocked_ip, _rewrite_hls
+from app.proxy import ProxyService, _rewrite_hls
+from app.ssrf import is_blocked_ip
 
 
 @pytest.fixture
@@ -39,10 +40,10 @@ def test_blocked_loopback_and_private(proxy, host):
 
 
 def test_is_blocked_ip_edges():
-    assert _is_blocked_ip("172.16.0.1") and _is_blocked_ip("172.31.255.255")
-    assert not _is_blocked_ip("172.15.0.1") and not _is_blocked_ip("172.32.0.1")
-    assert not _is_blocked_ip("8.8.8.8")
-    assert not _is_blocked_ip("example.com")  # not an IP literal
+    assert is_blocked_ip("172.16.0.1") and is_blocked_ip("172.31.255.255")
+    assert not is_blocked_ip("172.15.0.1") and not is_blocked_ip("172.32.0.1")
+    assert not is_blocked_ip("8.8.8.8")
+    assert not is_blocked_ip("example.com")  # not an IP literal
 
 
 def test_allowed_when_no_allowlist(proxy):
@@ -168,9 +169,16 @@ class _FakeUpstream:
         pass
 
 
+class _FakeRequestURL:
+    scheme = "https"
+    netloc = "proxy.local"
+    path = "/proxy-video"
+
+
 class _FakeRequest:
     def __init__(self):
         self.headers = {}
+        self.url = _FakeRequestURL()
 
     async def is_disconnected(self):
         return False
@@ -180,9 +188,9 @@ class _FakeRequest:
 async def test_stream_drops_stale_gzip_encoding(proxy, monkeypatch):
     """YouTube/Vimeo gzip their timedtext captions and report the COMPRESSED
     length. curl_cffi hands us the decoded body, so forwarding the upstream
-    ``Content-Encoding: gzip`` (and compressed ``Content-Length``) made the
-    browser try to gunzip plain text -> decode error -> empty subtitle track.
-    The proxy must strip both and stream identity."""
+    ``Content-Encoding: gzip`` (and compressed ``Content-Length``) would make
+    the browser try to gunzip plain text -> decode error -> empty subtitle
+    track. The proxy must strip both and stream identity."""
     decoded = b"WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nhello\n"
     upstream = _FakeUpstream(
         headers={
@@ -231,6 +239,61 @@ async def test_stream_keeps_length_for_identity_body(proxy, monkeypatch):
 
     assert resp.headers["content-encoding"] == "identity"
     assert resp.headers["content-length"] == "4"  # preserved for seeking
+
+
+# ----- playlist proxy: bounded buffering --------------------------------
+
+
+class _FakeChunkedUpstream:
+    """Streaming upstream stand-in that yields a fixed chunk repeatedly."""
+
+    def __init__(self, chunk: bytes, count: int, status: int = 200):
+        self.headers = {}
+        self.status_code = status
+        self._chunk = chunk
+        self._count = count
+
+    async def aiter_content(self, chunk_size=None):
+        for _ in range(self._count):
+            yield self._chunk
+
+    async def aclose(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_playlist_over_size_cap_is_rejected(proxy, monkeypatch):
+    """A protocol=m3u8_native request pointing at a huge file must not be
+    buffered whole into memory -- the read stops at the cap and answers 502."""
+    upstream = _FakeChunkedUpstream(b"#" * 65536, count=1000)  # ~64MB on offer
+
+    async def fake_get_checked(url, *, stream, headers):
+        return upstream
+
+    monkeypatch.setattr(proxy, "_get_checked", fake_get_checked)
+    monkeypatch.setattr(proxy_mod, "_MAX_PLAYLIST_BYTES", 100_000)
+
+    resp = await proxy._handle_playlist(
+        _FakeRequest(), "https://cdn.example.com/big.bin", {}, {}
+    )
+    assert resp.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_playlist_under_cap_is_rewritten(proxy, monkeypatch):
+    playlist = b"#EXTM3U\nsegment.ts\n"
+    upstream = _FakeChunkedUpstream(playlist, count=1)
+
+    async def fake_get_checked(url, *, stream, headers):
+        return upstream
+
+    monkeypatch.setattr(proxy, "_get_checked", fake_get_checked)
+
+    resp = await proxy._handle_playlist(
+        _FakeRequest(), "https://cdn.example.com/playlist.m3u8", {}, {}
+    )
+    assert resp.status_code == 200
+    assert b"proxy-video" in resp.body
 
 
 # ----- ephemeral cookie token ------------------------------------------

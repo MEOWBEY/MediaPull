@@ -323,8 +323,8 @@ export class ExtractionController {
 					{ signal }
 				);
 
-				// Mint ctok from Settings cookies (extract JSON no longer
-				// carries Cookie headers — that leaked sessions on multi-user
+				// Mint ctok from Settings cookies — extract JSON deliberately
+				// omits Cookie headers (they would leak sessions on multi-user
 				// deploys). Attach tokens before cache / proxy URL build.
 				await resolveVideoCookieTokens(video, cookies);
 
@@ -508,24 +508,17 @@ export class ExtractionController {
 		 *  fallback also fails, instead of losing it. */
 		onError?: (message: string) => void;
 	}): Promise<boolean> {
-		this.start();
+		const controller = this.start();
+
 		appStore.isVideoExtractRunning = true;
 		appStore.videoExtractError = null;
 
-		const signal = this.controller?.signal;
-
-		if (!signal) {
-			// start() always sets controller before this runs, but guard defensively.
-			appStore.isVideoExtractRunning = false;
-			this.stop();
-
-			return false;
-		}
+		const { signal } = controller;
 
 		try {
 			const result = await config.task(signal);
 
-			if (this.controller?.signal.aborted) {
+			if (signal.aborted) {
 				return false;
 			}
 
@@ -560,19 +553,33 @@ export class ExtractionController {
 
 			return false;
 		} finally {
-			appStore.isVideoExtractRunning = false;
-			this.stop();
+			// Only the latest run may tear down the shared controller/timer/flag —
+			// a newer start() owns them now, and aborting here would kill that
+			// run's fetch and clear its running state out from under it.
+			if (this.controller === controller) {
+				appStore.isVideoExtractRunning = false;
+				this.stop();
+			}
 		}
 	}
 
-	private start(): void {
+	private start(): AbortController {
 		// Single-flight: abort any request still in flight before starting a new
 		// one, so a rapid re-paste / retry doesn't leak the prior fetch (it would
 		// run until the client's ~3 min fetch timeout and confuse the running flag).
 		this.controller?.abort();
-		this.controller = new AbortController();
+
+		if (this.timer) {
+			clearInterval(this.timer);
+		}
+
+		const controller = new AbortController();
+
+		this.controller = controller;
 		this.elapsedSeconds = 0;
 		this.timer = setInterval(() => this.elapsedSeconds++, 1000);
+
+		return controller;
 	}
 
 	private stop(): void {

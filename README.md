@@ -17,7 +17,9 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
 - **Built-in player** — preview in the page; switch quality without leaving
 - **Auto / Video / Gallery** — Auto detects type; force Video or Gallery from
   the extract bar when you already know
-- **Optional subtitles** — speech-to-text captions when `GROQ_API_KEY` is set
+- **Subtitles, two ways** — use caption tracks the source already provides, or
+  auto-generate them with speech-to-text (Groq Whisper) when `GROQ_API_KEY` is
+  set; browse the transcript in a side panel and download as SRT
 - **Proxy mode** — stream through the backend when direct play fails (hotlink
   protection, missing Referer/Cookie headers)
 - **Sign-in cookies** — Settings → Sign-in for sites that need a login
@@ -100,6 +102,125 @@ flowchart LR
 - **Keep scrapers current.** When extraction breaks after site changes, upgrade
   yt-dlp/gallery-dl (`pip install -U yt-dlp gallery-dl`). There is no built-in
   auto-update of those tools.
+
+## Configuration
+
+All server config comes from environment variables, loaded from `server/.env`
+(copy `server/.env.example`; `server/.env.production.example` is a
+production-leaning starting point). Every variable has a working default —
+an empty `.env` runs fine in dev. The client has exactly one variable, in
+`client/.env`.
+
+### Client
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VITE_API_BASE_URL` | *(empty)* | Backend origin. Leave empty in dev (Vite proxies API routes to `http://localhost:8000`); set to the API origin (e.g. `https://api.example.com`) for split/static deploys. Build-time, not runtime. |
+
+### Server — core
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DEBUG` | `false` | Uvicorn reload + access logs (via `run.py`) |
+| `LOG_LEVEL` | `INFO` | Log verbosity |
+| `HOST` | `0.0.0.0` | Bind address (`run.py`) |
+| `PORT` | `8000` | Listen port (`run.py`; under systemd the unit's `--bind` wins) |
+| `WORKERS` | `1` | **Must stay 1** — jobs, caches, and proxy tokens are in-process; scale with more instances, not workers |
+| `CORS_ORIGINS` | `*` | Comma-separated allowed browser origins. Pin explicitly in production — `*` disables credentialed CORS |
+| `CLIENT_DIR` | *(auto)* | Directory of the built client to serve same-origin; empty auto-detects `client/build`. Leave empty in dev |
+
+### Server — extraction (video)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `MAX_FORMATS` | `40` | Formats kept per video after ranking |
+| `REQUEST_TIMEOUT` | `90` | yt-dlp / scrape overall seconds |
+| `MAX_RETRIES` | `2` | Retries on transient extract failures |
+| `SCRAPE_MAX_BYTES` | `200000` | HTML scrape body cap |
+| `EXTRACT_WORKERS` | `4` | Thread pool for blocking yt-dlp work |
+| `EXTRACT_MAX_IN_FLIGHT` | `8` | Concurrent non-cached extracts before 503 "Server busy" |
+| `CACHE_TTL` | `300` | Extraction result cache TTL, seconds (`0` disables) |
+| `CACHE_MAX_ENTRIES` | `512` | Cache size cap (`0` disables) |
+| `VALIDATE_FORMATS` | `true` | Probe extracted URLs; drop only confirmed-dead ones |
+| `VALIDATE_TIMEOUT` | `6` | Per-probe seconds |
+| `VALIDATE_CONCURRENCY` | `10` | Parallel probes |
+| `VALIDATE_MAX_FORMATS` | `8` | Max unique URLs probed per extract |
+
+### Server — auth / anti-block
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `COOKIE_FILE_PATHS` | *(empty)* | Server-side default cookies (Netscape `cookies.txt`), comma-separated for rotation. Unlocks login-gated/age-restricted content |
+| `MAX_COOKIE_BYTES` | `262144` | Cap on per-request cookie blobs from the client |
+| `ADMIN_TOKEN` | *(empty)* | Enables `POST /admin/cookies` (push fresh cookies without redeploy). Empty = endpoint returns 404 |
+| `PROXY_URL` | *(empty)* | Outbound http/https/socks5 proxy for extraction and the media proxy |
+| `YOUTUBE_PLAYER_CLIENTS` | *(empty)* | yt-dlp `player_client` list, e.g. `default,tv,web_safari` |
+| `YOUTUBE_POT_BASE_URL` | *(empty)* | bgutil PO-token sidecar URL; only needed off the default `127.0.0.1:4416` |
+| `SLEEP_REQUESTS` | `0` | Random sleep between extractor HTTP requests (1–3 cuts 429s) |
+| `ENABLE_IMPERSONATION` | `true` | Browser TLS fingerprint impersonation (curl_cffi) |
+| `IMPERSONATE_CLIENT` | `chrome` | curl_cffi impersonation target |
+| `USER_AGENT` | Chrome UA | User-Agent for extraction/proxy requests |
+
+### Server — media proxy
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `PROXY_ENABLED` | `true` | Master switch for `GET /proxy-video`; `false` = direct playback only |
+| `PROXY_ALLOWED_HOSTS` | *(empty)* | Comma-separated destination allow-list (e.g. `googlevideo.com,cdninstagram.com`). **Set on public deploys** — empty allows any public host |
+| `PROXY_COOKIE_TOKEN_MAX` | `2048` | Cap on live `/proxy-token` entries |
+
+### Server — subtitles (Groq Whisper)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GROQ_API_KEY` | *(empty)* | Enables `/transcribe`. Comma-separate several keys to rotate around rate limits. Free at console.groq.com |
+| `TRANSCRIBE_ENABLED` | `true` | Master toggle for the feature |
+| `TRANSCRIBE_MAX_CONCURRENT_JOBS` | `2` | Parallel transcription jobs |
+| `TRANSCRIBE_WORKERS` | `2` | Parallel CPU-heavy ffmpeg steps |
+| `TRANSCRIBE_MAX_DOWNLOAD_BYTES` | `300000000` | Cap on the audio/video a job downloads |
+| `TRANSCRIBE_MAX_JOBS_STORED` | `64` | Finished+running jobs kept in RAM |
+| `TRANSCRIBE_JOB_TTL` | `1800` | Seconds a finished job stays pollable |
+| `TRANSCRIBE_JOB_TIMEOUT` | `900` | Whole-job wall-clock kill switch |
+| `TRANSCRIBE_EXTRACT_PARALLELISM` | `4` | Parallel audio extraction windows |
+| `TRANSCRIBE_MAX_UPLOAD_MB` | `25` | Groq per-file upload cap (free tier: 25) |
+| `TRANSCRIBE_AUDIO_CODEC` | `opus` | Intermediate codec: `opus` / `wav` / `flac` |
+| `TRANSCRIBE_MODE` | `auto` | `auto` picks the fastest encode that fits the cap; `custom` uses the args below |
+| `TRANSCRIBE_CUSTOM_FFMPEG_ARGS` | *(empty)* | Custom-mode ffmpeg output args |
+| `TRANSCRIBE_CUSTOM_BYTES_PER_SECOND` | `4000` | Custom-mode size estimate for window sizing |
+| `TRANSCRIBE_CUSTOM_EXT` | `opus` | Custom-mode output extension |
+| `GROQ_WHISPER_MODEL` | `whisper-large-v3-turbo` | Whisper model name |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Absolute paths if not on the service's PATH |
+
+### Server — galleries (gallery-dl)
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `GALLERY_DL_TIMEOUT` | `45` | Wall-clock cap per gallery-dl run |
+| `GALLERY_DL_WORKERS` | `3` | Concurrent gallery-dl processes |
+| `GALLERY_DL_PATH` | `gallery-dl` | Binary path override |
+| `GALLERY_MAX_IMAGES` | `200` | Images returned per extract (larger albums are truncated with a warning) |
+
+The same tables with more operational context live in
+[server/README.md](server/README.md); the authoritative list is
+[`server/app/config.py`](server/app/config.py).
+
+## Deployment
+
+[`deploy/`](deploy/README.md) holds a native (no Docker) VPS install:
+
+- `install.sh` — interactive one-shot provisioner: system packages, service
+  user, clone into `/opt/mediapull`, Python venv, **systemd** unit
+  (`mediapull.service`, single-worker gunicorn/uvicorn behind `127.0.0.1`),
+  **nginx** reverse proxy + Let's Encrypt TLS (Caddyfile example included),
+  firewall, optional client build, and the optional YouTube PO-token sidecar
+  (`mediapull-pot.service`)
+- `update.sh` — pull, reinstall deps, upgrade yt-dlp/gallery-dl, rebuild
+  client, restart, health-check
+- `uninstall.sh` — remove the service/nginx sites; `--purge` wipes everything
+
+See [deploy/README.md](deploy/README.md) for the full walkthrough, including
+a manual step-by-step equivalent, YouTube PO tokens, server-wide cookies, and
+security notes.
 
 ## Testing
 

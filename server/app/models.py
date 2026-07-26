@@ -37,6 +37,12 @@ class VideoFormat(BaseModel):
     # True for adaptive streams that carry video but no audio (e.g. YouTube's
     # high-res formats). Surfaced so the UI can flag "video only".
     video_only: bool = False
+    # Raw yt-dlp codec strings (e.g. "avc1.64001f", "mp4a.40.2"). "none" means
+    # the stream definitively lacks that track; None means the extractor didn't
+    # say -- the distinction lets the client show a has-sound hint only when
+    # it actually knows.
+    acodec: str | None = None
+    vcodec: str | None = None
 
 
 class SubtitleTrack(BaseModel):
@@ -81,6 +87,10 @@ class ClientFormat(BaseModel):
     source_video_url: str | None = Field(default=None, alias="sourceVideoUrl")
     http_headers: dict[str, str] | None = Field(default=None, alias="httpHeaders")
     video_only: bool = Field(default=False, alias="videoOnly")
+    # Raw codec strings ("none" = track absent, None = unknown) -- see
+    # VideoFormat. Additive fields; older clients simply ignore them.
+    acodec: str | None = None
+    vcodec: str | None = None
 
 
 class ClientSubtitleTrack(BaseModel):

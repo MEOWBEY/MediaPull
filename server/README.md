@@ -10,7 +10,7 @@ galleries (gallery-dl), and optional speech-to-text subtitles (Groq Whisper).
 pip install -r requirements.txt
 cp .env.example .env
 # edit .env — at minimum set CORS_ORIGINS; set GROQ_API_KEY for subtitles
-python -m app
+uvicorn app.main:app --reload   # or: python run.py
 # → http://localhost:8000
 ```
 

@@ -225,7 +225,7 @@ export interface TranscribeStatus {
 		| 'transcribing'
 		| 'building_subtitles'
 		| 'dialogue_map'
-		| 'waveform' // legacy server detail
+		| 'waveform' // older servers send this instead of 'dialogue_map'
 		| null;
 	/** Transcription chunk counters (0 until that stage) — the client builds
 	 *  its own localized "x of y" stage text from these. */
@@ -237,7 +237,7 @@ export interface TranscribeStatus {
 		vttUrl: string;
 		srtUrl: string;
 		dialogueMap?: number[] | null;
-		/** @deprecated server used to send this name */
+		/** @deprecated older servers send the dialogue map under this name */
 		waveform?: number[] | null;
 	} | null;
 }

@@ -116,7 +116,12 @@ export function groupVideosByQuality(videos: IncomingVideo[] = []): GroupedVideo
 		}
 
 		const metadata = item.metadata ?? {};
-		const hasValidTitle = Boolean(metadata.title && metadata.title !== 'unknown');
+		// The server substitutes "Unknown Video" when it can't extract a real
+		// title — treat that (any casing), bare "unknown", or a missing/empty
+		// title all as "no real title".
+		const normalizedTitle = (metadata.title ?? '').trim().toLowerCase();
+		const hasValidTitle =
+			Boolean(normalizedTitle) && normalizedTitle !== 'unknown' && normalizedTitle !== 'unknown video';
 		const durationSec = Number(metadata.duration) || 0;
 
 		const buckets: Record<string, IncomingFormat[]> = {};

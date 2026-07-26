@@ -46,6 +46,10 @@ _FORWARD_RESP_HEADERS = (
     "content-encoding",
 )
 _HLS_CONTENT_TYPE = "application/vnd.apple.mpegurl"
+# Real HLS playlists are a few KB. The cap only exists so a crafted
+# protocol=m3u8_native request pointing at a huge file can't buffer it
+# all into memory (playlists must be read fully to be rewritten).
+_MAX_PLAYLIST_BYTES = 5 * 1024 * 1024
 _URI_ATTR = re.compile(r'URI="([^"]+)"')
 _IS_PLAYLIST = re.compile(r"\.m3u8(\?|$)", re.IGNORECASE)
 # Strip CR/LF/quotes so a client-supplied filename can't inject response headers.
@@ -63,10 +67,6 @@ def _download_filename(q) -> str:
     raw = (q.get("filename") or "video").strip()
     cleaned = _UNSAFE_FILENAME.sub("", raw)[:200]
     return cleaned or "video"
-
-
-# Back-compat alias for tests that import the old private name.
-_is_blocked_ip = is_blocked_ip
 
 
 class ProxyService:
@@ -153,7 +153,7 @@ class ProxyService:
             return False
         if not hostname:
             return False
-        if hostname == "localhost" or _is_blocked_ip(hostname):
+        if hostname == "localhost" or is_blocked_ip(hostname):
             return False
         if self._allowed_hosts:
             # Suffix match: "googlevideo.com" matches "r1---sn-abc.googlevideo.com"
@@ -189,7 +189,7 @@ class ProxyService:
         loop = asyncio.get_running_loop()
         try:
             infos = await loop.run_in_executor(None, socket.getaddrinfo, hostname, None)
-            verdict = not any(_is_blocked_ip(str(info[4][0])) for info in infos)
+            verdict = not any(is_blocked_ip(str(info[4][0])) for info in infos)
         except socket.gaierror:
             # Can't resolve -> reject rather than silently allow. Not cached: a
             # transient resolver failure shouldn't pin a host to "blocked".
@@ -306,22 +306,39 @@ class ProxyService:
         self, request: Request, source: str, headers: dict[str, str], q
     ) -> Response:
         try:
-            resp = await self._get_checked(source, stream=False, headers=headers)
+            resp = await self._get_checked(source, stream=True, headers=headers)
         except PermissionError:
             logger.warning("playlist proxy blocked a disallowed redirect target")
             return JSONResponse(
                 {"error": "Proxying to this host is not allowed"}, status_code=403
             )
-        except Exception as exc:  # noqa: BLE001 - surface any transport error
+        except Exception as exc:  # noqa: BLE001 - keep transport details out of the response
             logger.warning("playlist proxy request failed for %s: %s", source, exc)
-            return JSONResponse({"error": f"Upstream error: {exc}"}, status_code=502)
+            return JSONResponse({"error": "Upstream request failed"}, status_code=502)
 
         if resp.status_code >= 400:
-            logger.warning("playlist proxy upstream %s returned %s", source, resp.status_code)
-            return JSONResponse(
-                {"error": f"Upstream error: {resp.status_code}"},
-                status_code=resp.status_code,
-            )
+            status = resp.status_code
+            logger.warning("playlist proxy upstream %s returned %s", source, status)
+            await resp.aclose()
+            return JSONResponse({"error": f"Upstream error: {status}"}, status_code=status)
+
+        # Read the playlist with a hard size cap -- it must be fully buffered
+        # to be rewritten, and nothing stops a request from pointing
+        # protocol=m3u8_native at an arbitrarily large file.
+        body = bytearray()
+        try:
+            async for chunk in resp.aiter_content(chunk_size=65536):
+                body.extend(chunk)
+                if len(body) > _MAX_PLAYLIST_BYTES:
+                    logger.warning("playlist from %s exceeded the size cap", source)
+                    return JSONResponse(
+                        {"error": "Playlist is too large to proxy"}, status_code=502
+                    )
+        except Exception as exc:  # noqa: BLE001 - keep transport details out of the response
+            logger.warning("playlist proxy read failed for %s: %s", source, exc)
+            return JSONResponse({"error": "Upstream request failed"}, status_code=502)
+        finally:
+            await resp.aclose()
 
         passthrough: dict[str, str] = {}
         if q.get("userAgent"):
@@ -334,7 +351,9 @@ class ProxyService:
             passthrough["ctok"] = q["ctok"]
 
         self_base = f"{request.url.scheme}://{request.url.netloc}{request.url.path}"
-        playlist = _rewrite_hls(resp.text, source, self_base, passthrough)
+        playlist = _rewrite_hls(
+            body.decode("utf-8", errors="replace"), source, self_base, passthrough
+        )
 
         return Response(
             content=playlist,
@@ -363,9 +382,9 @@ class ProxyService:
             return JSONResponse(
                 {"error": "Proxying to this host is not allowed"}, status_code=403
             )
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - keep transport details out of the response
             logger.warning("stream proxy request failed for %s: %s", source, exc)
-            return JSONResponse({"error": f"Upstream error: {exc}"}, status_code=502)
+            return JSONResponse({"error": "Upstream request failed"}, status_code=502)
 
         if upstream.status_code >= 400:
             status = upstream.status_code
@@ -376,9 +395,9 @@ class ProxyService:
         # curl_cffi transparently decompresses the body, so `aiter_content()`
         # below yields DECODED bytes. That makes the upstream Content-Encoding
         # and (compressed) Content-Length lies about what we actually stream --
-        # forwarding them made the browser try to gunzip already-plain text
-        # (YouTube/Vimeo gzip their timedtext captions), which failed with a
-        # decode error and showed an empty track. So never forward the upstream
+        # forwarding them would make the browser try to gunzip already-plain
+        # text (YouTube/Vimeo gzip their timedtext captions), fail with a
+        # decode error, and show an empty track. So never forward the upstream
         # transfer encoding: drop it here and re-assert identity below. When the
         # upstream was compressed, its Content-Length is the compressed size and
         # is now wrong too, so drop that as well and let the response stream

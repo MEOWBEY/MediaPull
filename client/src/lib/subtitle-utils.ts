@@ -126,3 +126,19 @@ export function segmentsToSrtUrl(segments: SubtitleSegment[]): string {
 		new Blob([segmentsToSrt(segments)], { type: 'application/x-subrip' })
 	);
 }
+
+/** Release a track's blob URLs when the track is replaced or discarded.
+ *  A blob URL keeps its backing blob alive until revoked, so rebuilding
+ *  tracks without revoking the old URLs accumulates memory over a long
+ *  session. Server-hosted URLs pass through untouched. Only call this on a
+ *  track nothing renders anymore — never on one a player's `<track>`
+ *  element is still showing. */
+export function revokeTrackUrls(
+	track: { vttUrl?: string; srtUrl?: string } | null | undefined
+): void {
+	for (const url of [track?.vttUrl, track?.srtUrl]) {
+		if (url?.startsWith('blob:')) {
+			URL.revokeObjectURL(url);
+		}
+	}
+}

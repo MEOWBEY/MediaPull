@@ -74,9 +74,9 @@ export const en = {
 	'extract.videoOnly': 'no sound',
 	'extract.videoOnlyHint':
 		'This quality has no audio (adaptive stream). It plays silently but can still be downloaded.',
-	'extract.youtubeNote':
-		'YouTube serves higher resolutions as silent video-only streams, hidden by default. To get them, turn on “Show video-only qualities” in Settings → Playback.',
-	'extract.youtubeNoteAction': 'Open Playback settings',
+	'extract.videoOnlyNote':
+		'This source also offers higher resolutions as silent video-only streams, hidden by default. To get them, turn on “Show video-only qualities” in Settings → Player.',
+	'extract.videoOnlyNoteAction': 'Open Player settings',
 	'gallery.heading': 'Images',
 	'gallery.resultCount': '{n} images extracted',
 	'gallery.imageAlt': 'Image {n}',
@@ -352,9 +352,9 @@ export const fa: Record<MessageKey, string> = {
 	'extract.videoOnly': 'بدون صدا',
 	'extract.videoOnlyHint':
 		'این کیفیت صدا ندارد (پخش تطبیقی). ویدیو بی‌صدا پخش می‌شود، اما همچنان قابل‌دانلود است.',
-	'extract.youtubeNote':
-		'یوتیوب کیفیت‌های بالاتر را به‌صورت جریان بی‌صدا (فقط ویدیو) ارائه می‌دهد که به‌طور پیش‌فرض پنهان است. برای دریافت آن‌ها، گزینهٔ «نمایش کیفیت‌های فقط‌ویدیو» را در تنظیمات ← پخش‌کننده روشن کنید.',
-	'extract.youtubeNoteAction': 'باز کردن تنظیمات پخش‌کننده',
+	'extract.videoOnlyNote':
+		'این منبع کیفیت‌های بالاتر را به‌صورت جریان بی‌صدا (فقط ویدیو) نیز ارائه می‌دهد که به‌طور پیش‌فرض پنهان است. برای دریافت آن‌ها، گزینهٔ «نمایش کیفیت‌های فقط‌ویدیو» را در تنظیمات ← پخش‌کننده روشن کنید.',
+	'extract.videoOnlyNoteAction': 'باز کردن تنظیمات پخش‌کننده',
 	'gallery.heading': 'تصاویر',
 	'gallery.resultCount': '{n} تصویر استخراج شد',
 	'gallery.imageAlt': 'تصویر {n}',

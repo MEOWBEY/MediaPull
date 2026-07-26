@@ -11,7 +11,12 @@ import { toast } from 'svelte-sonner';
 import { cancelTranscription, startTranscription, type TranscribeSource } from '$lib/api/transcribe';
 import { resolveApiUrl } from '$lib/config';
 import { i18n } from '$lib/i18n/index.svelte';
-import { fetchAndParseVtt, segmentsToSrtUrl, segmentsToVttUrl } from '$lib/subtitle-utils';
+import {
+	fetchAndParseVtt,
+	revokeTrackUrls,
+	segmentsToSrtUrl,
+	segmentsToVttUrl
+} from '$lib/subtitle-utils';
 import type { SubtitleTrackResult, TranscribeStatus } from '$lib/types';
 
 export type { SubtitleTrackResult } from '$lib/types';
@@ -74,7 +79,7 @@ function stageLabel(status: TranscribeStatus): string {
 		case 'building_subtitles':
 			return t('subtitles.stage.finalizing');
 		case 'dialogue_map':
-		case 'waveform': // legacy detail string
+		case 'waveform': // older servers send this instead of 'dialogue_map'
 			return t('subtitles.stage.dialogueMap');
 	}
 
@@ -121,20 +126,44 @@ export class TranscriptionController {
 	}
 
 	async generate(source: TranscribeSource): Promise<void> {
+		// Supersede any job still in flight: abort it, close its stream, and
+		// clear its trickle timer so the old run can't keep writing into this
+		// shared state — and tell the server to free the old job's slot.
+		this.controller?.abort();
+		this.stopStream();
+		this.stopTrickle();
+		if (this.jobId) {
+			void cancelTranscription(this.jobId).catch(() => {});
+		}
+
+		const controller = new AbortController();
+
+		this.controller = controller;
 		this.error = null;
 		this.progress = 0;
 		this.serverProgress = 0;
 		this.stepLabel = t('subtitles.generating');
 		this.isRunning = true;
-		this.controller = new AbortController();
 		this.jobId = null;
 		this.startTrickle();
 
 		try {
-			this.track = await this.runJob(source);
+			const result = await this.runJob(source);
+
+			// A job that was superseded/cancelled while its final fetch was in
+			// flight can still resolve — its result must not clobber the state
+			// the newer run (or the idle UI) now owns.
+			if (controller.signal.aborted) {
+				return;
+			}
+
+			// The old track is being replaced and nothing renders it past this
+			// assignment — release its blob URLs so they don't accumulate.
+			revokeTrackUrls(this.track);
+			this.track = result;
 			this.progress = 1;
 		} catch (err) {
-			if (this.controller.signal.aborted) {
+			if (controller.signal.aborted) {
 				return;
 			}
 
@@ -143,9 +172,13 @@ export class TranscriptionController {
 			this.error = message;
 			toast.error(message);
 		} finally {
-			this.isRunning = false;
-			this.stopStream();
-			this.stopTrickle();
+			// Only the latest run may tear down the shared flags/stream/timer —
+			// a newer generate() owns them now.
+			if (this.controller === controller) {
+				this.isRunning = false;
+				this.stopStream();
+				this.stopTrickle();
+			}
 		}
 	}
 

@@ -93,8 +93,8 @@ async function mintTokensFor(
 /**
  * Attach one Settings-cookies token to every item, then mint any leftover
  * Cookie headers (rare after server-side strip). Prefer *cookiesText* — that
- * is what the user pasted for this host; extract JSON no longer carries
- * Cookie (session leak fix).
+ * is what the user pasted for this host; extract JSON deliberately omits
+ * Cookie headers (they would leak sessions on multi-user deploys).
  */
 async function applyCookieTokens(
 	items: Array<{ httpHeaders?: Record<string, string> | null; cookieToken?: string }>,

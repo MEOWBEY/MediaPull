@@ -40,7 +40,89 @@ interface PostOptions {
 
 const DEFAULT_TIMEOUT = 3 * 60 * 1000; // extraction + link validation can take a while
 
-const inFlight = new Map<string, Promise<unknown>>();
+interface InFlightEntry {
+	promise: Promise<unknown>;
+	/** Drives the shared fetch — aborted only once every attached caller has aborted. */
+	controller: AbortController;
+	/** Callers that could still abort and are waiting on the shared promise. */
+	waiters: number;
+}
+
+const inFlight = new Map<string, InFlightEntry>();
+
+/** Attach one caller to a shared in-flight request. The caller's own signal
+ *  rejects only THAT caller's promise; the underlying fetch is aborted once
+ *  every attached caller has aborted, so one caller unmounting/cancelling
+ *  can't kill a request another still-mounted caller is waiting on. */
+function attachCaller<T>(entry: InFlightEntry, signal?: AbortSignal): Promise<T> {
+	const shared = entry.promise as Promise<T>;
+
+	if (!signal) {return shared;}
+
+	entry.waiters++;
+
+	return new Promise<T>((resolve, reject) => {
+		let settled = false;
+
+		const onAbort = () => {
+			if (settled) {return;}
+			settled = true;
+			if (--entry.waiters === 0) {entry.controller.abort(signal.reason);}
+			reject(new ApiError('Request cancelled', { aborted: true }));
+		};
+
+		if (signal.aborted) {
+			onAbort();
+
+			return;
+		}
+		signal.addEventListener('abort', onAbort, { once: true });
+		shared.then(
+			(value) => {
+				if (settled) {return;}
+				settled = true;
+				signal.removeEventListener('abort', onAbort);
+				resolve(value);
+			},
+			(error) => {
+				if (settled) {return;}
+				settled = true;
+				signal.removeEventListener('abort', onAbort);
+				reject(error);
+			}
+		);
+	});
+}
+
+/** Share one underlying request per key. The fetch runs on an internal
+ *  signal (plus the first caller's timeout); each caller's AbortSignal is
+ *  handled per-caller via `attachCaller`. */
+function dedupe<T>(
+	key: string,
+	options: PostOptions,
+	run: (options: PostOptions) => Promise<T>
+): Promise<T> {
+	let entry = inFlight.get(key);
+
+	if (!entry) {
+		const controller = new AbortController();
+		const created: InFlightEntry = { controller, waiters: 0, promise: Promise.resolve() };
+
+		created.promise = run({ timeoutMs: options.timeoutMs, signal: controller.signal }).finally(
+			() => {
+				if (inFlight.get(key) === created) {inFlight.delete(key);}
+			}
+		);
+		// Callers observe rejections through their per-caller wrappers, which
+		// detach on abort — this no-op handler keeps a rejection that lands
+		// after every caller has aborted from surfacing as unhandled.
+		void created.promise.catch(() => {});
+		inFlight.set(key, created);
+		entry = created;
+	}
+
+	return attachCaller<T>(entry, options.signal);
+}
 
 /**
  * Pull the most descriptive message out of an error body. Our handlers send
@@ -136,16 +218,9 @@ async function rawPost<T>(endpoint: string, body: unknown, options: PostOptions)
 
 /** POST with in-flight de-duplication keyed by endpoint+body. */
 export function post<T>(endpoint: string, body: unknown, options: PostOptions = {}): Promise<T> {
-	const key = `POST ${endpoint}:${JSON.stringify(body)}`;
-	const existing = inFlight.get(key);
-
-	if (existing) {return existing as Promise<T>;}
-
-	const promise = rawPost<T>(endpoint, body, options).finally(() => inFlight.delete(key));
-
-	inFlight.set(key, promise);
-
-	return promise;
+	return dedupe(`POST ${endpoint}:${JSON.stringify(body)}`, options, (opts) =>
+		rawPost<T>(endpoint, body, opts)
+	);
 }
 
 async function rawPostGallery<T>(endpoint: string, body: unknown, options: PostOptions): Promise<T> {
@@ -167,16 +242,9 @@ async function rawPostGallery<T>(endpoint: string, body: unknown, options: PostO
  *  but for `/extract-gallery`-style responses, which wrap their payload
  *  under `gallery` instead of `video`. */
 export function postGallery<T>(endpoint: string, body: unknown, options: PostOptions = {}): Promise<T> {
-	const key = `POST ${endpoint}:${JSON.stringify(body)}`;
-	const existing = inFlight.get(key);
-
-	if (existing) {return existing as Promise<T>;}
-
-	const promise = rawPostGallery<T>(endpoint, body, options).finally(() => inFlight.delete(key));
-
-	inFlight.set(key, promise);
-
-	return promise;
+	return dedupe(`POST ${endpoint}:${JSON.stringify(body)}`, options, (opts) =>
+		rawPostGallery<T>(endpoint, body, opts)
+	);
 }
 
 async function rawJson<T>(
@@ -195,20 +263,13 @@ async function rawJson<T>(
 
 /** POST returning the raw JSON body (no `{success, video}` envelope). */
 export function postJson<T>(endpoint: string, body: unknown, options: PostOptions = {}): Promise<T> {
-	const key = `POST ${endpoint}:${JSON.stringify(body)}`;
-	const existing = inFlight.get(key);
-
-	if (existing) {return existing as Promise<T>;}
-
-	const promise = rawJson<T>(
-		endpoint,
-		{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
-		options
-	).finally(() => inFlight.delete(key));
-
-	inFlight.set(key, promise);
-
-	return promise;
+	return dedupe(`POST ${endpoint}:${JSON.stringify(body)}`, options, (opts) =>
+		rawJson<T>(
+			endpoint,
+			{ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+			opts
+		)
+	);
 }
 
 /** GET returning the raw JSON body. Not de-duplicated — each call (e.g. a

@@ -121,6 +121,9 @@
 					id="video-url"
 					name="url"
 					bind:value={inputUrl}
+					aria-label={contentTypeMode === 'gallery'
+						? t('input.placeholderGallery')
+						: t('input.placeholder')}
 					placeholder={contentTypeMode === 'gallery'
 						? t('input.placeholderGallery')
 						: t('input.placeholder')}

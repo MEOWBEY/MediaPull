@@ -152,8 +152,8 @@ class GalleryExtractor:
         images, skipped = self._parse_dump_json(proc.stdout)
 
         # Prefer stderr classification whenever the run failed or produced no
-        # images — partial/non-JSON stdout used to surface as a misleading
-        # "No images found" 422 instead of login/rate-limit guidance.
+        # images — so partial/non-JSON stdout surfaces login/rate-limit
+        # guidance instead of a misleading "No images found" 422.
         if proc.returncode != 0 or not images:
             if proc.returncode != 0 or (proc.stderr or "").strip():
                 status, message = classify_extraction_error(

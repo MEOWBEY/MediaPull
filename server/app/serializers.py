@@ -54,6 +54,8 @@ def to_client_video(info: VideoInfo) -> ClientVideo:
                 source_video_url=fmt.url,
                 http_headers=_public_headers(fmt.http_headers),
                 video_only=fmt.video_only,
+                acodec=fmt.acodec,
+                vcodec=fmt.vcodec,
             )
             for fmt in info.formats
         ],

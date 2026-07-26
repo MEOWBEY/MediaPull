@@ -11,8 +11,9 @@ export type PreferencesTab = 'general' | 'library' | 'playback' | 'cookies';
 class UiStore {
 	preferencesOpen = $state(false);
 	// When a caller wants to land the user on a specific tab (e.g. the error
-	// banner's "add cookies", the YouTube note's "open settings"). Null = leave
-	// the dialog on whatever tab it last showed. Consumed + cleared by the dialog.
+	// banner's "add cookies", the video-only note's "open settings"). Null =
+	// leave the dialog on whatever tab it last showed. Consumed + cleared by
+	// the dialog.
 	preferencesTab = $state<PreferencesTab | null>(null);
 
 	openPreferences(tab: PreferencesTab | null = null) {
