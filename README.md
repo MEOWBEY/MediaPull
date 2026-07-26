@@ -278,3 +278,7 @@ own uploads, content you have rights to, or material whose license permits it.
 You are responsible for complying with the terms of service of the sites you
 point it at and with the copyright law of your jurisdiction. Don't use it to
 infringe copyright or bypass access controls you aren't entitled to.
+
+## License
+
+[MIT](LICENSE)

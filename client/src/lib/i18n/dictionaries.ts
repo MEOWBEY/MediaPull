@@ -20,8 +20,6 @@ export const en = {
 	'hero.titleLead': 'Paste a link.',
 	'hero.titleHighlight': 'Get the media.',
 	'hero.titleTrail': '',
-	'hero.subtitle':
-		'Extract downloadable video formats and image galleries from any page URL. Preview and download media, generate subtitles, use cookies for signed-in sites, or enable the proxy when direct playback fails.',
 	'input.placeholder': 'Paste a page or video URL…',
 	'input.placeholderGallery': 'Paste a gallery page URL…',
 	'input.batchHint': '{n} links detected — they’ll be processed one at a time.',
@@ -29,7 +27,6 @@ export const en = {
 	'input.paste': 'Paste',
 	'input.pasteHint':
 		'Clipboard blocked on this device — paste with your keyboard or long-press → Paste.',
-	'input.pasteFailed': 'Couldn’t read the clipboard — paste manually instead.',
 	// "Settings" everywhere a user reads it — other strings deep-link with
 	// "Settings → Cookies" / "Settings → Player", so the panel must carry the
 	// same name.
@@ -38,39 +35,19 @@ export const en = {
 	'input.extract': 'Extract links',
 	'input.extracting': 'Extracting…',
 	'input.cancel': 'Cancel',
-	'input.jumpToInput': 'New extraction',
 	'empty.title': 'Ready when you are',
 	'empty.body':
 		'Paste a page URL above. MediaPull will show the available video formats or image gallery here.',
 	'extract.heading': 'Videos',
-	'extract.proxyMode': 'Via server',
-	'extract.proxyHint':
-		'Stream and download through our server. Turn on if the direct link is blocked or won’t play.',
 	'extract.sourceUnknown': 'Unknown source',
 	'extract.removeGroup': 'Remove all from this source',
 	'extract.refreshGroup': 'Refresh',
-	'extract.remove': 'Remove',
-	'extract.copyAll': 'Copy all',
-	'extract.searchPlaceholder': 'Filter by title, source, type, or quality…',
-	'extract.noMatches': 'No results match your filter.',
-	'extract.export': 'Export',
-	'extract.retryAsGallery': 'Wrong type? Retry as a gallery',
-	'extract.retryAsVideo': 'Wrong type? Retry as a video',
 	'extract.exportTxt': 'Links (.txt)',
 	'extract.exportM3u': 'Playlist (.m3u)',
 	'extract.copyOriginalUrl': 'Copy original URL',
-	'extract.hint':
-		'If a video won’t play, try another quality, switch proxy mode, or open the URL in an external player.',
-	'extract.qualityOne': 'quality',
-	'extract.qualityMany': 'qualities',
 	'extract.untitled': 'Untitled',
 	'extract.copyUrl': 'Copy URL',
 	'extract.download': 'Download',
-	'extract.downloadBest': 'Download',
-	'extract.copyBest': 'Copy link',
-	'extract.showAllQualities': 'All qualities ({n})',
-	'extract.hideQualities': 'Hide qualities',
-	'extract.moreActions': 'More',
 	'extract.showQr': 'Show QR code',
 	'extract.loading': 'Extracting links…',
 	'extract.resultCount': '{n} links extracted',
@@ -80,15 +57,17 @@ export const en = {
 	'extract.videoOnlyNote':
 		'This source also offers higher resolutions as silent video-only streams, hidden by default. To get them, turn on “Show video-only qualities” in Settings → Player.',
 	'extract.videoOnlyNoteAction': 'Open Player settings',
+	'extract.viaServer': 'Via server',
+	'extract.viaServerHint':
+		'Play and download this card through the server. Turn on if the direct link is blocked or won’t play.',
+	'extract.proxyMode': 'Via server',
+	'extract.proxyHint':
+		'Links for this video are routed through the MediaPull server — useful when direct links are blocked. Click to switch to direct links.',
 	'gallery.heading': 'Images',
 	'gallery.resultCount': '{n} images extracted',
 	'gallery.imageAlt': 'Image {n}',
 	'gallery.copyImageUrl': 'Copy image URL',
 	'gallery.downloadImage': 'Download image',
-	'gallery.showQr': 'Show QR code',
-	'gallery.loading': 'Extracting images…',
-	'gallery.imageCountOne': 'image',
-	'gallery.imageCountMany': 'images',
 	'gallery.showAll': 'Show all {n} images',
 	'gallery.showLess': 'Show less',
 	'gallery.prevImage': 'Previous image',
@@ -120,8 +99,6 @@ export const en = {
 		'No subtitles for this video yet. Generate them to read, search, and download the transcript.',
 	'subtitles.panel.scrollToActive': 'Scroll to current line',
 	'subtitles.panel.jump': 'Current line',
-	'subtitles.existingTrack': 'Use existing “{label}” subtitles',
-	'subtitles.error.notConfigured': 'Automatic subtitles are not configured on this server.',
 	'subtitles.error.generic': 'Could not generate subtitles for this video.',
 	'subtitles.error.fetchFailed': 'Could not load this subtitle track. Try again.',
 	'subtitles.info.alreadyLoading': 'Captions are already loading — please wait…',
@@ -136,8 +113,6 @@ export const en = {
 	'subtitles.stage.transcribingChunks': 'Transcribing… ({done} of {total})',
 	'subtitles.stage.finalizing': 'Building subtitles…',
 	'subtitles.stage.dialogueMap': 'Building dialogue map…',
-	'subtitles.stage.waveform': 'Building dialogue map…',
-	'dialogueMap.aria': 'Dialogue map — click to seek',
 	'gallery.downloadAll': 'Download all',
 	'gallery.downloadingAll': 'Downloading {done}/{total}…',
 	'gallery.downloadAllDone': 'Downloaded {n} images',
@@ -186,7 +161,6 @@ export const en = {
 	'toast.copied': 'Link copied to clipboard',
 	'toast.copyFailed': 'Couldn’t copy the link',
 	'toast.downloadStarted': 'Download started: {name}',
-	'toast.copiedAll': 'Copied {count} links',
 	'toast.exported': 'File downloaded',
 	'toast.nothingToExport': 'Nothing to export',
 	'toast.downloadFailed': 'Couldn’t start the download',
@@ -202,9 +176,8 @@ export const en = {
 	'errorPage.unknown': 'Unknown error',
 	'errorPage.home': 'Back to Home',
 	'prefs.title': 'Settings',
-	'prefs.subtitle': 'Customize the interface, playback, and stored data.',
 	'prefs.tab.general': 'General',
-	'prefs.tab.library': 'Downloads',
+	'prefs.tab.library': 'Library',
 	'prefs.tab.playback': 'Player',
 	'prefs.tab.cookies': 'Cookies',
 	'prefs.confirmClear':
@@ -269,7 +242,6 @@ export const en = {
 	'cookies.add': 'Add',
 	'cookies.edit': 'Edit',
 	'cookies.save': 'Save',
-	'cookies.clear': 'Clear',
 	'cookies.cancel': 'Cancel',
 	'cookies.placeholder': 'Paste the contents of cookies.txt for {site} here…',
 	'cookies.customTitle': 'Other site',
@@ -290,7 +262,6 @@ export const en = {
 		'Cookies are sensitive and remain only in this browser. Do not use this feature on a shared computer.',
 	'cookies.clearAll': 'Remove all cookies',
 	'cookies.clearedAllToast': 'All cookies removed',
-	'cookies.hint': 'Tip: add your cookies in Settings → Cookies to access this content.'
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -302,8 +273,6 @@ export const fa: Record<MessageKey, string> = {
 	'hero.titleLead': 'لینک را وارد کنید؛',
 	'hero.titleHighlight': 'رسانه را دریافت کنید.',
 	'hero.titleTrail': '',
-	'hero.subtitle':
-		'فرمت‌های قابل‌دانلود ویدیو و عکسهای تصویر را از نشانی صفحه استخراج کنید. رسانه را پیش‌نمایش و دانلود کنید، زیرنویس بسازید، برای سایت‌های نیازمند ورود از کوکی استفاده کنید و در صورت پخش‌نشدن مستقیم، پروکسی را فعال کنید.',
 	'input.placeholder': 'نشانی صفحه یا ویدیو را وارد کنید…',
 	'input.placeholderGallery': 'نشانی صفحهٔ گالری را وارد کنید…',
 	'input.batchHint': '{n} لینک شناسایی شد؛ لینک‌ها یکی‌یکی پردازش می‌شوند.',
@@ -311,45 +280,24 @@ export const fa: Record<MessageKey, string> = {
 	'input.paste': 'چسباندن',
 	'input.pasteHint':
 		'دسترسی به کلیپ‌بورد در این دستگاه مسدود است؛ با صفحه‌کلید یا با لمس طولانی و انتخاب «چسباندن»، محتوا را وارد کنید.',
-	'input.pasteFailed': 'خواندن کلیپ‌بورد ممکن نبود؛ محتوا را به‌صورت دستی بچسبانید.',
 	'input.preferences': 'تنظیمات',
 	'input.mode': 'حالت استخراج',
 	'input.extract': 'استخراج لینک‌ها',
 	'input.extracting': 'در حال استخراج…',
 	'input.cancel': 'لغو',
-	'input.jumpToInput': 'استخراج جدید',
 	'empty.title': 'آمادهٔ دریافت لینک',
 	'empty.body':
 		'نشانی صفحه را در کادر بالا وارد کنید. مدیاپول فرمت‌های ویدیو یا گالری تصاویر را اینجا نمایش می‌دهد.',
 	'extract.heading': 'ویدیوها',
-	'extract.proxyMode': 'از طریق سرور',
-	'extract.proxyHint':
-		'پخش و دانلود از طریق سرور ما انجام می‌شود. اگر لینک مستقیم مسدود است یا پخش نمی‌شود، این گزینه را فعال کنید.',
 	'extract.sourceUnknown': 'منبع ناشناخته',
 	'extract.removeGroup': 'حذف همهٔ موارد این منبع',
 	'extract.refreshGroup': 'به‌روزرسانی',
-	'extract.remove': 'حذف',
-	'extract.copyAll': 'کپی همه',
-	'extract.searchPlaceholder': 'فیلتر بر اساس عنوان، منبع، نوع یا کیفیت…',
-	'extract.noMatches': 'نتیجه‌ای مطابق فیلتر یافت نشد.',
-	'extract.export': 'خروجی',
-	'extract.retryAsGallery': 'نوع محتوا درست نیست؟ استخراج به‌صورت گالری',
-	'extract.retryAsVideo': 'نوع محتوا درست نیست؟ استخراج به‌صورت ویدیو',
 	'extract.exportTxt': 'لینک‌ها (.txt)',
 	'extract.exportM3u': 'فهرست پخش (.m3u)',
 	'extract.copyOriginalUrl': 'کپی نشانی اصلی',
-	'extract.hint':
-		'اگر ویدیو پخش نمی‌شود، کیفیت دیگری را انتخاب کنید، حالت پروکسی را تغییر دهید یا لینک را در پخش‌کننده‌ای دیگر باز کنید.',
-	'extract.qualityOne': 'کیفیت',
-	'extract.qualityMany': 'کیفیت',
 	'extract.untitled': 'بدون عنوان',
 	'extract.copyUrl': 'کپی لینک',
 	'extract.download': 'دانلود',
-	'extract.downloadBest': 'دانلود',
-	'extract.copyBest': 'کپی لینک',
-	'extract.showAllQualities': 'همهٔ کیفیت‌ها ({n})',
-	'extract.hideQualities': 'پنهان‌کردن کیفیت‌ها',
-	'extract.moreActions': 'بیشتر',
 	'extract.showQr': 'نمایش کد QR',
 	'extract.loading': 'در حال استخراج لینک‌ها…',
 	'extract.resultCount': '{n} لینک استخراج شد',
@@ -359,15 +307,17 @@ export const fa: Record<MessageKey, string> = {
 	'extract.videoOnlyNote':
 		'این منبع کیفیت‌های بالاتر را به‌صورت جریان بی‌صدا (فقط ویدیو) نیز ارائه می‌دهد که به‌طور پیش‌فرض پنهان است. برای دریافت آن‌ها، گزینهٔ «نمایش کیفیت‌های فقط‌ویدیو» را در تنظیمات ← پخش‌کننده روشن کنید.',
 	'extract.videoOnlyNoteAction': 'باز کردن تنظیمات پخش‌کننده',
+	'extract.viaServer': 'از طریق سرور',
+	'extract.viaServerHint':
+		'پخش و دانلود این کارت از طریق سرور انجام می‌شود. اگر لینک مستقیم مسدود است یا پخش نمی‌شود، روشنش کنید.',
+	'extract.proxyMode': 'از طریق سرور',
+	'extract.proxyHint':
+		'لینک‌های این ویدیو از طریق سرور مدیاپول عبور می‌کنند — وقتی لینک مستقیم مسدود است کاربرد دارد. برای استفاده از لینک مستقیم کلیک کنید.',
 	'gallery.heading': 'تصاویر',
 	'gallery.resultCount': '{n} تصویر استخراج شد',
 	'gallery.imageAlt': 'تصویر {n}',
 	'gallery.copyImageUrl': 'کپی لینک تصویر',
 	'gallery.downloadImage': 'دانلود تصویر',
-	'gallery.showQr': 'نمایش کد QR',
-	'gallery.loading': 'در حال استخراج تصاویر…',
-	'gallery.imageCountOne': 'تصویر',
-	'gallery.imageCountMany': 'تصویر',
 	'gallery.showAll': 'نمایش هر {n} تصویر',
 	'gallery.showLess': 'نمایش کمتر',
 	'gallery.prevImage': 'تصویر قبلی',
@@ -399,8 +349,6 @@ export const fa: Record<MessageKey, string> = {
 		'هنوز زیرنویسی برای این ویدیو وجود ندارد. برای خواندن، جست‌وجو و دانلود متن، زیرنویس را بسازید.',
 	'subtitles.panel.scrollToActive': 'رفتن به خط در حال پخش',
 	'subtitles.panel.jump': 'خط فعلی',
-	'subtitles.existingTrack': 'استفاده از زیرنویس موجود «{label}»',
-	'subtitles.error.notConfigured': 'زیرنویس خودکار روی این سرور پیکربندی نشده است.',
 	'subtitles.error.generic': 'ساخت زیرنویس برای این ویدیو ممکن نبود.',
 	'subtitles.error.fetchFailed': 'بارگذاری این زیرنویس ممکن نبود. دوباره تلاش کنید.',
 	'subtitles.info.alreadyLoading': 'زیرنویس در حال بارگذاری است؛ لطفاً صبر کنید…',
@@ -415,8 +363,6 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.stage.transcribingChunks': 'در حال تبدیل گفتار به متن… ({done} از {total})',
 	'subtitles.stage.finalizing': 'در حال ساخت زیرنویس…',
 	'subtitles.stage.dialogueMap': 'در حال ساخت نقشهٔ گفت‌وگو…',
-	'subtitles.stage.waveform': 'در حال ساخت نقشهٔ گفت‌وگو…',
-	'dialogueMap.aria': 'نقشهٔ گفت‌وگو — برای رفتن به زمان موردنظر کلیک کنید',
 	'gallery.downloadAll': 'دانلود همه',
 	'gallery.downloadingAll': 'در حال دانلود {done} از {total}…',
 	'gallery.downloadAllDone': '{n} تصویر دانلود شد',
@@ -466,7 +412,6 @@ export const fa: Record<MessageKey, string> = {
 	'toast.copied': 'لینک در کلیپ‌بورد کپی شد',
 	'toast.copyFailed': 'کپی‌کردن لینک ناموفق بود',
 	'toast.downloadStarted': 'دانلود آغاز شد: {name}',
-	'toast.copiedAll': '{count} لینک کپی شد',
 	'toast.exported': 'فایل دانلود شد',
 	'toast.nothingToExport': 'موردی برای خروجی‌گرفتن وجود ندارد',
 	'toast.downloadFailed': 'شروع دانلود ممکن نبود',
@@ -482,9 +427,8 @@ export const fa: Record<MessageKey, string> = {
 	'errorPage.unknown': 'خطای ناشناخته',
 	'errorPage.home': 'بازگشت به صفحهٔ اصلی',
 	'prefs.title': 'تنظیمات',
-	'prefs.subtitle': 'رابط کاربری، پخش و داده‌های ذخیره‌شده را شخصی‌سازی کنید.',
 	'prefs.tab.general': 'عمومی',
-	'prefs.tab.library': 'دانلودها',
+	'prefs.tab.library': 'کتابخانه',
 	'prefs.tab.playback': 'پخش‌کننده',
 	'prefs.tab.cookies': 'کوکی‌ها',
 	'prefs.confirmClear': 'کل کتابخانه پاک شود؟ همهٔ ویدیوها و عکسهای استخراج‌شده حذف خواهند شد.',
@@ -548,7 +492,6 @@ export const fa: Record<MessageKey, string> = {
 	'cookies.add': 'افزودن',
 	'cookies.edit': 'ویرایش',
 	'cookies.save': 'ذخیره',
-	'cookies.clear': 'پاک‌کردن',
 	'cookies.cancel': 'لغو',
 	'cookies.placeholder': 'محتوای فایل cookies.txt مربوط به {site} را اینجا وارد کنید…',
 	'cookies.customTitle': 'سایت دیگر',
@@ -568,12 +511,10 @@ export const fa: Record<MessageKey, string> = {
 	'cookies.warnLocal':
 		'کوکی‌ها اطلاعات حساسی هستند و فقط در همین مرورگر باقی می‌مانند. در رایانهٔ مشترک از این قابلیت استفاده نکنید.',
 	'cookies.clearAll': 'حذف همهٔ کوکی‌ها',
-	'cookies.clearedAllToast': 'همهٔ کوکی‌ها حذف شد',
-	'cookies.hint':
-		'نکته: برای دسترسی به این محتوا، کوکی‌ها را از مسیر «تنظیمات ← کوکی‌ها» اضافه کنید.'
+	'cookies.clearedAllToast': 'همهٔ کوکی‌ها حذف شد'
 };
 
 export const DICTIONARIES: Record<Locale, Record<MessageKey, string>> = {
 	en,
 	fa
-};
+};

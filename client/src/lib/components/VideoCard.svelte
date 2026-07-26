@@ -7,6 +7,7 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import QrCode from '@lucide/svelte/icons/qr-code';
+	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import X from '@lucide/svelte/icons/x';
 	import { toast } from 'svelte-sonner';
 
@@ -233,7 +234,7 @@
 						role="tab"
 						aria-selected={i === activeGroupIndex}
 						onclick={() => playerHandle?.switchGroup(i)}
-						class="relative shrink-0 cursor-pointer whitespace-nowrap font-mono text-xs font-semibold tracking-wide uppercase transition-colors sm:text-sm -mb-px pt-1 pb-2 lg:mb-0 lg:-ms-px lg:border-s-2 lg:py-1.5 lg:ps-3 lg:text-start {i ===
+						class="px-1 relative shrink-0 cursor-pointer whitespace-nowrap font-mono text-xs font-semibold tracking-wide uppercase transition-colors sm:text-sm -mb-px pt-1 pb-2 lg:mb-0 lg:-ms-px lg:border-s-2 lg:py-1.5 lg:ps-3 lg:text-start {i ===
 						activeGroupIndex
 							? 'text-signal lg:border-signal'
 							: 'text-muted-foreground hover:text-foreground lg:border-transparent'}"
@@ -272,6 +273,20 @@
 					<span class="inline-flex min-w-0 items-center gap-1 truncate" title={publishDate}>
 						<Calendar class="h-3 w-3 shrink-0" /><span class="truncate">{publishDate}</span>
 					</span>
+				{/if}
+				{#if useProxy}
+					<!-- Shown only while this card's links route through the server; the
+					     chip doubles as the off-switch. Turning routing ON lives in
+					     Settings (global) and the player's error overlay (per card). -->
+					<button
+						type="button"
+						onclick={onToggleProxy}
+						title={t('extract.proxyHint')}
+						aria-pressed="true"
+						class="border-border/70 text-muted-foreground hover:text-foreground inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-md border px-2 text-xs sm:h-6"
+					>
+						<Waypoints class="h-3 w-3" />{t('extract.viaServer')}
+					</button>
 				{/if}
 			</div>
 
