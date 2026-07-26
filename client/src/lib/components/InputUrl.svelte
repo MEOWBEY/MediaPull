@@ -107,10 +107,18 @@
 </script>
 
 <div class="mx-auto w-full text-start">
-	<form class="ds-glass shadow-float overflow-hidden rounded-lg" onsubmit={onSubmit}>
-		<!-- Input row: a mono `URL>` prompt makes the field read as a command line. -->
+	<!-- focus-within border: the URL input itself is borderless inside this
+	     container, so the container must carry the visible keyboard-focus cue. -->
+	<form
+		class="ds-glass shadow-float focus-within:border-signal/60 overflow-hidden rounded-lg transition-colors"
+		onsubmit={onSubmit}
+	>
+		<!-- Input row: a mono `URL>` prompt makes the field read as a command line.
+		     dir=ltr pins the `>` after "URL" — as bidi-neutral punctuation it would
+		     otherwise mirror to the wrong side under RTL. -->
 		<div class="flex items-center gap-2 ps-3.5 pe-2 py-2">
 			<span
+				dir="ltr"
 				class="text-signal font-mono text-sm font-bold select-none"
 				aria-hidden="true"
 			>
@@ -131,7 +139,7 @@
 					autocomplete="on"
 					autocapitalize="off"
 					spellcheck="false"
-					class="placeholder:text-muted-foreground/60 h-10 w-full border-0 bg-transparent pe-9 font-mono text-sm outline-none disabled:opacity-60 sm:text-base"
+					class="placeholder:text-muted-foreground/60 h-10 w-full border-0 bg-transparent pe-10 font-mono text-sm outline-none disabled:opacity-60 sm:text-base"
 				/>
 				{#if inputUrl}
 					<button
@@ -139,7 +147,7 @@
 						onclick={clearInputUrl}
 						disabled={isOperationRunning}
 						aria-label={t('input.clear')}
-						class="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 inset-e-0 flex h-7 w-7 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md transition-colors"
+						class="text-muted-foreground hover:bg-muted hover:text-foreground absolute top-1/2 inset-e-0 flex h-8 w-8 -translate-y-1/2 cursor-pointer items-center justify-center rounded-md transition-colors"
 					>
 						<X class="h-4 w-4" />
 					</button>
@@ -186,7 +194,7 @@
 							aria-pressed={contentTypeMode === option.mode}
 							title={t(option.labelKey)}
 							class={[
-								'flex items-center gap-1.5 px-2.5 py-1.5 transition-colors disabled:opacity-50',
+								'flex items-center gap-1.5 px-2.5 py-2 transition-colors disabled:opacity-50 sm:py-1.5',
 								i > 0 && 'border-border/70 border-s',
 								contentTypeMode === option.mode
 									? 'bg-signal/15 text-signal font-semibold'

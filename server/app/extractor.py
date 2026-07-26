@@ -33,7 +33,7 @@ from .net_common import (
     impersonate_kwarg,
     normalize_cookies,
 )
-from .ssrf import assert_public_http_url
+from .ssrf import assert_public_http_url, assert_public_resolved_url
 
 logger = logging.getLogger("mediapull.extractor")
 
@@ -128,7 +128,16 @@ def classify_extraction_error(exc: Exception | None) -> tuple[int, str]:
             "This video is private. If you have access, add your cookies in "
             "Settings → Cookies."
         )
-    if has("age", "age-restricted", "age restricted", "confirm your age", "inappropriate for some"):
+    # Specific phrases only -- a bare "age" needle would substring-match inside
+    # "page"/"message"/"usage" and misclassify unrelated errors as age-gated.
+    if has(
+        "age-restricted",
+        "age restricted",
+        "age-gated",
+        "age gate",
+        "confirm your age",
+        "inappropriate for some",
+    ):
         return 403, (
             "This video is age-restricted. Add cookies from a logged-in "
             "account in Settings → Cookies to extract it."
@@ -152,8 +161,13 @@ def classify_extraction_error(exc: Exception | None) -> tuple[int, str]:
 
 
 def is_direct_video(url: str) -> bool:
-    path = urlparse(url).path.lower()
-    return any(path.endswith(ext) or f"{ext}?" in url.lower() for ext in VIDEO_EXTENSIONS)
+    """Extension test on the URL *path* only -- an extension buried in a query
+    parameter (``?redirect=…x.mp4``) must not short-circuit real extraction."""
+    try:
+        path = urlparse(url).path.lower()
+    except ValueError:
+        return False
+    return path.endswith(VIDEO_EXTENSIONS)
 
 
 def is_valid_url(url: str) -> bool:
@@ -167,10 +181,11 @@ def is_valid_url(url: str) -> bool:
 async def _reject_nonpublic_request(request: httpx.Request) -> None:
     """httpx request hook: fires for EVERY request, including each hop of a
     followed redirect chain -- so a public page can't bounce the direct/scrape
-    fetches into localhost or a private address. Raises the httpx error type
-    the calling code already handles."""
+    fetches into localhost or a private address, whether by URL literal or by
+    a hostname that resolves to one (DNS rebinding). Raises the httpx error
+    type the calling code already handles."""
     try:
-        assert_public_http_url(str(request.url))
+        await assert_public_resolved_url(str(request.url))
     except ValueError as exc:
         raise httpx.RequestError(str(exc), request=request) from exc
 
@@ -239,8 +254,12 @@ class Extractor:
     # ----- public API ---------------------------------------------------
 
     async def extract(self, url: str, cookies: str | None = None) -> VideoInfo:
-        if not is_valid_url(url):
-            raise ValueError("Invalid URL format")
+        # Resolve-and-check the entry URL so a public-looking hostname that
+        # points at a private address is rejected before any fetch. Residual
+        # gap: yt-dlp fetches pages/media itself and follows redirects with no
+        # DNS re-check on its hops -- only the direct/scrape httpx client
+        # (via _reject_nonpublic_request) and the media proxy re-gate those.
+        await assert_public_resolved_url(url)
 
         if is_direct_video(url):
             return await self._direct_video(url)

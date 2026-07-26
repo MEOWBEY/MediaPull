@@ -55,22 +55,24 @@ def test_ctok_expired_or_unknown_token() -> None:
     assert "Cookie" not in headers
 
 
-def test_legacy_cookies_query() -> None:
+def test_raw_cookies_query_is_ignored() -> None:
+    # Cookies travel only as opaque ctok tokens -- a raw cookies= query param
+    # (which would put session cookies into URLs/logs) must never be honored.
     url = _proxy_url(
         url="https://cdn.example/v.mp4",
         protocol="https",
         cookies="a=1; b=2",
     )
     _, headers = _unwrap_proxied(url)
-    assert headers["Cookie"] == "a=1; b=2"
+    assert "Cookie" not in headers
 
 
-def test_ctok_preferred_over_legacy_cookies() -> None:
+def test_ctok_wins_and_raw_cookies_stay_ignored() -> None:
     url = _proxy_url(
         url="https://cdn.example/v.mp4",
         protocol="https",
         ctok="t1",
-        cookies="legacy=1",
+        cookies="raw=1",
     )
     _, headers = _unwrap_proxied(url, resolve_cookie_token=lambda _t: "from-token=1")
     assert headers["Cookie"] == "from-token=1"

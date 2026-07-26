@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import importlib.util
 import logging
+import os
 import secrets
 import shutil
 import sys
@@ -376,12 +377,15 @@ def create_app() -> FastAPI:
         target = Path(paths[0])
         target.parent.mkdir(parents=True, exist_ok=True)
         tmp = target.with_suffix(target.suffix + ".tmp")
-        tmp.write_text(normalized, encoding="utf-8")
-        try:
-            tmp.chmod(0o600)
-        except OSError:
-            # Best-effort on filesystems/OSes that don't honor POSIX modes.
-            pass
+        # Cookie files are secrets: the temp file must be 0600 from its very
+        # first byte (a chmod after writing leaves a world-readable window on
+        # shared hosts). O_EXCL on a freshly-unlinked name so a leftover temp
+        # file can't carry looser permissions into this write. Modes are
+        # best-effort on filesystems/OSes that don't honor POSIX bits.
+        tmp.unlink(missing_ok=True)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(normalized)
         tmp.replace(target)
 
         cookie_lines = sum(
@@ -434,6 +438,11 @@ def create_app() -> FastAPI:
             job = await app.state.jobs.create()
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.info(
+            "transcription job %s started for %s",
+            job.id,
+            payload.webpage_url or "<url not sent>",
+        )
         task = asyncio.create_task(
             run_transcription_job(
                 job.id,

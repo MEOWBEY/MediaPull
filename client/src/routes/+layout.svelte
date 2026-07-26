@@ -73,6 +73,7 @@
 					variant="ghost"
 					size="icon"
 					onclick={() => ui.openPreferences()}
+					class="h-10 w-10 sm:h-9 sm:w-9"
 					title={i18n.t('input.preferences')}
 					aria-label={i18n.t('input.preferences')}
 				>

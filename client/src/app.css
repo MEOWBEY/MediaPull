@@ -26,10 +26,23 @@
 	--signal: oklch(0.7 0.19 47); /* #FF7A18 — warm transfer amber, the one accent */
 	--signal-foreground: oklch(0.15 0.01 260); /* ink, for text on the accent */
 	/* Surface language: components read these, never raw colors. Flat + hairline
-	   by default (blur 0). A glass restyle raises --surface-blur and lowers the
-	   card translucency; a brutalist one zeroes --radius and hardens the shadow. */
-	--surface-blur: 0px;
-	--surface-translucency: 100%; /* card alpha vs page; <100% + blur = glass */
+	   by default. A glass restyle sets --surface-backdrop to a blur() and lowers
+	   the card translucency; a brutalist one zeroes --radius and hardens the
+	   shadow. --surface-backdrop must stay `none` (not blur(0px)) on the flat
+	   look: any backdrop-filter value except `none` forces the browser to build
+	   a backdrop root + compositing layer for every ds-glass surface (header,
+	   footer, input bar), which taxes scrolling for zero visual gain. */
+	--surface-backdrop: none; /* e.g. blur(12px) for a glass reskin */
+	--surface-translucency: 100%; /* card alpha vs page; <100% + backdrop = glass */
+
+	/* Motion language: one standard curve + three durations, shared by every
+	   handwritten rule below. Utility classes inherit the same feel via the
+	   @theme default-transition tokens. Small hovers ride --motion-fast;
+	   reveal/dismiss rides --motion-base. */
+	--motion-ease: cubic-bezier(0.2, 0, 0, 1);
+	--motion-fast: 120ms;
+	--motion-base: 180ms;
+	--motion-slow: 260ms;
 
 	/* --- light palette (derived from the dark source of truth) --- */
 	--background: oklch(0.945 0.003 250); /* cool light-gray page */
@@ -151,6 +164,13 @@
 }
 
 @theme {
+	/* Every `transition-*` utility that doesn't set an explicit duration/easing
+	   picks these up — one motion feel across the app instead of per-component
+	   ad-hoc values. The curve front-loads movement and settles gently (a
+	   "standard easing"), which reads crisper than the symmetric default. */
+	--default-transition-duration: 160ms;
+	--default-transition-timing-function: cubic-bezier(0.2, 0, 0, 1);
+
 	/* Monospace IS the voice of this design — labels, buttons, URLs, format/codec/
 	   size metadata, section eyebrows. Vazirmatn kept in the stack so Persian
 	   glyphs fall back cleanly (JetBrains Mono is Latin-only). */
@@ -274,13 +294,14 @@
 @layer components {
 	/* The one surface primitive: a raised panel. Flat + hairline by default; reads
 	   the style-language tokens so a reskin (glass / brutalist) needs no edits here.
-	   --surface-translucency 100% + blur 0 = solid flat panel. Lower the
-	   translucency and raise --surface-blur (in :root) to turn every ds-glass
-	   surface to frosted glass at once. */
+	   --surface-translucency 100% + --surface-backdrop none = solid flat panel
+	   with zero compositing cost. Lower the translucency and set
+	   --surface-backdrop to a blur() (in :root) to turn every ds-glass surface
+	   to frosted glass at once. */
 	.ds-glass {
 		background: color-mix(in oklch, var(--color-card) var(--surface-translucency), transparent);
-		backdrop-filter: blur(var(--surface-blur));
-		-webkit-backdrop-filter: blur(var(--surface-blur));
+		backdrop-filter: var(--surface-backdrop);
+		-webkit-backdrop-filter: var(--surface-backdrop);
 		border: 1px solid var(--color-border);
 	}
 
@@ -397,8 +418,8 @@
 	transform: translateY(-0.25rem);
 	pointer-events: none;
 	transition:
-		opacity 0.2s ease,
-		transform 0.2s ease;
+		opacity var(--motion-base) var(--motion-ease),
+		transform var(--motion-base) var(--motion-ease);
 }
 .ds-quality[data-visible='true'] {
 	opacity: 1;
@@ -421,20 +442,23 @@
 	font-weight: 500;
 	color: inherit;
 	border-radius: var(--radius);
-	background-color: oklch(0 0 0 / 0.35);
+	/* Solid-enough scrim, no backdrop-filter: this trigger fades with the
+	   control bar (see .ds-quality's opacity transition), and a backdrop blur
+	   would force a re-filter of the video behind it on every frame of that
+	   fade. Opacity alone stays on the compositor. */
+	background-color: oklch(0 0 0 / 0.55);
 	box-shadow:
 		0 0 0 1px oklch(0 0 0 / 0.1),
 		0 1px 3px 0 oklch(0 0 0 / 0.15);
-	backdrop-filter: blur(16px) saturate(1.5);
 	cursor: pointer;
 	white-space: nowrap;
 	transition:
-		background-color 0.15s ease,
-		scale 0.15s ease;
+		background-color var(--motion-fast) var(--motion-ease),
+		scale var(--motion-fast) var(--motion-ease);
 }
 .ds-quality__trigger:hover,
 .ds-quality[data-open='true'] .ds-quality__trigger {
-	background-color: oklch(0 0 0 / 0.42);
+	background-color: oklch(0 0 0 / 0.68);
 }
 .ds-quality__trigger:active {
 	scale: 0.98;
@@ -488,7 +512,7 @@
 	text-align: left;
 	border-radius: calc(var(--radius) - 2px);
 	cursor: pointer;
-	transition: background-color 0.1s ease-in-out;
+	transition: background-color var(--motion-fast) var(--motion-ease);
 }
 .ds-quality__item:hover,
 .ds-quality__item:focus-visible {
@@ -508,9 +532,13 @@
 		--media-font-size: 0.75rem;
 	}
 
+	/* Cue size must serve two very different canvases with one rule: the inline
+	   player (~360px wide, where a fixed large size would fit only 2-3 words per
+	   line) and fullscreen landscape (where small text is unreadable at arm's
+	   length). Viewport-relative with clamp covers both. */
 	.ds-player video-player video::cue,
 	.ds-player video-player hls-video::cue {
-		font-size: 3.4rem;
+		font-size: clamp(1rem, 4.5vw, 2.75rem);
 	}
 
 	.ds-quality {
@@ -549,4 +577,24 @@
 .ds-quality-rail::-webkit-scrollbar-thumb {
 	background: color-mix(in oklch, var(--color-muted-foreground) 35%, transparent);
 	border-radius: 999px;
+}
+
+/* ---- Reduced motion --------------------------------------------------------
+   Collapse every non-essential animation/transition to a near-instant tick.
+   Near-zero (not zero) durations still fire transitionend/animationend, so
+   libraries that wait on those events (sheet/dialog dismount, tw-animate
+   exit states, sonner) keep working. Spinners and progress feedback are
+   status indicators, not decoration, so they stay animated. */
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+		scroll-behavior: auto !important;
+	}
+	.animate-spin {
+		animation: spin 1s linear infinite !important;
+	}
 }

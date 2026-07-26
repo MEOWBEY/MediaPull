@@ -247,7 +247,7 @@
 							<div class="mb-2 flex flex-wrap items-center gap-2">
 								<Button
 									size="sm"
-									class="h-7 gap-1.5"
+									class="h-9 gap-1.5 sm:h-7"
 									disabled={bulkDownloading.get(gallery)}
 									onclick={() => downloadAll(gallery)}
 								>
@@ -297,10 +297,12 @@
 										onclick={() => downloadImage(gallery, image, index)}
 										title={t('gallery.downloadImage')}
 										aria-label={t('gallery.downloadImage')}
-										class="bg-signal text-signal-foreground absolute bottom-1.5 inset-e-1.5 z-10 flex h-7 items-center gap-1 rounded-md px-2.5 font-mono text-xs font-semibold transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+										class="bg-signal text-signal-foreground absolute bottom-1.5 inset-e-1.5 z-10 flex h-9 w-9 items-center justify-center gap-1 rounded-md font-mono text-xs font-semibold transition-opacity sm:h-7 sm:w-auto sm:px-2.5 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
 									>
 										<Download class="h-3.5 w-3.5" />
-										<span>{t('extract.download')}</span>
+										<!-- Icon-only below sm: on phone-width tiles (~150px) a
+										     labeled button would cover most of the image. -->
+										<span class="hidden sm:inline">{t('extract.download')}</span>
 									</button>
 								</div>
 							{/each}
@@ -365,12 +367,14 @@
 					</span>
 				{/if}
 
-				<div class="absolute bottom-2 inset-x-0 flex items-center justify-center gap-2">
+				<!-- flex-wrap: at narrow widths (three labeled actions vs ~375px) the
+				     row must wrap instead of spilling past the image edges. -->
+				<div class="absolute bottom-2 inset-x-0 flex flex-wrap items-center justify-center gap-2 px-2">
 					<Button
 						variant="secondary"
 						size="sm"
 						onclick={() => copyToClipboard(lightboxImage?.url ?? '')}
-						class="gap-1.5"
+						class="h-9 gap-1.5 sm:h-8"
 					>
 						<Copy class="h-3.5 w-3.5" />
 						{t('gallery.copyImageUrl')}
@@ -379,7 +383,7 @@
 						size="sm"
 						onclick={() =>
 							lightboxImage && downloadImage(lightboxGallery!, lightboxImage, lightboxIndex)}
-						class="gap-1.5"
+						class="h-9 gap-1.5 sm:h-8"
 					>
 						<Download class="h-3.5 w-3.5" />
 						{t('gallery.downloadImage')}
@@ -389,7 +393,7 @@
 						href={lightboxImage.sourceUrl || lightboxImage.url}
 						target="_blank"
 						rel="noreferrer noopener"
-						class="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-8 items-center gap-1.5 rounded-md px-3 font-mono text-xs font-medium transition-colors"
+						class="bg-secondary text-secondary-foreground hover:bg-secondary/80 inline-flex h-9 items-center gap-1.5 rounded-md px-3 font-mono text-xs font-medium transition-colors sm:h-8"
 					>
 						<ExternalLink class="h-3.5 w-3.5" />
 						{t('gallery.openOriginal')}

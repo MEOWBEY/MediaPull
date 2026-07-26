@@ -46,8 +46,8 @@ class Settings(BaseSettings):
     # extraction rotates round-robin across them, and a file whose account is
     # rate-limited / bot-flagged goes on cooldown while the others keep serving.
     cookie_file_paths_raw: str = Field(default="", alias="COOKIE_FILE_PATHS")
-    # Hard cap on the per-request cookie blob the client may paste (bytes).
-    max_cookie_bytes: int = Field(default=262_144, ge=0)
+    # The per-request cookie blob size cap is a fixed schema constraint --
+    # see models.MAX_COOKIE_BYTES (Pydantic field limits can't read settings).
     # Shared secret gating the admin cookie-refresh endpoint (POST /admin/cookies).
     # Empty = endpoint disabled (returns 404), so the feature is opt-in and a
     # default deploy exposes no new surface. Set a long random value to enable

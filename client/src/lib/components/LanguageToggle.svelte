@@ -5,11 +5,12 @@
 	import { i18n } from '$lib/i18n/index.svelte';
 </script>
 
+<!-- Taller on touch widths (thumb target), compact from sm up. -->
 <Button
 	onclick={() => i18n.toggle()}
 	variant="ghost"
 	size="sm"
-	class="gap-1.5"
+	class="h-10 gap-1.5 sm:h-8"
 	title={i18n.t('nav.language')}
 	aria-label={i18n.t('nav.language')}
 >

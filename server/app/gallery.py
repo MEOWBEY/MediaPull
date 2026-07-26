@@ -21,9 +21,10 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 
 from .config import Settings
-from .extractor import ExtractionError, classify_extraction_error, is_valid_url
+from .extractor import ExtractionError, classify_extraction_error
 from .models import GalleryImage, GalleryInfo, GalleryWarning
 from .net_common import cookie_tempfile, get_cookie_pool, normalize_cookies
+from .ssrf import assert_public_resolved_url
 
 logger = logging.getLogger("mediapull.gallery")
 
@@ -80,8 +81,10 @@ class GalleryExtractor:
         self._pool.shutdown(wait=False, cancel_futures=True)
 
     async def extract(self, url: str, cookies: str | None = None) -> GalleryInfo:
-        if not is_valid_url(url):
-            raise ValueError("Invalid URL format")
+        # Resolve-and-check the entry URL (DNS included, not just the string
+        # gate). Residual gap: gallery-dl fetches pages/images itself and
+        # follows redirects with no DNS re-check on its hops.
+        await assert_public_resolved_url(url)
 
         loop = asyncio.get_running_loop()
         try:
@@ -142,8 +145,12 @@ class GalleryExtractor:
                     check=False,
                 )
             except FileNotFoundError as exc:
+                # The configured binary path stays in the server log -- clients
+                # get a message with no server-filesystem detail.
+                logger.error("gallery-dl binary %r is not runnable: %s", s.gallery_dl_path, exc)
                 raise ExtractionError(
-                    f"gallery-dl is not installed or not on PATH ({s.gallery_dl_path!r})",
+                    "Image extraction is unavailable: gallery-dl is not installed "
+                    "on this server (or GALLERY_DL_PATH points at the wrong location)",
                     status=500,
                 ) from exc
             except subprocess.TimeoutExpired as exc:
@@ -197,12 +204,13 @@ class GalleryExtractor:
         # this actually gets applied (an <img> tag can't set headers itself).
         # Session cookies are minted client-side from Settings → Cookies via
         # ctok (never returned in extract JSON).
-        headers = {"Referer": url}
         for image in images:
-            image.http_headers = headers
+            # A fresh dict per image: models are mutable, so sharing one dict
+            # would alias every image's headers together.
+            image.http_headers = {"Referer": url}
 
         return GalleryInfo(
-            title=self._guess_title(images, url),
+            title=self._guess_title(url),
             webpage_url=url,
             images=images,
             skipped=skipped,
@@ -210,7 +218,7 @@ class GalleryExtractor:
         )
 
     @staticmethod
-    def _guess_title(images: list[GalleryImage], url: str) -> str:
+    def _guess_title(url: str) -> str:
         return urlparse(url).path.rsplit("/", 1)[-1] or urlparse(url).netloc
 
     # gallery-dl's `-j` dump is a JSON array of message tuples, each tagged by

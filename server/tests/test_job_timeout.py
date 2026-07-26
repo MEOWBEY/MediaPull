@@ -5,7 +5,7 @@ import asyncio
 import pytest
 
 import app.jobs as jobs_mod
-from app.audio import AudioChunk
+from app.audio import AudioChunk, AudioError
 from app.config import Settings
 from app.jobs import JobStore, run_transcription_job
 
@@ -57,3 +57,28 @@ async def test_job_times_out_and_is_marked_error(monkeypatch):
     result = await store.get(job.id)
     assert result.status == "error"
     assert "time limit" in (result.error or "").lower()
+
+
+@pytest.mark.asyncio
+async def test_work_dir_cleaned_when_planning_fails(monkeypatch, tmp_path):
+    """A failure raised before any run call (e.g. a request with no usable
+    formats) must still remove the ds-transcribe-* work dir."""
+    settings = Settings()
+    work_dir = tmp_path / "ds-transcribe-test"
+
+    def fake_create_work_dir():
+        work_dir.mkdir()
+        return work_dir
+
+    async def failing_plan_acquisition(*a, **k):
+        raise AudioError("No downloadable format available for this video")
+
+    monkeypatch.setattr(jobs_mod, "create_work_dir", fake_create_work_dir)
+    monkeypatch.setattr(jobs_mod, "plan_acquisition", failing_plan_acquisition)
+
+    store = JobStore(settings)
+    job = await store.create()
+    await run_transcription_job(job.id, [], settings, store, _HangingTranscriber())
+    result = await store.get(job.id)
+    assert result.status == "error"
+    assert not work_dir.exists()

@@ -148,7 +148,12 @@ class JobStore:
         expired = [jid for jid, job in self._jobs.items() if now - job.created_at > ttl]
         for jid in expired:
             del self._jobs[jid]
-            self._tasks.pop(jid, None)
+            task = self._tasks.pop(jid, None)
+            if task is not None and not task.done():
+                # The job record is gone, so nothing can poll or cancel this
+                # job anymore -- a run outliving its TTL must not keep burning
+                # ffmpeg/Groq work with no observer.
+                task.cancel()
             self._subscribers.pop(jid, None)
 
 
@@ -489,15 +494,11 @@ async def run_transcription_job(
                     await asyncio.gather(dialogue_map_task, return_exceptions=True)
                     raise
 
-            try:
-                if plan.windows is not None:
-                    ok = await _run_windowed(plan.windows)
-                    if ok:
-                        return
-                await _run_single_pass()
-            finally:
-                cleanup_work_dir(work_dir)
-                _return_freed_memory_to_os()
+            if plan.windows is not None:
+                ok = await _run_windowed(plan.windows)
+                if ok:
+                    return
+            await _run_single_pass()
 
     try:
         await asyncio.wait_for(_pipeline(), timeout=settings.transcribe_job_timeout)
@@ -547,3 +548,9 @@ async def run_transcription_job(
             progress=1.0,
             error=error,
         )
+    finally:
+        # Runs on EVERY exit -- including failures raised before any run call
+        # (e.g. plan_acquisition finding no usable format) and cancellation --
+        # so a ds-transcribe-* temp dir can never outlive its job.
+        cleanup_work_dir(work_dir)
+        _return_freed_memory_to_os()

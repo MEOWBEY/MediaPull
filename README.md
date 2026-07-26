@@ -27,6 +27,28 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
 
 ## Quick start
 
+### One-click start (Windows)
+
+No terminal needed:
+
+1. Download the repo (**Code → Download ZIP** on GitHub, or clone it) and
+   unzip it anywhere.
+2. Double-click **`start-windows.bat`** in the repo root.
+
+On the first run it checks for Python 3.11+ and Node.js 18+ (and points you
+at [python.org](https://www.python.org/downloads/) /
+[nodejs.org](https://nodejs.org/) if they're missing), installs everything
+into `server/.venv` and `client/node_modules`, and creates `server/.env` +
+`client/.env` from the examples — existing `.env` files are never touched.
+Every run after that skips straight to launching the server and client in two
+console windows and opening http://localhost:5173 in your browser. To stop
+MediaPull, just close those two windows — there's no separate stop script.
+
+Subtitle generation additionally needs [ffmpeg](https://ffmpeg.org/) on PATH
+and a `GROQ_API_KEY` in `server/.env`.
+
+Prefer typing the commands yourself, or on macOS/Linux? Read on.
+
 ### 1. Install
 
 ```bash

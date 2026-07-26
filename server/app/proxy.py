@@ -52,8 +52,11 @@ _HLS_CONTENT_TYPE = "application/vnd.apple.mpegurl"
 _MAX_PLAYLIST_BYTES = 5 * 1024 * 1024
 _URI_ATTR = re.compile(r'URI="([^"]+)"')
 _IS_PLAYLIST = re.compile(r"\.m3u8(\?|$)", re.IGNORECASE)
-# Strip CR/LF/quotes so a client-supplied filename can't inject response headers.
-_UNSAFE_FILENAME = re.compile(r'[\r\n"]+')
+# Strip control chars and quotes (header injection), path separators (save-name
+# spoofing into another directory), ';' (Content-Disposition parameter
+# smuggling), and '%' (pre-encoded sequences in the RFC 5987 filename* value)
+# from a client-supplied filename.
+_UNSAFE_FILENAME = re.compile(r'[\x00-\x1f"\\/;%]+')
 
 
 def _safe_header_value(value: str) -> str:

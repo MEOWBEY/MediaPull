@@ -45,3 +45,16 @@ async def test_sweep_expires_old(store):
     store._settings.transcribe_job_ttl = 60
     await store.create()  # triggers a sweep
     assert await store.get(old.id) is None
+
+
+async def test_sweep_cancels_still_running_task(store):
+    """Sweeping a job whose run outlived the TTL must cancel the task -- the
+    record is gone, so nothing could poll or cancel it otherwise."""
+    old = await store.create()
+    task = asyncio.create_task(asyncio.sleep(3600))
+    await store.set_task(old.id, task)
+    old.created_at = time.monotonic() - 10_000
+    store._settings.transcribe_job_ttl = 60
+    await store.create()  # triggers a sweep
+    await asyncio.gather(task, return_exceptions=True)
+    assert task.cancelled()

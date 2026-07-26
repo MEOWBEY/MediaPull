@@ -56,7 +56,7 @@
 		onclick={() => appStore.clearErrors()}
 		aria-label={t('error.dismiss')}
 		title={t('error.dismiss')}
-		class="border-destructive/30 text-destructive/70 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 absolute top-2 inset-e-2 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md border transition-colors"
+		class="border-destructive/30 text-destructive/70 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/50 absolute top-2 inset-e-2 flex h-8 w-8 cursor-pointer items-center justify-center rounded-md border transition-colors"
 	>
 		<X class="h-4 w-4" />
 	</button>
@@ -77,14 +77,14 @@
 					variant="default"
 					size="sm"
 					onclick={() => extraction.retryLastFailure()}
-					class="gap-1.5"
+					class="h-9 gap-1.5 sm:h-8"
 				>
 					<RefreshCw class="h-3.5 w-3.5" />
 					{t('error.retry')}
 				</Button>
 
 				{#if looksLikeAuth && onOpenCookies}
-					<Button variant="outline" size="sm" onclick={onOpenCookies} class="gap-1.5">
+					<Button variant="outline" size="sm" onclick={onOpenCookies} class="h-9 gap-1.5 sm:h-8">
 						<KeyRound class="h-3.5 w-3.5" />
 						{t('error.openCookies')}
 					</Button>
@@ -95,7 +95,7 @@
 						variant="outline"
 						size="sm"
 						onclick={() => extraction.retryLastAsType('gallery')}
-						class="gap-1.5"
+						class="h-9 gap-1.5 sm:h-8"
 					>
 						<Images class="h-3.5 w-3.5" />
 						{t('error.tryGallery')}
@@ -105,7 +105,7 @@
 						variant="outline"
 						size="sm"
 						onclick={() => extraction.retryLastAsType('video')}
-						class="gap-1.5"
+						class="h-9 gap-1.5 sm:h-8"
 					>
 						<Video class="h-3.5 w-3.5" />
 						{t('error.tryVideo')}

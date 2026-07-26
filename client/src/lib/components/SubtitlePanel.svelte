@@ -102,7 +102,7 @@
 		onOpenAutoFocus={(e) => e.preventDefault()}
 		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-lg {desktop.matches
 			? ''
-			: 'h-[65vh] rounded-t-2xl'}"
+			: 'h-[65dvh] rounded-t-2xl'}"
 	>
 		<Sheet.Header
 			class="flex flex-row flex-nowrap items-start justify-between gap-3 px-4 pt-12  text-start sm:px-6"
@@ -182,17 +182,19 @@
 				{/each}
 			</div>
 		{:else}
-			<div class="mt-6 flex flex-col items-center gap-4 text-center">
-				<p class="text-muted-foreground text-sm">
+			<div class="mt-6 flex flex-col items-center gap-4 px-6 text-center">
+				<p class="text-muted-foreground max-w-sm text-sm leading-relaxed">
 					{t('subtitles.panel.noTrack')}
 				</p>
 				{#if onGenerate}
 					{#if generating}
 						<div class="w-full max-w-xs space-y-2" role="status" aria-live="polite">
 							<div class="bg-muted h-1.5 w-full overflow-hidden rounded-full">
+								<!-- scaleX (not width) so progress ticks animate on the
+								     compositor without relayout; origin flips for RTL. -->
 								<div
-									class="bg-primary h-full rounded-full transition-[width] duration-300"
-									style="width: {Math.round(progress * 100)}%"
+									class="bg-primary h-full w-full rounded-full transition-transform duration-300 [transform-origin:0_50%] rtl:[transform-origin:100%_50%]"
+									style="transform: scaleX({Math.min(1, Math.max(0, progress))})"
 								></div>
 							</div>
 							<div class="text-muted-foreground flex items-center justify-between gap-2 text-xs">

@@ -180,6 +180,9 @@
 	}
 </script>
 
+<!-- `color` must be a token class (text-signal / text-destructive / text-warning):
+     the design system has one accent, and raw Tailwind palette colors would not
+     recolor with a token reskin. -->
 {#snippet sectionCard(titleKey: MessageKey, Icon: Component, color: string, body: Snippet)}
 	<section class="bg-card rounded-lg border">
 		<div class="border-border/60 border-b p-3">
@@ -232,7 +235,7 @@
 		closeLabel={t('common.close')}
 		class="bg-background z-999999! flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl {desktop.matches
 			? ''
-			: 'h-[65vh] rounded-t-2xl'}"
+			: 'h-[80dvh] rounded-t-2xl'}"
 	>
 		<Sheet.Header class="px-4 pt-12 text-start sm:px-6">
 			<Sheet.Title class="font-heading text-xl font-bold sm:text-2xl">
@@ -272,7 +275,7 @@
 				{#snippet interfaceBody()}
 					{@render toggleGroup(interfaceSettings)}
 				{/snippet}
-				{@render sectionCard('prefs.section.interface', Monitor, 'text-blue-600', interfaceBody)}
+				{@render sectionCard('prefs.section.interface', Monitor, 'text-signal', interfaceBody)}
 
 				{#snippet contentTypeBody()}
 					<div class="space-y-2">
@@ -292,7 +295,7 @@
 						</div>
 					</div>
 				{/snippet}
-				{@render sectionCard('prefs.contentTypeSection', Image, 'text-teal-600', contentTypeBody)}
+				{@render sectionCard('prefs.contentTypeSection', Image, 'text-signal', contentTypeBody)}
 
 				{#snippet themeBody()}
 					<div class="space-y-2">
@@ -311,7 +314,7 @@
 						</div>
 					</div>
 				{/snippet}
-				{@render sectionCard('prefs.themeSection', Palette, 'text-pink-600', themeBody)}
+				{@render sectionCard('prefs.themeSection', Palette, 'text-signal', themeBody)}
 
 				{#snippet languageBody()}
 					<div class="space-y-2">
@@ -330,7 +333,7 @@
 						</div>
 					</div>
 				{/snippet}
-				{@render sectionCard('prefs.languageSection', Languages, 'text-indigo-600', languageBody)}
+				{@render sectionCard('prefs.languageSection', Languages, 'text-signal', languageBody)}
 			{:else if tab === 'library'}
 				{#snippet viewModeBody()}
 					<div class="flex flex-col gap-2 sm:flex-row">
@@ -354,12 +357,12 @@
 						</Button>
 					</div>
 				{/snippet}
-				{@render sectionCard('prefs.viewMode', LayoutList, 'text-purple-600', viewModeBody)}
+				{@render sectionCard('prefs.viewMode', LayoutList, 'text-signal', viewModeBody)}
 
 				{#snippet exportsBody()}
 					{@render toggleGroup(exportSettings)}
 				{/snippet}
-				{@render sectionCard('prefs.section.exports', Download, 'text-sky-600', exportsBody)}
+				{@render sectionCard('prefs.section.exports', Download, 'text-signal', exportsBody)}
 
 				{#snippet storedBody()}
 					<div class="space-y-4">
@@ -420,12 +423,12 @@
 				{#snippet playbackBody()}
 					{@render toggleGroup(playbackSettings)}
 				{/snippet}
-				{@render sectionCard('prefs.section.playback', Volume2, 'text-green-600', playbackBody)}
+				{@render sectionCard('prefs.section.playback', Volume2, 'text-signal', playbackBody)}
 
 				{#snippet proxyBody()}
 					{@render toggleGroup(proxySettings)}
 				{/snippet}
-				{@render sectionCard('prefs.section.proxy', Waypoints, 'text-cyan-600', proxyBody)}
+				{@render sectionCard('prefs.section.proxy', Waypoints, 'text-signal', proxyBody)}
 
 				{#snippet minWordsBody()}
 					<div class="bg-muted/60 flex items-start justify-between gap-3 rounded-lg p-3">
@@ -462,7 +465,7 @@
 						</div>
 					</div>
 				{/snippet}
-				{@render sectionCard('prefs.subtitlePanelSection', Captions, 'text-violet-600', minWordsBody)}
+				{@render sectionCard('prefs.subtitlePanelSection', Captions, 'text-signal', minWordsBody)}
 			{:else if tab === 'cookies'}
 				<CookiesPanel />
 			{/if}

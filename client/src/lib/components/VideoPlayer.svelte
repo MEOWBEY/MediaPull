@@ -784,6 +784,8 @@
 					<span>{t('player.error')}</span>
 				</div>
 				{#if onToggleProxy}
+					<!-- Label names the route the click switches TO, so the action is
+					     concrete instead of an abstract mode toggle. -->
 					<Button
 						variant="outline"
 						size="sm"
@@ -791,7 +793,7 @@
 						class="w-fit gap-1.5 rounded-md text-xs"
 					>
 						<Waypoints class="h-3 w-3" />
-						{t('player.error.switchProxy')}
+						{useProxy ? t('player.error.tryDirect') : t('player.error.tryViaServer')}
 					</Button>
 				{/if}
 			</div>
@@ -843,7 +845,7 @@
 						class="gap-1.5 rounded-md text-xs"
 					>
 						<Waypoints class="h-3 w-3" />
-						{t('player.error.switchProxy')}
+						{useProxy ? t('player.error.tryDirect') : t('player.error.tryViaServer')}
 					</Button>
 				{/if}
 			</div>

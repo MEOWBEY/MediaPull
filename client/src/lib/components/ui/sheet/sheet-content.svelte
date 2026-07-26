@@ -2,7 +2,10 @@
 	import { tv, type VariantProps } from 'tailwind-variants';
 
 	export const sheetVariants = tv({
-		base: 'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform [transform:translateZ(0)] data-[state=closed]:duration-200 data-[state=open]:duration-300',
+		// transition-transform (not the multi-property `transition` list): the
+		// panel only ever moves; transitioning shadow/filter props alongside a
+		// large sliding surface forces per-frame repaints.
+		base: 'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition-transform ease-[cubic-bezier(0.32,0.72,0,1)] will-change-transform [transform:translateZ(0)] data-[state=closed]:duration-200 data-[state=open]:duration-300',
 		variants: {
 			side: {
 				top: 'data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b',

@@ -249,9 +249,11 @@
 
 		<div class="space-y-3 px-3.5 pt-3 sm:px-0 {isRow ? 'lg:min-w-0 lg:flex-1 lg:pt-0' : ''}">
 		<!-- Title -->
+		<!-- wrap-break-word: unbroken URL-like titles must wrap inside the clamp
+		     instead of clipping mid-glyph at the card edge. -->
 		<h3
 			dir="auto"
-			class="line-clamp-2 text-base font-semibold tracking-tight"
+			class="line-clamp-2 text-base font-semibold tracking-tight wrap-break-word"
 			title={video.title}
 		>
 			{video.title || t('extract.untitled')}
@@ -273,30 +275,34 @@
 				{/if}
 			</div>
 
-			<div class="ms-auto flex min-w-0 shrink items-center gap-1.5">
+			<!-- Full-width on phone widths in EVERY state: the control swaps between
+			     a short "Generate" pill and a much wider progress readout (label +
+			     % + cancel), and a content-sized pill would jump in size and shove
+			     the row around at the moment of the click. Content-sized from sm up. -->
+			<div class="flex w-full min-w-0 items-center gap-1.5 sm:ms-auto sm:w-auto sm:shrink">
 				{#if subtitleState?.isRunning}
 					<!-- Progress is a status readout (spinner + stage + real percentage);
 					     cancel is its own explicit button beside it, so a glance at the
-					     number can't accidentally kill the job. The stage text is hidden
-					     on narrow screens (the tooltip still carries it) so the pill
-					     never crowds out the cancel button on mobile. -->
-					<div class="border-border/70 flex min-w-0 items-center overflow-hidden rounded-md border">
+					     number can't accidentally kill the job. The stage text truncates
+					     (the tooltip carries the full label) so it never crowds out the
+					     cancel button. -->
+					<div class="border-border/70 flex w-full min-w-0 items-center overflow-hidden rounded-md border sm:w-auto">
 						<span
-							class="text-muted-foreground inline-flex min-w-0 items-center gap-1 px-2 py-1.5 font-mono text-xs"
+							class="text-muted-foreground inline-flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 font-mono text-xs sm:flex-none"
 							title={subtitleState.stepLabel}
 							role="status"
 							aria-label={subtitleState.stepLabel}
 						>
-							<Loader2 class="hidden h-3 w-3 animate-spin sm:inline" />
-							<span class="inline max-w-36 truncate text-xs">{subtitleState.stepLabel}</span>
-							<span class="tabular-nums">{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
+							<Loader2 class="h-3 w-3 shrink-0 animate-spin" />
+							<span class="inline min-w-0 max-w-36 truncate text-xs">{subtitleState.stepLabel}</span>
+							<span class="ms-auto tabular-nums sm:ms-0">{Math.round((subtitleState?.progress ?? 0) * 100)}%</span>
 						</span>
 						<button
 							type="button"
 							onclick={() => playerHandle?.cancelSubtitles()}
 							title={t('subtitles.cancel')}
 							aria-label={t('subtitles.cancel')}
-							class="border-border/70 text-muted-foreground hover:bg-muted hover:text-destructive flex shrink-0 items-center gap-1 border-s px-2 py-1.5 font-mono text-xs transition-colors"
+							class="border-border/70 text-muted-foreground hover:bg-muted hover:text-destructive flex shrink-0 items-center gap-1 border-s px-2 py-2 font-mono text-xs transition-colors sm:py-1.5"
 						>
 							<X class="h-3 w-3" />
 							<span class="hidden sm:inline">{t('subtitles.cancel')}</span>
@@ -304,7 +310,7 @@
 					</div>
 				{:else if subtitleState?.isResolvingExisting}
 					<span
-						class="border-border/70 text-muted-foreground animate-in fade-in flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-sm"
+						class="border-border/70 text-muted-foreground animate-in fade-in flex w-full items-center justify-center gap-1.5 rounded-md border px-2.5 py-2 font-mono text-sm sm:w-auto sm:py-1.5"
 					>
 						<Loader2 class="h-3.5 w-3.5 animate-spin" />
 						<span class="truncate">{t('subtitles.open')}</span>
@@ -315,7 +321,7 @@
 						type="button"
 						onclick={subtitleAction}
 						title={t('subtitles.openHint')}
-						class="border-signal/40 bg-signal/15 text-signal animate-in fade-in flex min-w-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-sm font-semibold transition-colors hover:bg-signal/25"
+						class="border-signal/40 bg-signal/15 text-signal animate-in fade-in flex w-full min-w-0 items-center justify-center gap-1.5 rounded-md border px-2.5 py-2 font-mono text-sm font-semibold transition-colors hover:bg-signal/25 sm:w-auto sm:justify-start sm:py-1.5"
 					>
 						<Captions class="h-3.5 w-3.5 shrink-0" />
 						<span class="truncate">{t('subtitles.open')}</span>
@@ -327,7 +333,7 @@
 						type="button"
 						onclick={subtitleAction}
 						title={t('subtitles.generateHint')}
-						class="border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground animate-in fade-in flex min-w-0 items-center gap-1.5 rounded-md border px-2.5 py-1.5 font-mono text-sm transition-colors"
+						class="border-border/70 text-muted-foreground hover:bg-muted hover:text-foreground animate-in fade-in flex w-full min-w-0 items-center justify-center gap-1.5 rounded-md border px-2.5 py-2 font-mono text-sm transition-colors sm:w-auto sm:justify-start sm:py-1.5"
 					>
 						<Captions class="h-3.5 w-3.5 shrink-0" />
 						<span class="truncate">{t('subtitles.generate')}</span>
@@ -365,8 +371,11 @@
 					class="hover:bg-muted/60 flex flex-wrap items-center gap-2 px-3 py-2 font-mono transition-colors"
 				>
 					<!-- Fixed-width label columns (resolution / size / container) so the
-					     values line up vertically across rows, transfer-log style. -->
-					<div class="flex min-w-0 flex-1 items-center gap-2.5">
+					     values line up vertically across rows, transfer-log style.
+					     flex-wrap: every column is shrink-0, so on narrow rows the
+					     "no sound" badge must wrap under the columns — without it the
+					     badge overflows onto the action buttons. -->
+					<div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
 						<span
 							class="text-signal w-12 shrink-0 text-start text-[0.7rem] font-bold tabular-nums"
 						>
@@ -375,7 +384,7 @@
 						<span class="text-muted-foreground w-16 shrink-0 text-[0.7rem] tabular-nums">
 							{(quality.filesize ?? 0) > 0 ? formatBytesToMB(quality.filesize ?? 0) : '—'}
 						</span>
-						<span class="text-muted-foreground/70 hidden w-12 shrink-0 text-[0.7rem] uppercase sm:inline">
+						<span class="text-muted-foreground hidden w-12 shrink-0 text-[0.7rem] uppercase sm:inline">
 							{quality.ext}
 						</span>
 						{#if quality.videoOnly}
@@ -390,12 +399,13 @@
 
 					<div class="ms-auto flex shrink-0 items-center gap-1">
 						<!-- Copy + QR are secondary but need to read as buttons: hairline
-						     border so they don't disappear into the panel. -->
+						     border so they don't disappear into the panel. Taller on
+						     touch widths (thumb target), compact from sm up. -->
 						<Button
 							variant="outline"
 							size="icon"
 							onclick={() => copyToClipboard(urlForQuality(quality) ?? '')}
-							class="text-muted-foreground hover:text-foreground h-7 w-7"
+							class="text-muted-foreground hover:text-foreground h-9 w-9 sm:h-7 sm:w-7"
 							title={t('extract.copyUrl')}
 							aria-label={t('extract.copyUrl')}
 						>
@@ -417,7 +427,7 @@
 							<Button
 								size="sm"
 								onclick={() => downloadQuality(quality)}
-								class="ms-1 h-7 gap-1.5 px-2.5"
+								class="ms-1 h-9 gap-1.5 px-3 sm:h-7 sm:px-2.5"
 								title={t('extract.download')}
 							>
 								<Download class="h-3.5 w-3.5" />

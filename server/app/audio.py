@@ -34,7 +34,7 @@ from . import proc_util
 from .config import Settings
 from .models import VideoFormat
 from .net_common import impersonate_kwarg
-from .ssrf import assert_public_http_url
+from .ssrf import assert_public_resolved_url
 
 logger = logging.getLogger("mediapull.audio")
 
@@ -212,9 +212,11 @@ def _unwrap_proxied(
     double-hop and the proxy's segment-extension rewriting that breaks ffmpeg's
     HLS demuxer. Non-proxied URLs pass through unchanged.
 
-    Auth cookies travel as opaque ``ctok`` tokens (not raw ``cookies=``). Pass
-    ``resolve_cookie_token`` from ``ProxyService.resolve_cookie_token`` so the
-    transcription path can restore the Cookie header server-side.
+    Auth cookies travel ONLY as opaque ``ctok`` tokens -- a raw ``cookies=``
+    query parameter is never honored (cookies in URLs leak through access logs
+    and referrers). Pass ``resolve_cookie_token`` from
+    ``ProxyService.resolve_cookie_token`` so the transcription path can restore
+    the Cookie header server-side.
     """
     try:
         parsed = urlparse(url)
@@ -239,9 +241,6 @@ def _unwrap_proxied(
         cookies = resolve_cookie_token(ctok)
         if cookies:
             headers["Cookie"] = cookies
-    elif qs.get("cookies"):
-        # Legacy query form (pre-ctok); kept for old clients / bookmarked jobs.
-        headers["Cookie"] = qs["cookies"][0]
     return real, headers
 
 
@@ -319,8 +318,12 @@ async def plan_acquisition(
     real_url, extra_headers = _unwrap_proxied(
         fmt.url or "", resolve_cookie_token=resolve_cookie_token
     )
+    # Resolve-and-check (not just the string gate): a transcribe request could
+    # name a public-looking host that resolves to a private address. Residual
+    # gap: ffmpeg fetches the URL itself and follows origin redirects with no
+    # DNS re-check; only the curl_cffi fallback path re-gates every hop.
     try:
-        assert_public_http_url(real_url)
+        await assert_public_resolved_url(real_url)
     except ValueError as exc:
         raise AudioError(str(exc)) from exc
     headers = {**(fmt.http_headers or {}), **extra_headers}
@@ -446,10 +449,12 @@ async def _run_ffmpeg(
             stderr=subprocess.PIPE,
         )
     except OSError as exc:
+        # The configured binary path stays in the server log -- clients get a
+        # message with no server-filesystem detail.
         logger.error("ffmpeg binary %r is not runnable: %s", binary, exc)
         raise AudioError(
-            f"ffmpeg is not installed or not on PATH ({binary!r}). Set FFMPEG_PATH to its "
-            "absolute path if it's installed somewhere not on this process's PATH."
+            "Audio processing is unavailable: ffmpeg is not installed on this "
+            "server (or FFMPEG_PATH points at the wrong location)."
         ) from exc
 
     loop = asyncio.get_running_loop()
@@ -488,7 +493,14 @@ async def _run_ffmpeg(
     except TimeoutError as exc:
         raise AudioError("Audio extraction timed out") from exc
     if proc.returncode != 0:
-        raise AudioError(f"ffmpeg failed: {stderr.decode(errors='ignore')[-2000:].strip()}")
+        # Raw stderr can quote source URLs, header values, and local paths --
+        # keep it in the server log only and hand clients a generic message.
+        logger.error(
+            "ffmpeg exited %s: %s",
+            proc.returncode,
+            stderr.decode(errors="ignore")[-2000:].strip(),
+        )
+        raise AudioError("Audio conversion failed")
 
 
 async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
@@ -510,8 +522,8 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
     except OSError as exc:
         logger.error("ffprobe binary %r is not runnable: %s", binary, exc)
         raise AudioError(
-            f"ffprobe is not installed or not on PATH ({binary!r}). Set FFPROBE_PATH to its "
-            "absolute path if it's installed somewhere not on this process's PATH."
+            "Audio processing is unavailable: ffprobe is not installed on this "
+            "server (or FFPROBE_PATH points at the wrong location)."
         ) from exc
     try:
         stdout, stderr = await proc_util.guarded(
@@ -520,7 +532,13 @@ async def probe_duration(path: Path, binary: str = "ffprobe") -> float:
     except TimeoutError as exc:
         raise AudioError("ffprobe timed out") from exc
     if proc.returncode != 0:
-        raise AudioError(f"ffprobe failed: {stderr.decode(errors='ignore')[-500:].strip()}")
+        # Same rule as ffmpeg above: stderr detail is server-log only.
+        logger.error(
+            "ffprobe exited %s: %s",
+            proc.returncode,
+            stderr.decode(errors="ignore")[-500:].strip(),
+        )
+        raise AudioError("Could not read the audio file's metadata")
     try:
         return float(stdout.decode().strip())
     except ValueError as exc:
@@ -611,7 +629,7 @@ async def _download_stream(
                 raise AudioError("Source media redirect had no destination")
             current = urljoin(current, location)
             try:
-                assert_public_http_url(current)
+                await assert_public_resolved_url(current)
             except ValueError as exc:
                 raise AudioError(str(exc)) from exc
         else:
@@ -831,8 +849,12 @@ async def acquire_audio(
     real_url, extra_headers = _unwrap_proxied(
         fmt.url or "", resolve_cookie_token=resolve_cookie_token
     )
+    # Resolve-and-check (not just the string gate): a transcribe request could
+    # name a public-looking host that resolves to a private address. Residual
+    # gap: ffmpeg fetches the URL itself and follows origin redirects with no
+    # DNS re-check; only the curl_cffi fallback path re-gates every hop.
     try:
-        assert_public_http_url(real_url)
+        await assert_public_resolved_url(real_url)
     except ValueError as exc:
         raise AudioError(str(exc)) from exc
     headers = {**(fmt.http_headers or {}), **extra_headers}

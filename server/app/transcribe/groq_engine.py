@@ -170,7 +170,10 @@ class GroqTranscriber:
                 continue
 
             if resp.status_code >= 400:
-                raise GroqError(f"Groq API error {resp.status_code}: {resp.text[:500]}")
+                # The raw response body stays in the server log -- it can echo
+                # request detail and must not surface in job.error.
+                logger.error("Groq API error %s: %s", resp.status_code, resp.text[:500])
+                raise GroqError(f"Transcription service error (HTTP {resp.status_code})")
 
             return resp
 

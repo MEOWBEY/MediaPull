@@ -149,7 +149,7 @@
 							<Button
 								variant="outline"
 								size="sm"
-								class="h-8 cursor-pointer px-3"
+								class="h-9 cursor-pointer px-3 sm:h-8"
 								onclick={() => (editing === domain ? cancelEdit() : startEdit(domain))}
 							>
 								{cookies.has(domain) ? t('cookies.edit') : t('cookies.add')}
@@ -158,7 +158,7 @@
 								<Button
 									variant="outline"
 									size="sm"
-									class="h-8 cursor-pointer px-2 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
+									class="h-9 cursor-pointer px-2.5 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 sm:h-8 sm:px-2"
 									onclick={() => clearOne(domain)}
 								>
 									<Trash2 class="h-4 w-4" />
@@ -178,13 +178,13 @@
 								class="border-input bg-card focus-visible:ring-ring w-full rounded-md border p-2 font-mono text-xs focus-visible:ring-1 focus-visible:outline-none"
 							></textarea>
 							<div class="flex gap-2">
-								<Button size="sm" class="h-8 cursor-pointer px-4" onclick={() => save(domain)}>
+								<Button size="sm" class="h-9 cursor-pointer px-4 sm:h-8" onclick={() => save(domain)}>
 									{t('cookies.save')}
 								</Button>
 								<Button
 									variant="ghost"
 									size="sm"
-									class="h-8 cursor-pointer px-4"
+									class="h-9 cursor-pointer px-4 sm:h-8"
 									onclick={cancelEdit}
 								>
 									{t('cookies.cancel')}

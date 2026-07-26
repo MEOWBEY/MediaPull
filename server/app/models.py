@@ -11,6 +11,12 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Hard cap (bytes) on any client-supplied cookie blob, shared by every schema
+# that accepts one. A fixed schema constant, not an env setting: Pydantic field
+# constraints are baked in at class definition, so a runtime setting could
+# never actually change them.
+MAX_COOKIE_BYTES = 262_144
+
 
 class ExtractRequest(BaseModel):
     url: str = Field(min_length=1, max_length=4096)
@@ -18,9 +24,9 @@ class ExtractRequest(BaseModel):
     # by the user from the client's Settings → Cookies panel. Either Netscape
     # cookies.txt text or a single "Cookie: a=b; c=d" header line. Stored only
     # in the user's browser; written to a throwaway temp file for one yt-dlp or
-    # gallery-dl run and deleted. Cap matches MAX_COOKIE_BYTES. Falls back to
-    # the server-side COOKIE_FILE_PATHS when absent.
-    cookies: str | None = Field(default=None, max_length=262_144)
+    # gallery-dl run and deleted. Falls back to the server-side
+    # COOKIE_FILE_PATHS when absent.
+    cookies: str | None = Field(default=None, max_length=MAX_COOKIE_BYTES)
 
 
 # ----- internal extractor models ----------------------------------------
@@ -208,7 +214,7 @@ class ProxyTokenRequest(BaseModel):
     """Client exchanges a source's auth cookies for an opaque token so the
     cookies never ride in the proxy URL (which gets copied / QR'd / shared)."""
 
-    cookies: str = Field(max_length=262_144)
+    cookies: str = Field(max_length=MAX_COOKIE_BYTES)
 
 
 class ProxyTokenResponse(BaseModel):
@@ -220,7 +226,7 @@ class CookieUploadRequest(BaseModel):
     cookie file (see POST /admin/cookies). The blob is normalized to Netscape
     format server-side, same as per-request cookies."""
 
-    cookies: str = Field(max_length=262_144)
+    cookies: str = Field(max_length=MAX_COOKIE_BYTES)
 
 
 class CookieUploadResponse(BaseModel):
@@ -258,9 +264,11 @@ class TranscribeRequest(BaseModel):
     has a usable caption track (``VideoInfo.subtitle_tracks``), the client
     should use that directly instead of calling this at all."""
 
-    webpage_url: str = Field(max_length=4096)
+    # Page URL for logging context only -- the pipeline works purely off
+    # ``formats``. Optional; clients that send it get better server logs.
+    webpage_url: str | None = Field(default=None, max_length=4096)
     formats: list[VideoFormat] = Field(min_length=1, max_length=40)
-    cookies: str | None = Field(default=None, max_length=262_144)
+    cookies: str | None = Field(default=None, max_length=MAX_COOKIE_BYTES)
     # Video duration as the player knows it -- lets the server turn ffmpeg's
     # out_time into a real acquisition percentage even for sources it can't
     # cheaply probe (HLS). Optional: progress degrades gracefully without it.

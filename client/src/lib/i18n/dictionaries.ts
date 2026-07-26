@@ -30,7 +30,10 @@ export const en = {
 	'input.pasteHint':
 		'Clipboard blocked on this device — paste with your keyboard or long-press → Paste.',
 	'input.pasteFailed': 'Couldn’t read the clipboard — paste manually instead.',
-	'input.preferences': 'Preferences',
+	// "Settings" everywhere a user reads it — other strings deep-link with
+	// "Settings → Cookies" / "Settings → Player", so the panel must carry the
+	// same name.
+	'input.preferences': 'Settings',
 	'input.mode': 'Extraction mode',
 	'input.extract': 'Extract links',
 	'input.extracting': 'Extracting…',
@@ -99,8 +102,9 @@ export const en = {
 	'player.audioLabel': 'Audio',
 	'player.formatTabs': 'Format',
 	'player.error':
-		'This link couldn’t be played here. Try another quality (if available), switch proxy mode below, or open the link in an external player.',
-	'player.error.switchProxy': 'Switch proxy mode',
+		'This link couldn’t be played here. Try another quality (if available), retry through the other route below, or open the link in an external player.',
+	'player.error.tryViaServer': 'Retry via server',
+	'player.error.tryDirect': 'Retry with direct link',
 	'subtitles.generate': 'Generate subtitles',
 	'subtitles.generateHint':
 		'Auto-transcribe this video’s speech into subtitles you can read, search, and download.',
@@ -113,7 +117,7 @@ export const en = {
 	'subtitles.panel.search': 'Search text or time…',
 	'subtitles.panel.empty': 'No subtitle lines match your search.',
 	'subtitles.panel.noTrack':
-		'No subtitles yet — generate them with the Subtitles button on the card.',
+		'No subtitles for this video yet. Generate them to read, search, and download the transcript.',
 	'subtitles.panel.scrollToActive': 'Scroll to current line',
 	'subtitles.panel.jump': 'Current line',
 	'subtitles.existingTrack': 'Use existing “{label}” subtitles',
@@ -145,7 +149,7 @@ export const en = {
 	'gallery.warning.generic': 'Gallery note: {message}',
 	'error.extractTitle': 'Couldn’t extract links',
 	'error.advice':
-		'Check the URL and try again. If a direct link won’t load, enable proxy mode for that card.',
+		'Check the URL and try again. If a link won’t play, use “Retry via server” on the player.',
 	'error.dismiss': 'Dismiss',
 	'error.retry': 'Try again',
 	'error.openCookies': 'Add login cookies',
@@ -197,7 +201,7 @@ export const en = {
 	'errorPage.genericBody': 'An error occurred:',
 	'errorPage.unknown': 'Unknown error',
 	'errorPage.home': 'Back to Home',
-	'prefs.title': 'Preferences',
+	'prefs.title': 'Settings',
 	'prefs.subtitle': 'Customize the interface, playback, and stored data.',
 	'prefs.tab.general': 'General',
 	'prefs.tab.library': 'Downloads',
@@ -217,8 +221,8 @@ export const en = {
 	'prefs.mute.desc': 'Start videos with the audio muted',
 	'prefs.preload.label': 'Preload metadata',
 	'prefs.preload.desc': 'Load video metadata in advance for faster playback',
-	'prefs.useProxy.label': 'Proxy mode',
-	'prefs.useProxy.desc': 'Route video URLs through the proxy when direct access is blocked',
+	'prefs.useProxy.label': 'Via server (proxy)',
+	'prefs.useProxy.desc': 'Route video links through the MediaPull server when direct access is blocked',
 	'prefs.hlsDownload.label': 'Show HLS downloads',
 	'prefs.hlsDownload.desc': 'Show a download button for HLS videos',
 	'prefs.showExports.label': 'Show export buttons',
@@ -235,7 +239,7 @@ export const en = {
 		'Auto mode tries video first, then falls back to images. Choose a type to always extract only that content.',
 	'prefs.contentType.auto': 'Auto',
 	'prefs.contentType.autoHint':
-		'Automatically detecting video or images. You can change this in Preferences.',
+		'Automatically detecting video or images. You can change this in Settings.',
 	'prefs.contentType.video': 'Video',
 	'prefs.contentType.gallery': 'Gallery',
 	'prefs.themeSection': 'Theme',
@@ -377,8 +381,9 @@ export const fa: Record<MessageKey, string> = {
 	'player.audioLabel': 'صدا',
 	'player.formatTabs': 'فرمت',
 	'player.error':
-		'این لینک در اینجا پخش نشد. کیفیت دیگری را امتحان کنید، حالت پروکسی را در پایین تغییر دهید یا لینک را در پخش‌کننده‌ای دیگر باز کنید.',
-	'player.error.switchProxy': 'تغییر حالت پروکسی',
+		'این لینک در اینجا پخش نشد. کیفیت دیگری را امتحان کنید، مسیر دیگر را در پایین آزمایش کنید یا لینک را در پخش‌کننده‌ای دیگر باز کنید.',
+	'player.error.tryViaServer': 'تلاش دوباره از طریق سرور',
+	'player.error.tryDirect': 'تلاش دوباره با لینک مستقیم',
 	'subtitles.generate': 'ساخت زیرنویس',
 	'subtitles.generateHint':
 		'گفتار این ویدیو را به‌طور خودکار به زیرنویسی تبدیل کنید که بتوانید آن را بخوانید، جست‌وجو و دانلود کنید.',
@@ -390,7 +395,8 @@ export const fa: Record<MessageKey, string> = {
 	'subtitles.panel.title': 'زیرنویس‌ها',
 	'subtitles.panel.search': 'جست‌وجوی متن یا زمان…',
 	'subtitles.panel.empty': 'هیچ خط زیرنویسی با جست‌وجوی شما مطابقت ندارد.',
-	'subtitles.panel.noTrack': 'هنوز زیرنویسی وجود ندارد. با دکمهٔ «زیرنویس» روی کارت آن را بسازید.',
+	'subtitles.panel.noTrack':
+		'هنوز زیرنویسی برای این ویدیو وجود ندارد. برای خواندن، جست‌وجو و دانلود متن، زیرنویس را بسازید.',
 	'subtitles.panel.scrollToActive': 'رفتن به خط در حال پخش',
 	'subtitles.panel.jump': 'خط فعلی',
 	'subtitles.existingTrack': 'استفاده از زیرنویس موجود «{label}»',
@@ -422,7 +428,7 @@ export const fa: Record<MessageKey, string> = {
 	'gallery.warning.generic': 'توضیح گالری: {message}',
 	'error.extractTitle': 'استخراج لینک‌ها ممکن نبود',
 	'error.advice':
-		'نشانی را بررسی و دوباره تلاش کنید. اگر لینک مستقیم باز نمی‌شود، حالت پروکسی را برای همان کارت فعال کنید.',
+		'نشانی را بررسی و دوباره تلاش کنید. اگر لینکی پخش نمی‌شود، گزینهٔ «تلاش دوباره از طریق سرور» را روی پخش‌کننده بزنید.',
 	'error.dismiss': 'بستن',
 	'error.retry': 'تلاش دوباره',
 	'error.openCookies': 'افزودن کوکی‌های ورود',
@@ -494,8 +500,8 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.mute.desc': 'شروع پخش ویدیوها به‌صورت بی‌صدا',
 	'prefs.preload.label': 'پیش‌بارگذاری فراداده',
 	'prefs.preload.desc': 'بارگذاری زودهنگام فرادادهٔ ویدیو برای شروع سریع‌تر پخش',
-	'prefs.useProxy.label': 'حالت پروکسی',
-	'prefs.useProxy.desc': 'عبور لینک‌های ویدیو از پروکسی در صورت مسدودبودن دسترسی مستقیم',
+	'prefs.useProxy.label': 'از طریق سرور (پروکسی)',
+	'prefs.useProxy.desc': 'عبور لینک‌های ویدیو از سرور مدیاپول در صورت مسدودبودن دسترسی مستقیم',
 	'prefs.hlsDownload.label': 'نمایش دانلود HLS',
 	'prefs.hlsDownload.desc': 'نمایش دکمهٔ دانلود برای ویدیوهای HLS',
 	'prefs.showExports.label': 'نمایش دکمه‌های خروجی',

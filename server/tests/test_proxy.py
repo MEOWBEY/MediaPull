@@ -4,7 +4,7 @@ import pytest
 
 import app.proxy as proxy_mod
 from app.config import Settings
-from app.proxy import ProxyService, _rewrite_hls
+from app.proxy import ProxyService, _download_filename, _rewrite_hls
 from app.ssrf import is_blocked_ip
 
 
@@ -294,6 +294,25 @@ async def test_playlist_under_cap_is_rewritten(proxy, monkeypatch):
     )
     assert resp.status_code == 200
     assert b"proxy-video" in resp.body
+
+
+# ----- forced-download filename sanitization ----------------------------
+
+
+def test_download_filename_strips_header_injection_chars():
+    assert _download_filename({"filename": 'a\r\nb"c'}) == "abc"
+
+
+def test_download_filename_strips_path_separators_and_semicolons():
+    # Path separators / ';' / '%' can spoof the save location or smuggle
+    # Content-Disposition parameters -- all must be dropped.
+    assert _download_filename({"filename": "..\\..\\evil;name%2e.mp4"}) == "....evilname2e.mp4"
+    assert _download_filename({"filename": "a/b/c.mp4"}) == "abc.mp4"
+
+
+def test_download_filename_falls_back_to_generic():
+    assert _download_filename({}) == "video"
+    assert _download_filename({"filename": "///"}) == "video"
 
 
 # ----- ephemeral cookie token ------------------------------------------
