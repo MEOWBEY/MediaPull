@@ -134,7 +134,7 @@ export const en = {
 	'how.step1.body': 'Use a page containing a video or a direct link to a video file.',
 	'how.step2.title': 'Extract',
 	'how.step2.body':
-		'For video, MediaPull tries yt-dlp, a generic extractor, and finally an HTML-scraping fallback to resolve the media URLs. For image posts and albums it uses gallery-dl, so you can pull a whole gallery the same way.',
+		'MediaPull finds the real media links — video formats with yt-dlp, image posts and albums with gallery-dl.',
 	'how.step3.title': 'Preview',
 	'how.step3.body': 'Play any available quality in the built-in player, with optional auto-generated subtitles.',
 	'how.step4.title': 'Save it',
@@ -382,7 +382,7 @@ export const fa: Record<MessageKey, string> = {
 	'how.step1.body': 'نشانی صفحه‌ای دارای ویدیو یا لینک مستقیم فایل ویدیویی را وارد کنید.',
 	'how.step2.title': 'استخراج',
 	'how.step2.body':
-		'مدیاپول برای ویدیو به‌ترتیب از yt-dlp، استخراج‌گر عمومی و در نهایت روش جایگزین واکشی HTML استفاده می‌کند. برای پست‌ها و آلبوم‌های تصویری از gallery-dl استفاده می‌شود، پس می‌توانید یک گالری کامل را هم به همین شکل دریافت کنید.',
+		'مدیاپول لینک‌های واقعی رسانه را پیدا می‌کند — فرمت‌های ویدیویی با yt-dlp و پست‌ها و آلبوم‌های تصویری با gallery-dl.',
 	'how.step3.title': 'پیش‌نمایش',
 	'how.step3.body': 'هر کیفیت موجود را در پخش‌کنندهٔ داخلی، همراه با زیرنویس خودکار اختیاری، پخش کنید.',
 	'how.step4.title': 'ذخیره',

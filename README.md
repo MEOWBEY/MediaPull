@@ -9,6 +9,8 @@ and a media proxy when the browser can’t play a source directly.
 Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
 [gallery-dl](https://github.com/mikf/gallery-dl) for images.
 
+![MediaPull — paste a URL, extract formats, preview and download](docs/media/extract-light.webp)
+
 ## Features
 
 - **Extract video formats** — qualities and container types, ready to preview,

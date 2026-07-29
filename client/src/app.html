@@ -3,7 +3,13 @@
 
 <head>
 	<meta charset="utf-8" />
-	<link rel="icon" href="%sveltekit.assets%/favicon.png" />
+	<!-- SVG first (crisp at any size, themeable); PNG is the fallback for
+	     browsers that don't take SVG icons. -->
+	<link rel="icon" href="%sveltekit.assets%/favicon.svg" type="image/svg+xml" />
+	<link rel="icon" href="%sveltekit.assets%/favicon.png" sizes="32x32" type="image/png" />
+	<link rel="apple-touch-icon" href="%sveltekit.assets%/apple-touch-icon.png" />
+	<link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
+	<meta name="theme-color" content="#141518" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 	<meta name="description" content="MediaPull — paste a URL to get downloadable video formats and image galleries. Built-in player, optional subtitles, cookie support, and proxy when direct play fails." />
 	<meta name="keywords" content="video link extractor, direct video url, yt-dlp, hls player, video proxy, sveltekit" />
@@ -30,14 +36,6 @@
 			if (dark) document.documentElement.classList.add('dark');
 		} catch (e) {}
 	</script>
-
-	<!-- Space Grotesk (headings + body) + JetBrains Mono (UI voice); Vazirmatn via app.css for Persian. -->
-	<link rel="preconnect" href="https://fonts.googleapis.com" />
-	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-	<link
-		href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap"
-		rel="stylesheet"
-	/>
 
 	%sveltekit.head%
 </head>

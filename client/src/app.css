@@ -1,8 +1,7 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
-/* Vazirmatn: free OFL variable font with full Latin + Persian coverage, so a
-   single family renders both English (LTR) and Farsi (RTL) cleanly. */
-@import '@fontsource-variable/vazirmatn';
+/* @font-face rules for the three self-hosted families (files in static/fonts/). */
+@import './fonts.css';
 
 @custom-variant dark (&:is(.dark *));
 
@@ -175,17 +174,20 @@
 	   size metadata, section eyebrows. Vazirmatn kept in the stack so Persian
 	   glyphs fall back cleanly (JetBrains Mono is Latin-only). */
 	--font-mono:
-		'JetBrains Mono', 'Vazirmatn Variable', ui-monospace, 'SF Mono', 'Cascadia Code',
-		'Roboto Mono', Menlo, Consolas, monospace;
+		'JetBrains Mono Variable', 'JetBrains Mono', 'Vazirmatn Variable', ui-monospace, 'SF Mono',
+		'Cascadia Code', 'Roboto Mono', Menlo, Consolas, monospace;
 
 	/* Body reading copy — humanist mono-adjacent sans, still tool-like but easy on
 	   longer text (instructions, descriptions). */
 	--font-sans:
-		'Space Grotesk', 'Vazirmatn Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
-		Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+		'Space Grotesk Variable', 'Space Grotesk', 'Vazirmatn Variable', ui-sans-serif, system-ui,
+		-apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif, 'Apple Color Emoji',
+		'Segoe UI Emoji';
 
 	/* Display headings — Space Grotesk at its heavier weights; Vazirmatn for Persian. */
-	--font-heading: 'Space Grotesk', 'Vazirmatn Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-heading:
+		'Space Grotesk Variable', 'Space Grotesk', 'Vazirmatn Variable', ui-sans-serif, system-ui,
+		sans-serif;
 
 	/* aurora-* accent aliases: utilities like text-aurora-2 / bg-aurora-2 resolve
 	   to the signal accent + a neutral, all via tokens so a palette swap

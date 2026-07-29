@@ -56,5 +56,9 @@ notes.local.md
 CLAUDE.md
 DESIGN-IS-*/
 
+# ── Screenshot/GIF capture harness (local only; the rendered media in
+#    docs/media/ IS committed) ──
+.demo/
+
 # ── graphify knowledge graph (regenerated on every commit via .git/hooks/post-commit) ──
 graphify-out/
