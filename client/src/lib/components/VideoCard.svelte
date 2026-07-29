@@ -7,7 +7,6 @@
 	import Info from '@lucide/svelte/icons/info';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import QrCode from '@lucide/svelte/icons/qr-code';
-	import Waypoints from '@lucide/svelte/icons/waypoints';
 	import X from '@lucide/svelte/icons/x';
 	import { toast } from 'svelte-sonner';
 
@@ -273,20 +272,6 @@
 					<span class="inline-flex min-w-0 items-center gap-1 truncate" title={publishDate}>
 						<Calendar class="h-3 w-3 shrink-0" /><span class="truncate">{publishDate}</span>
 					</span>
-				{/if}
-				{#if useProxy}
-					<!-- Shown only while this card's links route through the server; the
-					     chip doubles as the off-switch. Turning routing ON lives in
-					     Settings (global) and the player's error overlay (per card). -->
-					<button
-						type="button"
-						onclick={onToggleProxy}
-						title={t('extract.proxyHint')}
-						aria-pressed="true"
-						class="border-border/70 text-muted-foreground hover:text-foreground inline-flex h-8 shrink-0 cursor-pointer items-center gap-1 rounded-md border px-2 text-xs sm:h-6"
-					>
-						<Waypoints class="h-3 w-3" />{t('extract.viaServer')}
-					</button>
 				{/if}
 			</div>
 

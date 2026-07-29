@@ -57,9 +57,6 @@ export const en = {
 	'extract.videoOnlyNote':
 		'This source also offers higher resolutions as silent video-only streams, hidden by default. To get them, turn on “Show video-only qualities” in Settings → Player.',
 	'extract.videoOnlyNoteAction': 'Open Player settings',
-	'extract.viaServer': 'Via server',
-	'extract.viaServerHint':
-		'Play and download this card through the server. Turn on if the direct link is blocked or won’t play.',
 	'extract.proxyMode': 'Via server',
 	'extract.proxyHint':
 		'Links for this video are routed through the MediaPull server — useful when direct links are blocked. Click to switch to direct links.',
@@ -137,7 +134,7 @@ export const en = {
 	'how.step1.body': 'Use a page containing a video or a direct link to a video file.',
 	'how.step2.title': 'Extract',
 	'how.step2.body':
-		'MediaPull tries yt-dlp, a generic extractor, and finally an HTML-scraping fallback to resolve the media URLs.',
+		'For video, MediaPull tries yt-dlp, a generic extractor, and finally an HTML-scraping fallback to resolve the media URLs. For image posts and albums it uses gallery-dl, so you can pull a whole gallery the same way.',
 	'how.step3.title': 'Preview',
 	'how.step3.body': 'Play any available quality in the built-in player, with optional auto-generated subtitles.',
 	'how.step4.title': 'Save it',
@@ -307,9 +304,6 @@ export const fa: Record<MessageKey, string> = {
 	'extract.videoOnlyNote':
 		'این منبع کیفیت‌های بالاتر را به‌صورت جریان بی‌صدا (فقط ویدیو) نیز ارائه می‌دهد که به‌طور پیش‌فرض پنهان است. برای دریافت آن‌ها، گزینهٔ «نمایش کیفیت‌های فقط‌ویدیو» را در تنظیمات ← پخش‌کننده روشن کنید.',
 	'extract.videoOnlyNoteAction': 'باز کردن تنظیمات پخش‌کننده',
-	'extract.viaServer': 'از طریق سرور',
-	'extract.viaServerHint':
-		'پخش و دانلود این کارت از طریق سرور انجام می‌شود. اگر لینک مستقیم مسدود است یا پخش نمی‌شود، روشنش کنید.',
 	'extract.proxyMode': 'از طریق سرور',
 	'extract.proxyHint':
 		'لینک‌های این ویدیو از طریق سرور مدیاپول عبور می‌کنند — وقتی لینک مستقیم مسدود است کاربرد دارد. برای استفاده از لینک مستقیم کلیک کنید.',
@@ -388,7 +382,7 @@ export const fa: Record<MessageKey, string> = {
 	'how.step1.body': 'نشانی صفحه‌ای دارای ویدیو یا لینک مستقیم فایل ویدیویی را وارد کنید.',
 	'how.step2.title': 'استخراج',
 	'how.step2.body':
-		'مدیاپول برای یافتن لینک‌های واقعی، به‌ترتیب از yt-dlp، استخراج‌گر عمومی و در نهایت روش جایگزین واکشی HTML استفاده می‌کند.',
+		'مدیاپول برای ویدیو به‌ترتیب از yt-dlp، استخراج‌گر عمومی و در نهایت روش جایگزین واکشی HTML استفاده می‌کند. برای پست‌ها و آلبوم‌های تصویری از gallery-dl استفاده می‌شود، پس می‌توانید یک گالری کامل را هم به همین شکل دریافت کنید.',
 	'how.step3.title': 'پیش‌نمایش',
 	'how.step3.body': 'هر کیفیت موجود را در پخش‌کنندهٔ داخلی، همراه با زیرنویس خودکار اختیاری، پخش کنید.',
 	'how.step4.title': 'ذخیره',
