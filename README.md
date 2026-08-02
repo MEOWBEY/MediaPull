@@ -215,7 +215,7 @@ an empty `.env` runs fine in dev. The client has exactly one variable, in
 | `TRANSCRIBE_MAX_DOWNLOAD_BYTES` | `300000000` | Cap on the audio/video a job downloads |
 | `TRANSCRIBE_MAX_JOBS_STORED` | `64` | Finished+running jobs kept in RAM |
 | `TRANSCRIBE_JOB_TTL` | `1800` | Seconds a finished job stays pollable |
-| `TRANSCRIBE_JOB_TIMEOUT` | `900` | Whole-job wall-clock kill switch |
+| `TRANSCRIBE_JOB_TIMEOUT` | `3600` | Whole-job wall-clock kill switch |
 | `TRANSCRIBE_EXTRACT_PARALLELISM` | `4` | Parallel audio extraction windows |
 | `TRANSCRIBE_MAX_UPLOAD_MB` | `25` | Groq per-file upload cap (free tier: 25) |
 | `TRANSCRIBE_AUDIO_CODEC` | `opus` | Intermediate codec: `opus` / `wav` / `flac` |

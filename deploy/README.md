@@ -50,29 +50,34 @@ The three scripts cover the whole lifecycle:
 
 ## Quick install (recommended)
 
-SSH into a fresh server and run the one installer script — it clones the full
-project itself, so you don't need the repo on the server beforehand:
+SSH into a fresh server, clone the repo, and run the installer from inside it:
 
 ```bash
 ssh root@YOUR_SERVER_IP
-curl -fsSL https://raw.githubusercontent.com/meowbey/MediaPull/main/deploy/install.sh -o install.sh
-sudo bash install.sh
-```
-
-> Running it as a **saved file** (not piped straight into `bash`) is what keeps
-> it interactive. `curl … | bash` has no keyboard attached, so it silently uses
-> defaults instead of asking the questions below.
-
-Prefer to review the code first, or deploying a fork? Clone, then run from
-inside:
-
-```bash
+apt update && apt install -y git
 git clone https://github.com/meowbey/MediaPull.git /tmp/mediapull
 sudo bash /tmp/mediapull/deploy/install.sh
 ```
 
 (`/tmp/mediapull` is just a throwaway copy to launch the installer;
-`install.sh` clones its own permanent copy into `/opt/mediapull` regardless.)
+`install.sh` clones its own permanent copy into `/opt/mediapull` regardless.
+Delete it afterwards with `rm -rf /tmp/mediapull`.)
+
+> Running it as a **saved file** (not piped straight into `bash`) is what keeps
+> it interactive. `curl … | bash` has no keyboard attached, so it silently uses
+> defaults instead of asking the questions below.
+
+### Without cloning
+
+The installer sources shared helpers from `lib.sh`, so downloading
+`install.sh` on its own fails with `lib.sh: No such file or directory`. Fetch
+both into the same directory:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/meowbey/MediaPull/main/deploy/install.sh -o install.sh
+curl -fsSL https://raw.githubusercontent.com/meowbey/MediaPull/main/deploy/lib.sh -o lib.sh
+sudo bash install.sh
+```
 
 ### What it asks
 
