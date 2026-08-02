@@ -49,7 +49,7 @@ All config via `server/.env` (see `.env.example`).
 | `CACHE_TTL` | `300` | Response cache TTL (seconds) |
 | `TRANSCRIBE_MAX_CONCURRENT_JOBS` | `2` | Parallel subtitle jobs |
 | `TRANSCRIBE_MAX_DOWNLOAD_BYTES` | `300000000` | Audio download cap (300 MB) |
-| `TRANSCRIBE_JOB_TIMEOUT` | `900` | Whole-job wall-clock cap (s). A stuck job is killed and reported as an error rather than holding a slot forever. |
+| `TRANSCRIBE_JOB_TIMEOUT` | `3600` | Whole-job wall-clock cap (s). A stuck job is killed and reported as an error rather than holding a slot forever. |
 
 ### Proxy security
 

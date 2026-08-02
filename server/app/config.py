@@ -147,7 +147,7 @@ class Settings(BaseSettings):
     transcribe_job_ttl: int = Field(default=1800, ge=60)
     # Whole-job wall-clock cap; a stuck/very slow job is killed and reported
     # as an error rather than running forever.
-    transcribe_job_timeout: int = Field(default=900, ge=60, le=3600, alias="TRANSCRIBE_JOB_TIMEOUT")
+    transcribe_job_timeout: int = Field(default=3600, ge=60, le=21600, alias="TRANSCRIBE_JOB_TIMEOUT")
     # Bounds concurrent CPU-heavy pipeline steps (audio transcode + dialogue map
     # extraction) separately from transcribe_max_concurrent_jobs, which only
     # gates overall job admission -- without this a small VPS could end up
