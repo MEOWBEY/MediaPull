@@ -1,7 +1,7 @@
 # MediaPull
 
 [![CI](https://github.com/meowbey/MediaPull/actions/workflows/ci.yml/badge.svg)](https://github.com/meowbey/MediaPull/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Release](https://img.shields.io/github/v/release/meowbey/MediaPull?color=blue)](https://github.com/meowbey/MediaPull/releases/latest)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
 [![Node 18+](https://img.shields.io/badge/Node-18%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 
@@ -10,6 +10,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Tailwind CSS 4](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
 [![yt-dlp](https://img.shields.io/badge/yt--dlp-FF0000?logo=youtube&logoColor=white)](https://github.com/yt-dlp/yt-dlp)
+[![gallery-dl](https://img.shields.io/badge/gallery--dl-4B8BBE?logo=python&logoColor=white)](https://github.com/mikf/gallery-dl)
 
 MediaPull turns a page URL into downloadable video formats and/or image
 galleries. Paste a link, extract, then preview, download, or copy. Optional
