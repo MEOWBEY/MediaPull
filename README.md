@@ -1,5 +1,9 @@
 # MediaPull
 
+[![CI](https://github.com/meowbey/MediaPull/actions/workflows/ci.yml/badge.svg)](https://github.com/meowbey/MediaPull/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/downloads/)
+[![Node 18+](https://img.shields.io/badge/Node-18%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 
 MediaPull turns a page URL into downloadable video formats and/or image
 galleries. Paste a link, extract, then preview, download, or copy. Optional
