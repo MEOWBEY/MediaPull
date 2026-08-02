@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Github from '@lucide/svelte/icons/code';
 	import Settings from '@lucide/svelte/icons/settings';
 
 	import { resolve } from '$app/paths';
@@ -65,8 +64,36 @@
 			<div
 				class="flex items-center gap-0.5 sm:gap-1"
 				role="group"
-				aria-label="Settings, theme and external links"
+				aria-label="Project link, language, theme and settings"
 			>
+				<!-- Order runs peripheral → primary. GitHub is the only control that
+				     leaves the app, so it sits furthest from the edge; Settings is the
+				     most-used, so it takes the privileged last slot. -->
+				<Button
+					variant="ghost"
+					size="icon"
+					href={GITHUB_URL}
+					target="_blank"
+					rel="noopener noreferrer"
+					class="h-10 w-10 sm:h-9 sm:w-9"
+					title="GitHub"
+					aria-label="Visit {GITHUB_USERNAME} on GitHub (opens in new tab)"
+				>
+					<!-- GitHub's mark isn't in Lucide, so it's inlined from the official
+					     Octicons set. Sized under the stroke icons beside it: a solid glyph
+					     fills its whole box, so it reads heavier at equal dimensions. -->
+					<svg
+						class="size-4 sm:size-4.5"
+						viewBox="0 0 16 16"
+						fill="currentColor"
+						xmlns="http://www.w3.org/2000/svg"
+						aria-hidden="true"
+					>
+						<path
+							d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.07-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A7.995 7.995 0 0 0 16 8c0-4.42-3.58-8-8-8Z"
+						/>
+					</svg>
+				</Button>
 				<LanguageToggle />
 				<ToggleMode />
 				<Button
@@ -78,18 +105,6 @@
 					aria-label={i18n.t('input.preferences')}
 				>
 					<Settings class="h-5 w-5" aria-hidden="true" />
-				</Button>
-				<Button
-					variant="ghost"
-					size="sm"
-					href={GITHUB_URL}
-					target="_blank"
-					rel="noopener noreferrer"
-					class="hidden sm:inline-flex"
-					aria-label="Visit {GITHUB_URL} GitHub profile (opens in new tab)"
-				>
-					<Github class="h-4 w-4" aria-hidden="true" />
-					<span class="hidden text-xs sm:inline">{GITHUB_USERNAME}</span>
 				</Button>
 			</div>
 		</nav>
