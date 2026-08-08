@@ -29,11 +29,14 @@
 	} from '$lib/format';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { health } from '$lib/stores/health.svelte';
-	import { localFiles, type LocalFileEntry } from '$lib/stores/local-library.svelte';
+	import {
+		localFiles,
+		type LocalFileEntry,
+		type AudioSplitDone
+	} from '$lib/stores/local-library.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { TranscriptionController } from '$lib/transcribe.svelte';
 	import { allQualities } from '$lib/transform';
-	import type { AudioSplitDone } from '$lib/stores/local-library.svelte';
 	import type {
 		FormatGroup,
 		GroupedVideo,
@@ -414,7 +417,9 @@
 		<div class="rounded-lg py-3.5 {isLocal ? 'border-border/70 bg-card/60 border sm:p-4' : ''}">
 			{#if isLocal}
 				<!-- Local-only strip: device badge + remove. -->
-				<div class="border-border/60 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0">
+				<div
+					class="border-border/60 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
+				>
 					<span
 						class="text-muted-foreground flex min-w-0 flex-1 items-center gap-1.5 font-mono text-xs"
 					>

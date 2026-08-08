@@ -22,13 +22,13 @@
 	import { Label } from '$lib/components/ui/label';
 	import * as Sheet from '$lib/components/ui/sheet';
 	import { Switch } from '$lib/components/ui/switch';
+	import { formatBytesToMB } from '$lib/format';
 	import { i18n, LOCALES } from '$lib/i18n/index.svelte';
 	import type { MessageKey } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
 	import { localFiles } from '$lib/stores/local-library.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { MediaQuery } from '$lib/viewport.svelte';
-	import { formatBytesToMB } from '$lib/format';
 
 	import type { Component, Snippet } from 'svelte';
 
