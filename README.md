@@ -22,6 +22,17 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
 
 ![MediaPull — paste a URL, extract formats, preview and download](docs/media/extract-light.webp)
 
+## Recent updates
+
+- Split audio now persists on remote-video cards too (like local files): the
+  ready MP3 button survives a refresh, and when the server-side copy expires
+  (TTL) the button re-verifies itself and falls back to splitting again
+- Fixed split-audio failing on proxied online videos with proper URL unwrapping
+- Added progress labels and step indicators to audio splitting
+- Fixed row layout alignment between VideoPlayer and format list
+- Improved button width consistency across all action states
+- Added audio stream validation before subtitle generation
+
 ## Features
 
 - **Extract video formats** — qualities and container types, ready to preview,
@@ -33,6 +44,14 @@ Uses [yt-dlp](https://github.com/yt-dlp/yt-dlp) for video and
 - **Subtitles, two ways** — use caption tracks the source already provides, or
   auto-generate them with speech-to-text (Groq Whisper) when `GROQ_API_KEY` is
   set; browse the transcript in a side panel and download as SRT
+- **Local files** — open a video/audio file from your disk directly in the
+  player (no upload; the browser plays it client-side)
+- **Split audio** — extract standalone MP3 from any video URL or local file and
+  download it. Finished downloads are remembered per card (browser localStorage
+  / IndexedDB) so a refresh doesn't lose the button; the MP3 itself only lives
+  on the server for `SPLIT_AUDIO_TTL` seconds, and a stale download button
+  resets itself to re-split once it expires. Cleaned up automatically when the
+  card or local file is removed
 - **Proxy mode** — stream through the backend when direct play fails (hotlink
   protection, missing Referer/Cookie headers)
 - **Sign-in cookies** — Settings → Sign-in for sites that need a login
@@ -124,6 +143,7 @@ flowchart LR
     api -- "/extract-gallery" --> gdl[gallery-dl<br/>image lists]
     api -- "/proxy-video" --> proxy[media proxy<br/>real browser headers]
     api -- "/transcribe" --> whisper[Groq Whisper<br/>optional subtitles]
+    api -- "/split-audio" --> ffmpeg[ffmpeg<br/>MP3 extraction]
 ```
 
 **Worth knowing:**
@@ -131,6 +151,10 @@ flowchart LR
 - **Cookies stay off proxy URLs.** Before a proxy URL is built, auth cookies
   are swapped for a short-lived opaque token (`ctok` via `/proxy-token`), so
   copied, QR'd, or shared links never expose a session.
+- **Audio/video processing quality**: For subtitle generation and audio
+  splitting, MediaPull automatically selects the lowest-quality video stream
+  that has audio to minimize bandwidth and processing time while maintaining
+  transcription accuracy.
 - **Single-worker by design.** Result cache, transcription jobs, and proxy
   tokens are in-memory per process — scale with more instances behind a load
   balancer, not more workers in one process.
@@ -212,7 +236,7 @@ an empty `.env` runs fine in dev. The client has exactly one variable, in
 | `TRANSCRIBE_ENABLED` | `true` | Master toggle for the feature |
 | `TRANSCRIBE_MAX_CONCURRENT_JOBS` | `2` | Parallel transcription jobs |
 | `TRANSCRIBE_WORKERS` | `2` | Parallel CPU-heavy ffmpeg steps |
-| `TRANSCRIBE_MAX_DOWNLOAD_BYTES` | `300000000` | Cap on the audio/video a job downloads |
+| `MEDIA_MAX_SOURCE_BYTES` | `300000000` | Cap on any client-supplied media (transcribe download/upload + split audio) |
 | `TRANSCRIBE_MAX_JOBS_STORED` | `64` | Finished+running jobs kept in RAM |
 | `TRANSCRIBE_JOB_TTL` | `1800` | Seconds a finished job stays pollable |
 | `TRANSCRIBE_JOB_TIMEOUT` | `3600` | Whole-job wall-clock kill switch |
@@ -225,6 +249,14 @@ an empty `.env` runs fine in dev. The client has exactly one variable, in
 | `TRANSCRIBE_CUSTOM_EXT` | `opus` | Custom-mode output extension |
 | `GROQ_WHISPER_MODEL` | `whisper-large-v3-turbo` | Whisper model name |
 | `FFMPEG_PATH` / `FFPROBE_PATH` | `ffmpeg` / `ffprobe` | Absolute paths if not on the service's PATH |
+
+### Server — local files & split audio
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `LOCAL_FILES_ENABLED` | `true` | Toggle the local-file picker + global drop zone |
+| `SPLIT_AUDIO_ENABLED` | `true` | Master toggle for the split-audio endpoints (requires ffmpeg) |
+| `SPLIT_AUDIO_TTL` | `300` | Seconds a split MP3 is kept before it's swept |
 
 ### Server — galleries (gallery-dl)
 

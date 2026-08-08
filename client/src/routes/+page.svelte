@@ -6,14 +6,17 @@
 	import InputUrl from '$lib/components/InputUrl.svelte';
 	import Instructions from '$lib/components/Instructions.svelte';
 	import LoadingSkeleton from '$lib/components/LoadingSkeleton.svelte';
+	import MediaCard from '$lib/components/MediaCard.svelte';
 	import PreferencesDialog from '$lib/components/PreferencesDialog.svelte';
 	import VideoExtractList from '$lib/components/VideoExtractList.svelte';
 	import { extraction } from '$lib/extraction.svelte';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+	import { health } from '$lib/stores/health.svelte';
+	import { localFiles } from '$lib/stores/local-library.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
-	const {t} = i18n;
+	const { t } = i18n;
 
 	let isVideoExtractRunning = $derived(appStore.isVideoExtractRunning);
 
@@ -29,47 +32,100 @@
 	let batchTotal = $derived(extraction.batchTotal);
 	let batchDone = $derived(extraction.batchDone);
 
-	// Stays true across a whole batch (batchTotal > 0) so the skeleton doesn't
-	// flicker off between individual items in the queue.
 	let isExtractBusy = $derived(isVideoExtractRunning || batchTotal > 0);
 
-	let showEmptyState = $derived(!hasResults && !isExtractBusy && !videoExtractError);
-	// One neutral skeleton, shown only while extracting into an EMPTY library.
-	// Once any result (video or gallery) is on screen we don't cover it with a
-	// skeleton, and we never show a video- AND gallery-shaped skeleton at once
-	// -- a single generic placeholder stands in until the real kind lands.
+	// ----- Local files -----------------------------------------------
+	// The whole local-file library (entries, persisted subtitles, audio
+	// splits, IndexedDB round-trip) lives in `localFiles` — the page only
+	// drops files in and renders the store's entries; see
+	// `$lib/stores/local-library.svelte.ts`.
+	let showEmptyState = $derived(
+		!hasResults && !isExtractBusy && !videoExtractError && localFiles.entries.length === 0
+	);
 	let showSkeleton = $derived(isExtractBusy && !hasResults);
 
-	// Scroll to and focus the URL field — used by the side button and on first load.
+	// ----- Global drop zone ------------------------------------------
+	let isDraggingOver = $state(false);
+	let dragCounter = $state(0);
+
+	function onDragEnter(e: DragEvent) {
+		if (!health.localFilesEnabled) {
+			return;
+		}
+		const hasFile = e.dataTransfer?.types.includes('Files');
+
+		if (!hasFile) {
+			return;
+		}
+		e.preventDefault();
+		dragCounter++;
+		isDraggingOver = true;
+	}
+
+	function onDragLeave() {
+		if (!health.localFilesEnabled) {
+			return;
+		}
+		dragCounter--;
+		if (dragCounter <= 0) {
+			dragCounter = 0;
+			isDraggingOver = false;
+		}
+	}
+
+	function onDragOver(e: DragEvent) {
+		if (!health.localFilesEnabled) {
+			return;
+		}
+		e.preventDefault();
+	}
+
+	function onDrop(e: DragEvent) {
+		if (!health.localFilesEnabled) {
+			return;
+		}
+		e.preventDefault();
+		dragCounter = 0;
+		isDraggingOver = false;
+		const files = Array.from(e.dataTransfer?.files ?? []);
+
+		files.forEach((file) => localFiles.add(file));
+	}
+
+	// Scroll to and focus the URL field.
 	function focusInput(scroll = true) {
 		const el = document.getElementById('video-url') as HTMLInputElement | null;
 
-		if (!el) {return;}
-		if (scroll) {el.scrollIntoView({ behavior: 'smooth', block: 'center' });}
+		if (!el) {
+			return;
+		}
+		if (scroll) {
+			el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
 		el.focus({ preventScroll: scroll });
 	}
 
 	onMount(() => {
-		// Most visits start by pasting a URL, so focus the field on load. Limit it
-		// to pointer (desktop) devices — auto-focusing on touch pops the on-screen
-		// keyboard, which is jarring.
+		void health.load();
+
 		const isDesktop = window.matchMedia('(pointer: fine)').matches;
 
-		if (isDesktop || !hasResults) {focusInput(false);}
+		if (isDesktop || !hasResults) {
+			focusInput(false);
+		}
 
-		// Library proxy URLs embed short-lived ctok values — refresh them when
-		// the user still has cookies for those hosts.
 		void appStore.remintLibraryProxyTokens();
+		void localFiles.restore();
 	});
 
 	$effect(() => {
-		if (typeof document === 'undefined' || !preferences) {return;}
+		if (typeof document === 'undefined' || !preferences) {
+			return;
+		}
 
 		const { theme } = preferences;
 		const media = window.matchMedia('(prefers-color-scheme: dark)');
 
-		// Apply the `dark` class ourselves so 'system' tracks the OS. This only
-		// writes to the DOM (no reactive state), so it can't loop the effect.
 		const applyTheme = () => {
 			const dark = theme === 'dark' || (theme === 'system' && media.matches);
 
@@ -78,7 +134,6 @@
 
 		applyTheme();
 
-		// Only follow live OS changes while on 'system'.
 		if (theme === 'system') {
 			media.addEventListener('change', applyTheme);
 
@@ -95,11 +150,31 @@
 	/>
 </svelte:head>
 
+<!-- Global drop zone: listens on the whole page -->
+<svelte:window
+	ondragenter={onDragEnter}
+	ondragleave={onDragLeave}
+	ondragover={onDragOver}
+	ondrop={onDrop}
+/>
+
+{#if isDraggingOver}
+	<div
+		class="pointer-events-none fixed inset-0 z-50 flex items-center justify-center"
+		aria-hidden="true"
+	>
+		<div
+			class="bg-background/80 border-signal absolute inset-4 rounded-xl border-2 border-dashed backdrop-blur-sm"
+		></div>
+		<span class="text-signal relative z-10 font-mono text-lg font-semibold">
+			{t('localFile.dropAnywhere')}
+		</span>
+	</div>
+{/if}
+
 <div class="w-full">
 	<section class="relative mx-auto w-full max-w-7xl px-2 pt-12 pb-8 sm:px-4 sm:pt-20">
-		<h1
-			class="font-heading max-w-3xl text-4xl font-bold tracking-tight text-balance sm:text-6xl"
-		>
+		<h1 class="font-heading max-w-3xl text-4xl font-bold tracking-tight text-balance sm:text-6xl">
 			{t('hero.titleLead')}
 			<br />
 			<span class="ds-gradient-text">{t('hero.titleHighlight')}</span>
@@ -108,7 +183,6 @@
 			{/if}
 		</h1>
 
-		<!-- Input spans the full row width. -->
 		<div class="mt-8 w-full">
 			<InputUrl
 				{runVideoExtractFromServer}
@@ -116,14 +190,23 @@
 				{isVideoExtractRunning}
 				{batchTotal}
 				{batchDone}
+				onLocalFile={health.localFilesEnabled ? (file: File) => localFiles.add(file) : undefined}
 			/>
 		</div>
 	</section>
 
-	<!-- Narrower side padding on phones so previews use more width. -->
 	<div class="mx-auto w-full max-w-7xl px-2 pb-2 sm:px-4">
 		{#if videoExtractError}
 			<ErrorAlert {videoExtractError} onOpenCookies={() => ui.openPreferences('cookies')} />
+		{/if}
+
+		<!-- Local file cards appear above URL-extracted results -->
+		{#if localFiles.entries.length > 0}
+			<div class="mb-2">
+				{#each localFiles.entries as entry, i (entry.id)}
+					<MediaCard {entry} {preferences} isFirst={i === 0} />
+				{/each}
+			</div>
 		{/if}
 
 		<VideoExtractList {preferences} />
@@ -147,10 +230,7 @@
 			</div>
 		{/if}
 
-		{#if !hasResults}
-			<!-- The guide only shows before the first result. Once the user has
-			     extracted something they've clearly learned the flow, so it's
-			     dropped entirely rather than kept as a collapsed disclosure. -->
+		{#if !hasResults && localFiles.entries.length === 0}
 			<Instructions />
 		{/if}
 	</div>

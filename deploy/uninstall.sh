@@ -38,7 +38,16 @@ echo "==> removing the nginx site(s) (if present)"
 rm -f "/etc/nginx/sites-enabled/$SERVICE-api" "/etc/nginx/sites-available/$SERVICE-api"
 rm -f "/etc/nginx/sites-enabled/$SERVICE-client" "/etc/nginx/sites-available/$SERVICE-client"
 if command -v nginx &>/dev/null; then
-  nginx -t 2>/dev/null && systemctl reload nginx || echo "    (nginx not reloaded -- check config)"
+  if systemctl is-active nginx &>/dev/null; then
+    nginx -t 2>/dev/null && systemctl reload nginx || echo "    (nginx not reloaded -- check config)"
+    remaining=$(ls /etc/nginx/sites-enabled/ 2>/dev/null | grep -v '^default$' || true)
+    if [[ -z "$remaining" ]]; then
+      echo "    nginx is still running and will show its default page on port 80."
+      echo "    If nothing else on this box uses nginx, remove it:"
+      echo "      systemctl stop nginx && systemctl disable nginx"
+      echo "      apt remove --purge nginx nginx-common && apt autoremove"
+    fi
+  fi
 fi
 
 echo "==> removing firewall rules added by install.sh (if ufw is in use)"

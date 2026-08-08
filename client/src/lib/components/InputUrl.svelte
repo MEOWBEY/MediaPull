@@ -1,5 +1,6 @@
 <script lang="ts">
 	import ClipboardPaste from '@lucide/svelte/icons/clipboard-paste';
+	import FolderOpen from '@lucide/svelte/icons/folder-open';
 	import ImageIcon from '@lucide/svelte/icons/image';
 	import Loader2 from '@lucide/svelte/icons/loader-2';
 	import Search from '@lucide/svelte/icons/search';
@@ -11,6 +12,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { i18n } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+	import { health } from '$lib/stores/health.svelte';
 
 	const { t } = i18n;
 
@@ -19,7 +21,8 @@
 		cancelActiveOperation,
 		isVideoExtractRunning,
 		batchTotal = 0,
-		batchDone = 0
+		batchDone = 0,
+		onLocalFile
 	} = $props();
 
 	let inputUrl = $state('');
@@ -92,6 +95,18 @@
 			field?.select();
 			toast.info(t('input.pasteHint'));
 		}
+	}
+
+	function openFilePicker() {
+		if (!onLocalFile) {return;}
+		const input = document.createElement('input');
+
+		input.type = 'file';
+		input.accept = 'video/*,audio/*';
+		input.onchange = () => {
+			if (input.files?.[0]) {onLocalFile(input.files[0]);}
+		};
+		input.click();
 	}
 
 	// Native form submit -- lets the browser record submitted URLs in its own
@@ -167,6 +182,19 @@
 				<ClipboardPaste class="h-4 w-4 sm:me-1.5" />
 				<span class="hidden sm:inline">{t('input.paste')}</span>
 			</Button>
+			{#if health.localFilesEnabled && onLocalFile}
+				<Button
+					variant="outline"
+					size="sm"
+					onclick={openFilePicker}
+					class="h-9 shrink-0"
+					title={t('input.openFileHint')}
+					aria-label={t('input.openFile')}
+				>
+					<FolderOpen class="h-4 w-4 sm:me-1.5" />
+					<span class="hidden sm:inline">{t('input.openFile')}</span>
+				</Button>
+			{/if}
 		</div>
 
 		{#if urlCount > 1 && !isOperationRunning}

@@ -3,10 +3,10 @@
 	import { SvelteMap } from 'svelte/reactivity';
 	import { toast } from 'svelte-sonner';
 
-	import { copyUrlToClipboard} from '$lib/clipboard';
+	import { copyUrlToClipboard } from '$lib/clipboard';
+	import MediaCard from '$lib/components/MediaCard.svelte';
 	import QrDialog from '$lib/components/QrDialog.svelte';
 	import SourceGroupCard from '$lib/components/SourceGroupCard.svelte';
-	import VideoCard from '$lib/components/VideoCard.svelte';
 	import { allQualityLinks, buildVideosM3u, downloadTextFile, safeFilename } from '$lib/export';
 	import { extraction } from '$lib/extraction.svelte';
 	import { isAudioType, sourceHost } from '$lib/format';
@@ -174,7 +174,9 @@
 			<h2 class="font-heading flex items-center gap-2 text-lg font-bold tracking-tight">
 				<ListVideo class="text-signal h-5 w-5" />
 				{t('extract.heading')}
-				<span class="text-muted-foreground font-mono text-sm font-normal">({videoExtractResults.length})</span>
+				<span class="text-muted-foreground font-mono text-sm font-normal"
+					>({videoExtractResults.length})</span
+				>
 			</h2>
 		</div>
 
@@ -191,9 +193,7 @@
 				<SourceGroupCard
 					sourceUrl={group.sourceUrl}
 					itemCount={group.items.length}
-					onCopyUrl={group.sourceUrl
-						? () => copyUrlToClipboard(group.sourceUrl, t)
-						: undefined}
+					onCopyUrl={group.sourceUrl ? () => copyUrlToClipboard(group.sourceUrl, t) : undefined}
 					onExportTxt={() => exportTxtFor(group.items, sourceHost(group.sourceUrl) || 'group')}
 					onExportM3u={group.items.some((v) =>
 						v.formatGroups.some((g) => g.type === 'application/x-mpegURL')
@@ -209,7 +209,7 @@
 					     hairline border-top separates the 2nd+ video from the one
 					     above it; the first video needs no divider. -->
 					{#each group.items as video, i (video)}
-						<VideoCard
+						<MediaCard
 							{video}
 							{preferences}
 							isFirst={i === 0}
@@ -217,6 +217,7 @@
 							onToggleProxy={() => toggleCardProxy(video)}
 							onShowQr={showQr}
 							onSubtitleTrackChange={(track) => appStore.setSubtitleTrackForVideo(video, track)}
+							onAudioSplitChange={(state) => appStore.setAudioSplitForVideo(video, state)}
 						/>
 					{/each}
 				</SourceGroupCard>

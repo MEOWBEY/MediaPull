@@ -19,10 +19,25 @@ OBSOLETE_ENV_KEYS=(
   YOUTUBE_PO_TOKEN
 )
 
+# ---- colored output --------------------------------------------------------
+# ANSI colors, only when stdout is a TTY (pipes/logs stay plain). Scripts
+# that use these must echo with -e.
+if [[ -t 1 ]]; then
+  C_RESET=$'\033[0m'
+  C_BOLD=$'\033[1m'
+  C_DIM=$'\033[2m'
+  C_RED=$'\033[31m'
+  C_GREEN=$'\033[32m'
+  C_YELLOW=$'\033[33m'
+  C_CYAN=$'\033[36m'
+else
+  C_RESET=''; C_BOLD=''; C_DIM=''; C_RED=''; C_GREEN=''; C_YELLOW=''; C_CYAN=''
+fi
+
 # ---- misc guards -----------------------------------------------------------
 require_root() {
   if [[ $EUID -ne 0 ]]; then
-    echo "Run as root (or with sudo)." >&2
+    echo -e "${C_RED}Run as root (or with sudo).${C_RESET}" >&2
     exit 1
   fi
 }

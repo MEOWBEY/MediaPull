@@ -13,6 +13,7 @@ import { createProxyToken } from '$lib/api/proxy-token';
 import { buildProxiedUrl } from '$lib/proxy-url';
 import { groupGalleriesBySource, groupVideosByQuality } from '$lib/transform';
 import type {
+	AudioSplitDone,
 	GroupedGallery,
 	GroupedVideo,
 	IncomingGallery,
@@ -105,6 +106,19 @@ export class LibraryStore {
 		if (!item) {return;}
 
 		item.subtitleTrack = track ?? undefined;
+		this.persist(KEY_EXTRACT, this.extractResults);
+	}
+
+	/** Persists a finished audio split on the stored card (same lifecycle as
+	 *  `setSubtitleTrack`: survives a refresh, drops with the card). The mp3
+	 *  itself only lives SPLIT_AUDIO_TTL on the server, so consumers re-verify
+	 *  on mount and clear it when the job is gone. */
+	setAudioSplit(target: GroupedVideo, audioSplit: AudioSplitDone | null): void {
+		const item = this.extractResults.find((v) => v === target);
+
+		if (!item) {return;}
+
+		item.audioSplit = audioSplit ?? undefined;
 		this.persist(KEY_EXTRACT, this.extractResults);
 	}
 

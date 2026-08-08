@@ -225,7 +225,8 @@ curl https://YOUR_DOMAIN/health
 `ffmpegAvailable` / `galleryDlAvailable` should both be `true` — if not, see
 [Troubleshooting](#troubleshooting). `potAvailable` shows whether the PO-token
 provider answered (see [YouTube PO tokens](#youtube-po-tokens)); `false` means
-YouTube age-gated / bot-checked videos will likely fail.
+YouTube age-gated / bot-checked videos will likely fail. `splitAudioEnabled`
+reflects the split-audio feature (ffmpeg + `SPLIT_AUDIO_ENABLED`).
 
 ## YouTube PO tokens
 
@@ -342,6 +343,17 @@ sudo /opt/mediapull/deploy/uninstall.sh --purge    # + wipe repo, venv, user, TL
 `uninstall.sh` reads your saved domain/client answers automatically. `--purge`
 asks for an explicit `YES` before deleting the repo and the service user.
 
+After removal, nginx is still installed and will show its default
+**"Welcome to nginx!"** page on port 80. This is harmless but visible.
+If nothing else on the box uses nginx, remove it:
+
+```bash
+sudo systemctl stop nginx && sudo systemctl disable nginx
+sudo apt remove --purge nginx nginx-common && sudo apt autoremove
+```
+
+Skip this if another service on the box uses nginx.
+
 ## Security
 
 `GET /proxy-video` fetches user-supplied URLs. The proxy blocks internal
@@ -359,8 +371,8 @@ don't leak sessions.
 
 ## Troubleshooting
 
-- **`ffmpegAvailable: false` on `/health`**: ffmpeg is only used by
-  auto-subtitles, so this goes unnoticed until someone generates them.
+- **`ffmpegAvailable: false` on `/health`**: ffmpeg is used by auto-subtitles
+  and split-audio, so this can go unnoticed until someone uses either.
   `install.sh` installs ffmpeg via apt; if you skipped/moved it, set
   `FFMPEG_PATH`/`FFPROBE_PATH` in `.env` to the absolute path and restart.
 - **"This site or URL isn't supported" on a link that used to work**: the

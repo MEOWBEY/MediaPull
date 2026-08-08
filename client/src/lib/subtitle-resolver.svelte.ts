@@ -71,6 +71,17 @@ export class SubtitleResolver {
 			return;
 		}
 
+		// Idempotence guard — without it the restore/report loop never
+		// converges: the first rebuild is reported up, the parent persists
+		// that NEW object as the player's own `initialSubtitleTrack` prop,
+		// restore() then runs again and rebuilds YET another object with
+		// fresh blob URLs, which gets reported and persisted again... an
+		// effect feedback loop. If we already hold this exact object there
+		// is nothing to rebuild.
+		if (this.transcription.track === track || this.existingTrack === track) {
+			return;
+		}
+
 		// Blob URLs only exist in the browser -- during SSR keep the track
 		// as-is (the browser-side mount re-restores it anyway). Rebuild both
 		// VTT and SRT so download/player survive job TTL expiry.

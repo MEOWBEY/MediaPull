@@ -3,25 +3,30 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import logging
 import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from .audio import (
     AudioChunk,
     AudioError,
     acquire_audio,
     chunk_audio,
+    choose_codec,
     cleanup_work_dir,
     create_work_dir,
+    extract_audio_track,
     extract_window,
     plan_acquisition,
     probe_duration,
 )
 from .config import Settings
 from .models import VideoFormat
+from .postprocess import clean as postprocess_subtitles
 from .subtitles import merge_chunks, to_srt, to_vtt
 from .transcribe.base import Transcriber, TranscriptionResult
 from .transcribe.groq_engine import GroqError
@@ -47,8 +52,6 @@ def _return_freed_memory_to_os() -> None:
     on glibc (no-op on Windows/macOS or musl) and never raises.
     """
     try:
-        import ctypes
-
         ctypes.CDLL("libc.so.6").malloc_trim(0)
     except (OSError, AttributeError):
         pass
@@ -164,17 +167,208 @@ _TRANSCRIBE_END = 0.96
 
 async def run_transcription_job(
     job_id: str,
-    formats: list[VideoFormat],
+    formats: list[VideoFormat] | None,
     settings: Settings,
     store: JobStore,
     transcriber: Transcriber,
     duration_hint: float | None = None,
     resolve_cookie_token: Callable[[str], str] | None = None,
+    source_path: Path | None = None,
 ) -> None:
+    """Run one transcription job end-to-end from either a URL (``formats``
+    given: the source is planned, acquired, and transcribed) or a local file
+    already on disk (``source_path`` given: acquisition is skipped and the
+    audio track is extracted straight from the file). Exactly one must be
+    provided.
+
+    ``source_path`` is owned by this job: it is deleted in the ``finally``
+    block whether the job succeeds, errors, or is cancelled."""
     work_dir = create_work_dir()
+
+    async def _run_local() -> None:
+        """Local-file source: extract the audio track straight from the
+        uploaded file (no plan/download step), then the shared
+        chunk → transcribe → finalize tail.
+
+        Defined at the top: the `if source_path is not None` branch below
+        calls it before the plan/format machinery exists."""
+        await store.update(
+            job_id,
+            status=_CHUNKING,
+            step_label="Preparing audio…",
+            detail="compressing",
+            progress=0.02,
+        )
+
+        codec = choose_codec(
+            settings,
+            duration_hint=None,
+            cap_bytes=settings.transcribe_max_upload_bytes,
+        )
+
+        extract_progress = 0.0
+
+        def _on_extract(frac: float) -> None:
+            nonlocal extract_progress
+            extract_progress = max(extract_progress, min(frac, 1.0))
+
+        async def _report_extract() -> None:
+            span = _ACQUIRE_END - 0.02
+            last = -1.0
+            while True:
+                await asyncio.sleep(0.5)
+                progress = 0.02 + span * extract_progress
+                if progress - last >= 0.005:
+                    last = progress
+                    await store.update(job_id, progress=progress)
+
+        reporter = asyncio.create_task(_report_extract())
+        try:
+            async with store.cpu_semaphore:
+                audio_path = await extract_audio_track(
+                    source_path,
+                    work_dir,
+                    settings,
+                    codec,
+                    on_progress=_on_extract,
+                )
+        finally:
+            reporter.cancel()
+            await asyncio.gather(reporter, return_exceptions=True)
+
+        await _transcribe_audio(audio_path)
+
+    async def _transcribe_audio(audio_path: Path) -> None:
+        """Chunk an audio file on disk, transcribe every chunk, and
+        finalize the subtitles. Shared by the URL single-pass path and
+        the local-file path -- they differ only in how audio_path
+        appears. Defined up top (with _run_local) because the local-file
+        branch calls it before the plan machinery exists."""
+        await store.update(
+            job_id,
+            status=_CHUNKING,
+            step_label="Preparing audio…",
+            detail="compressing",
+            progress=_ACQUIRE_END,
+        )
+        duration = await probe_duration(audio_path, settings.ffprobe_path)
+        chunks = await chunk_audio(audio_path, work_dir, settings, duration=duration)
+        await store.update(job_id, progress=_CHUNK_END)
+
+        async def _dialogue_map() -> list[float] | None:
+            try:
+                async with store.cpu_semaphore:
+                    return await extract_peaks_chunks(
+                        [c.path for c in chunks], settings
+                    )
+            except (DialogueMapError, AudioError) as exc:
+                logger.warning("dialogue map extraction failed for job %s: %s", job_id, exc)
+                return None
+
+        dialogue_map_task = asyncio.create_task(_dialogue_map())
+
+        total = len(chunks)
+        results: list[TranscriptionResult | None] = [None] * total
+        chunk_semaphore = asyncio.Semaphore(transcriber.max_concurrency)
+        completed = 0
+
+        async def _transcribe_one(index: int) -> None:
+            nonlocal completed
+            async with chunk_semaphore:
+                results[index] = await transcriber.transcribe(chunks[index].path)
+            completed += 1
+            span = _TRANSCRIBE_END - _CHUNK_END
+            await store.update(
+                job_id,
+                status=_TRANSCRIBING,
+                step_label=f"Transcribing... ({completed} of {total} done)"
+                if total > 1
+                else "Transcribing…",
+                detail="transcribing",
+                chunks_done=completed,
+                chunks_total=total,
+                progress=_CHUNK_END + span * (completed / total),
+            )
+
+        try:
+            await store.update(
+                job_id,
+                status=_TRANSCRIBING,
+                step_label="Transcribing…",
+                detail="transcribing",
+                chunks_done=0,
+                chunks_total=total,
+            )
+            chunk_tasks = [asyncio.create_task(_transcribe_one(i)) for i in range(total)]
+            try:
+                await asyncio.gather(*chunk_tasks)
+            except BaseException:
+                for t in chunk_tasks:
+                    t.cancel()
+                await asyncio.gather(*chunk_tasks, return_exceptions=True)
+                raise
+            finished: list[TranscriptionResult] = [r for r in results if r is not None]
+            if len(finished) != total:
+                raise GroqError(
+                    f"Transcription incomplete: {len(finished)}/{total} chunks "
+                    "returned no result"
+                )
+            await _finalize(chunks, finished, dialogue_map_task)
+        except BaseException:
+            dialogue_map_task.cancel()
+            await asyncio.gather(dialogue_map_task, return_exceptions=True)
+            raise
+
+    async def _finalize(
+        chunks: list[AudioChunk],
+        finished: list[TranscriptionResult],
+        dialogue_map_task: asyncio.Task,
+    ) -> None:
+        """Build VTT/SRT + dialogue map and mark the job done. Defined up top
+        (with _transcribe_audio) because the local-file branch finalizes
+        before the plan machinery exists."""
+        total = len(chunks)
+        segments_by_chunk = [
+            (chunks[i].offset_seconds, finished[i].segments) for i in range(total)
+        ]
+        language = finished[0].language if finished else "en"
+        await store.update(
+            job_id,
+            status=_FINALIZING,
+            step_label="Generating subtitles…",
+            detail="building_subtitles",
+            progress=_TRANSCRIBE_END,
+        )
+        merged = merge_chunks(segments_by_chunk)
+        if settings.transcribe_postprocess:
+            merged = postprocess_subtitles(merged)
+        vtt_text = to_vtt(merged)
+        srt_text = to_srt(merged)
+        if not dialogue_map_task.done():
+            await store.update(
+                job_id,
+                status=_FINALIZING,
+                step_label="Building dialogue map…",
+                detail="dialogue_map",
+            )
+        dialogue_map = await dialogue_map_task
+        await store.update(
+            job_id,
+            status="done",
+            step_label="Done",
+            progress=1.0,
+            language=language or "en",
+            vtt_text=vtt_text,
+            srt_text=srt_text,
+            dialogue_map=dialogue_map,
+        )
 
     async def _pipeline() -> None:
         async with store.semaphore:
+            if source_path is not None:
+                await _run_local()
+                return
+
             await store.update(
                 job_id,
                 status=_DOWNLOADING,
@@ -189,45 +383,6 @@ async def run_transcription_job(
                 duration_hint=duration_hint,
                 resolve_cookie_token=resolve_cookie_token,
             )
-
-            async def _finalize(
-                chunks: list[AudioChunk],
-                finished: list[TranscriptionResult],
-                dialogue_map_task: asyncio.Task,
-            ) -> None:
-                total = len(chunks)
-                segments_by_chunk = [
-                    (chunks[i].offset_seconds, finished[i].segments) for i in range(total)
-                ]
-                language = finished[0].language if finished else "en"
-                await store.update(
-                    job_id,
-                    status=_FINALIZING,
-                    step_label="Generating subtitles…",
-                    detail="building_subtitles",
-                    progress=_TRANSCRIBE_END,
-                )
-                merged = merge_chunks(segments_by_chunk)
-                vtt_text = to_vtt(merged)
-                srt_text = to_srt(merged)
-                if not dialogue_map_task.done():
-                    await store.update(
-                        job_id,
-                        status=_FINALIZING,
-                        step_label="Building dialogue map…",
-                        detail="dialogue_map",
-                    )
-                dialogue_map = await dialogue_map_task
-                await store.update(
-                    job_id,
-                    status="done",
-                    step_label="Done",
-                    progress=1.0,
-                    language=language or "en",
-                    vtt_text=vtt_text,
-                    srt_text=srt_text,
-                    dialogue_map=dialogue_map,
-                )
 
             async def _run_windowed(windows: list) -> bool:
                 total = len(windows)
@@ -419,80 +574,7 @@ async def run_transcription_job(
                     reporter.cancel()
                     await asyncio.gather(reporter, return_exceptions=True)
 
-                await store.update(
-                    job_id,
-                    status=_CHUNKING,
-                    step_label="Preparing audio…",
-                    detail="compressing",
-                    progress=_ACQUIRE_END,
-                )
-                duration = await probe_duration(audio_path, settings.ffprobe_path)
-                chunks = await chunk_audio(audio_path, work_dir, settings, duration=duration)
-                await store.update(job_id, progress=_CHUNK_END)
-
-                async def _dialogue_map() -> list[float] | None:
-                    try:
-                        async with store.cpu_semaphore:
-                            return await extract_peaks_chunks(
-                                [c.path for c in chunks], settings
-                            )
-                    except (DialogueMapError, AudioError) as exc:
-                        logger.warning("dialogue map extraction failed for job %s: %s", job_id, exc)
-                        return None
-
-                dialogue_map_task = asyncio.create_task(_dialogue_map())
-
-                total = len(chunks)
-                results: list[TranscriptionResult | None] = [None] * total
-                chunk_semaphore = asyncio.Semaphore(transcriber.max_concurrency)
-                completed = 0
-
-                async def _transcribe_one(index: int) -> None:
-                    nonlocal completed
-                    async with chunk_semaphore:
-                        results[index] = await transcriber.transcribe(chunks[index].path)
-                    completed += 1
-                    span = _TRANSCRIBE_END - _CHUNK_END
-                    await store.update(
-                        job_id,
-                        status=_TRANSCRIBING,
-                        step_label=f"Transcribing... ({completed} of {total} done)"
-                        if total > 1
-                        else "Transcribing…",
-                        detail="transcribing",
-                        chunks_done=completed,
-                        chunks_total=total,
-                        progress=_CHUNK_END + span * (completed / total),
-                    )
-
-                try:
-                    await store.update(
-                        job_id,
-                        status=_TRANSCRIBING,
-                        step_label="Transcribing…",
-                        detail="transcribing",
-                        chunks_done=0,
-                        chunks_total=total,
-                    )
-                    chunk_tasks = [asyncio.create_task(_transcribe_one(i)) for i in range(total)]
-                    try:
-                        await asyncio.gather(*chunk_tasks)
-                    except BaseException:
-                        for t in chunk_tasks:
-                            t.cancel()
-                        await asyncio.gather(*chunk_tasks, return_exceptions=True)
-                        raise
-                    finished: list[TranscriptionResult] = [r for r in results if r is not None]
-                    if len(finished) != total:
-                        raise GroqError(
-                            f"Transcription incomplete: {len(finished)}/{total} chunks "
-                            "returned no result on the single-pass path"
-                        )
-                    await _finalize(chunks, finished, dialogue_map_task)
-                except BaseException:
-                    dialogue_map_task.cancel()
-                    await asyncio.gather(dialogue_map_task, return_exceptions=True)
-                    raise
+                await _transcribe_audio(audio_path)
 
             if plan.windows is not None:
                 ok = await _run_windowed(plan.windows)
@@ -551,6 +633,8 @@ async def run_transcription_job(
     finally:
         # Runs on EVERY exit -- including failures raised before any run call
         # (e.g. plan_acquisition finding no usable format) and cancellation --
-        # so a ds-transcribe-* temp dir can never outlive its job.
+        # so a ds-transcribe-* temp dir (and an uploaded local file) can never
+        # outlive its job.
+        if source_path is not None:
+            source_path.unlink(missing_ok=True)
         cleanup_work_dir(work_dir)
-        _return_freed_memory_to_os()

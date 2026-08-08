@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -139,9 +139,21 @@ class Settings(BaseSettings):
     # Concurrent transcription jobs across all clients — each one pins a
     # Groq-rate-limited pipeline plus local ffmpeg CPU work.
     transcribe_max_concurrent_jobs: int = Field(default=2, ge=1, le=10)
-    # Hard cap on the one audio/video stream a job downloads to disk (the
-    # only place in the app that writes media bytes to disk).
-    transcribe_max_download_bytes: int = Field(default=300_000_000, ge=1_000_000)
+    # Hard cap on any client-supplied source: the one audio/video stream a job
+    # downloads to disk, a local file uploaded for transcription, or the source
+    # fed to the splitter. One knob for all three so the client's single size
+    # check (health.mediaMaxBytes) can never disagree with the server.
+    # Legacy names TRANSCRIBE_MAX_DOWNLOAD_BYTES and SPLIT_AUDIO_MAX_BYTES
+    # still work; MEDIA_MAX_SOURCE_BYTES wins when both are set.
+    media_max_source_bytes: int = Field(
+        default=300_000_000,
+        ge=1_000_000,
+        validation_alias=AliasChoices(
+            "MEDIA_MAX_SOURCE_BYTES",
+            "TRANSCRIBE_MAX_DOWNLOAD_BYTES",
+            "SPLIT_AUDIO_MAX_BYTES",
+        ),
+    )
     # How long a finished/errored job's result stays available for polling
     # and subtitle-file downloads before it's swept from memory.
     transcribe_job_ttl: int = Field(default=1800, ge=60)
@@ -155,6 +167,22 @@ class Settings(BaseSettings):
     # more jobs than that merely waiting on a Groq network round-trip.
     transcribe_workers: int = Field(default=2, ge=1, le=8)
     groq_whisper_model: str = Field(default="whisper-large-v3-turbo")
+    # Seeded into each Whisper request as prior context — nudges the model to
+    # transcribe spoken words only and skip noise/music hallucinations. Set to
+    # an empty string to send no prompt (raw Whisper output).
+    transcribe_whisper_prompt: str = Field(
+        default=(
+            "Transcribe only spoken words exactly as said. "
+            "Do not include music, sound effects, or background noise descriptions. "
+            "Do not use symbols like ♪ or annotations like [Music], [Applause], [Laughter]. "
+            "Do not repeat phrases or sentences."
+        ),
+        alias="TRANSCRIBE_WHISPER_PROMPT",
+    )
+    # Run a post-processing pass on Whisper output to strip remaining noise
+    # placeholders, consecutive duplicates, and sub-0.5s isolated single-word
+    # cues. Applied to every job (online and local). Set false for raw output.
+    transcribe_postprocess: bool = Field(default=True, alias="TRANSCRIBE_POSTPROCESS")
 
     # ----- Extraction speed (transcription pipeline) ----------------------
     # The source is pulled as several cap-sized time windows extracted in
@@ -222,6 +250,21 @@ class Settings(BaseSettings):
     # Hard cap on images returned per gallery extract. Large albums are
     # truncated (client gets a soft "truncated" warning); raise for bulk dumps.
     gallery_max_images: int = Field(default=200, ge=1, le=5000, alias="GALLERY_MAX_IMAGES")
+
+    # ----- Local file + split-audio features ------------------------------
+    # Allow users to open local files (video/audio) directly in the player.
+    # Client-side only (blob URL, no upload). Gated separately so a public
+    # server operator can disable it without touching transcription.
+    local_files_enabled: bool = Field(default=True, alias="LOCAL_FILES_ENABLED")
+
+    # Enable the split-audio endpoints (POST /split-audio/*). ffmpeg strips
+    # the video track, writes the audio to a temp file, and holds it for
+    # SPLIT_AUDIO_TTL seconds so the user can download it. Set false to
+    # disable without affecting transcription.
+    split_audio_enabled: bool = Field(default=True, alias="SPLIT_AUDIO_ENABLED")
+    # Seconds to keep a split audio file before it is deleted. Short enough to
+    # not accumulate disk use; long enough for a slow download.
+    split_audio_ttl: int = Field(default=300, ge=30, le=3600, alias="SPLIT_AUDIO_TTL")
 
     # ----- ffmpeg/ffprobe (transcription pipeline only) --------------------
     # Bare names rely on the running process's PATH, which is NOT always the

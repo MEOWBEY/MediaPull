@@ -188,7 +188,7 @@ class GroqTranscriber:
                 f"over the {self._settings.transcribe_max_upload_mb}MB per-request cap "
                 "(TRANSCRIBE_MAX_UPLOAD_MB) — this indicates a chunking bug."
             )
-        data = {
+        data: dict[str, object] = {
             "model": self._settings.groq_whisper_model,
             "response_format": "verbose_json",
             # Word-level timestamps: Whisper's segment ends are routinely
@@ -198,6 +198,9 @@ class GroqTranscriber:
             # list as repeated form fields, which is what the API expects.
             "timestamp_granularities[]": ["word", "segment"],
         }
+        prompt = self._settings.transcribe_whisper_prompt.strip()
+        if prompt:
+            data["prompt"] = prompt
         resp = await self._post_with_retry(
             _TRANSCRIPTIONS_URL, files={"file": (audio_path.name, audio_bytes)}, data=data
         )

@@ -253,9 +253,53 @@ class HealthResponse(BaseModel):
     # age-gated / bot-checked extraction will likely fail even with cookies --
     # check that mediapull-pot is running.
     pot_available: bool = Field(default=False, alias="potAvailable")
+    # Whether auto-subtitle generation is enabled (TRANSCRIBE_ENABLED + a Groq
+    # key is configured). Clients hide the subtitle button when false.
+    transcribe_enabled: bool = Field(default=False, alias="transcribeEnabled")
+    # Hard cap on any client-supplied media source (bytes) — what the
+    # transcription pipeline accepts and what the audio splitter takes.
+    # Clients show a "file too large" error immediately on drop/pick without
+    # uploading when the file exceeds this limit. Single source of truth:
+    # MEDIA_MAX_SOURCE_BYTES. Clients should keep this check in sync with the
+    # server (a deliberately-lowered server cap wins, so this is a lower bound
+    # for the client to honor).
+    media_max_bytes: int = Field(default=300_000_000, alias="mediaMaxBytes")
+    # Whether local file support (drag-and-drop / file picker) is enabled.
+    local_files_enabled: bool = Field(default=True, alias="localFilesEnabled")
+    # Whether the audio-splitting endpoints are available (ffmpeg + flag).
+    split_audio_enabled: bool = Field(default=False, alias="splitAudioEnabled")
 
 
 # ----- transcription (auto-subtitles) ---------------------------------------------
+
+
+class SplitAudioStartResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    export_id: str = Field(alias="exportId")
+
+
+class SplitAudioUrlRequest(BaseModel):
+    """POST /split-audio/url body. Either a bare ``url`` (legacy single-URL
+    call) or the client's whole ``formats`` list -- the same shape /transcribe
+    accepts, which lets the server pick the SMALLEST sound-bearing source
+    instead of trusting the playback track (often the biggest file)."""
+
+    url: str | None = Field(default=None, max_length=8192)
+    formats: list[VideoFormat] | None = Field(default=None, min_length=1, max_length=40)
+
+
+class SplitAudioStatus(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    export_id: str = Field(alias="exportId")
+    status: str  # queued | splitting | done | error | cancelled
+    progress: float = 0.0
+    error: str | None = None
+    # When done: relative path the client can GET to download the file
+    download_url: str | None = Field(default=None, alias="downloadUrl")
+    filename: str | None = None
+    step_label: str | None = Field(default=None, alias="stepLabel")
 
 
 class TranscribeRequest(BaseModel):

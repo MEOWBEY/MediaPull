@@ -1,5 +1,4 @@
 <script lang="ts">
-	import Check from '@lucide/svelte/icons/check';
 	import ChevronDown from '@lucide/svelte/icons/chevron-down';
 	import Cookie from '@lucide/svelte/icons/cookie';
 	import Plus from '@lucide/svelte/icons/plus';
@@ -163,49 +162,75 @@
 			{/if}
 		</div>
 
-		<!-- Per-site rows first: entering/changing a cookie value is the primary
-		     task here, so it sits at the top instead of below the warning + guide. -->
+		<!-- Add a custom site — first thing on the tab, so a new domain can be
+		     typed before scrolling through the preset rows. -->
 		<div class="space-y-2">
+			<Label class="text-sm font-medium">{t('cookies.customTitle')}</Label>
+			<div class="flex gap-2">
+				<input
+					bind:value={customDomain}
+					spellcheck="false"
+					autocomplete="off"
+					placeholder={t('cookies.customPlaceholder')}
+					onkeydown={(e) => e.key === 'Enter' && addCustom()}
+					class="border-input bg-background focus-visible:ring-ring h-9 flex-1 rounded-md border px-3 text-sm focus-visible:ring-1 focus-visible:outline-none"
+				/>
+				<Button size="sm" class="h-9 cursor-pointer px-4" onclick={addCustom}>
+					<Plus class="me-1 h-4 w-4" />
+					{t('cookies.customAdd')}
+				</Button>
+			</div>
+		</div>
+
+		<!-- Per-site rows first: entering/changing a cookie value is the primary
+		     task here, so it sits at the top instead of below the warning + guide.
+		     Divided list, same transfer-log rhythm as the video quality rows —
+		     compact on mobile, one domain per line, status always visible at
+		     the end (saved/empty).
+
+		     Alignment: the domain name is its own flex-1 item (truncates instead
+		     of pushing neighbors around). The "Saved" badge now lives inside the
+		     button-group wrapper, right before the buttons, instead of tacked
+		     onto the domain text. Since that button group is basically the same
+		     width on every row, the badge sits at a consistent distance from the
+		     right edge across all rows — that's the "fixed anchor" alignment.
+		     On narrow screens the whole badge+buttons group wraps together as
+		     one unit onto its own line, under the domain name. -->
+		<div class="divide-border/70 overflow-hidden rounded-lg border divide-y">
 			{#each rows as domain (domain)}
-				<div class="bg-muted/60 rounded-lg p-3">
-					<div class="flex items-center justify-between gap-2">
-						<div class="flex min-w-0 items-center gap-2">
-							<span class="truncate text-sm font-medium">{domain}</span>
-							{#if cookies.has(domain)}
-								<span
-									class="bg-primary/10 text-primary inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium"
-								>
-									<Check class="h-3 w-3" />
-									{t('cookies.statusSaved')}
-								</span>
-							{:else}
-								<span class="text-muted-foreground text-[10px]">{t('cookies.statusEmpty')}</span>
-							{/if}
-						</div>
-						<div class="flex shrink-0 gap-1">
+				<div class="hover:bg-muted/60 flex flex-wrap items-center gap-2 px-3 py-2 font-mono transition-colors">
+					<span class="min-w-0 flex-1 truncate text-sm font-medium">{domain}</span>
+
+					<div class="ms-auto flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+						{#if cookies.has(domain)}
+							<span
+								class="bg-primary/15 text-primary dark:text-primary shrink-0 whitespace-nowrap rounded-sm px-1.5 py-0.5 text-[0.65rem] font-medium"
+							>
+								{t('cookies.statusSaved')}
+							</span>
+						{/if}
+						<Button
+							variant="outline"
+							size="sm"
+							class="h-9 cursor-pointer px-3 sm:h-8"
+							onclick={() => (editing === domain ? cancelEdit() : startEdit(domain))}
+						>
+							{cookies.has(domain) ? t('cookies.edit') : t('cookies.add')}
+						</Button>
+						{#if cookies.has(domain) || !isPreset(domain)}
 							<Button
 								variant="outline"
 								size="sm"
-								class="h-9 cursor-pointer px-3 sm:h-8"
-								onclick={() => (editing === domain ? cancelEdit() : startEdit(domain))}
+								class="h-9 cursor-pointer px-2.5 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 sm:h-8 sm:px-2"
+								onclick={() => clearOne(domain)}
 							>
-								{cookies.has(domain) ? t('cookies.edit') : t('cookies.add')}
+								<Trash2 class="h-4 w-4" />
 							</Button>
-							{#if cookies.has(domain) || !isPreset(domain)}
-								<Button
-									variant="outline"
-									size="sm"
-									class="h-9 cursor-pointer px-2.5 hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 sm:h-8 sm:px-2"
-									onclick={() => clearOne(domain)}
-								>
-									<Trash2 class="h-4 w-4" />
-								</Button>
-							{/if}
-						</div>
+						{/if}
 					</div>
 
 					{#if editing === domain}
-						<div class="mt-3 space-y-2">
+						<div class="mt-2.5 w-full space-y-2">
 							<textarea
 								bind:value={draft}
 								spellcheck="false"
@@ -235,25 +260,6 @@
 					{/if}
 				</div>
 			{/each}
-		</div>
-
-		<!-- Add a custom site -->
-		<div class="space-y-2">
-			<Label class="text-sm font-medium">{t('cookies.customTitle')}</Label>
-			<div class="flex gap-2">
-				<input
-					bind:value={customDomain}
-					spellcheck="false"
-					autocomplete="off"
-					placeholder={t('cookies.customPlaceholder')}
-					onkeydown={(e) => e.key === 'Enter' && addCustom()}
-					class="border-input bg-background focus-visible:ring-ring h-9 flex-1 rounded-md border px-3 text-sm focus-visible:ring-1 focus-visible:outline-none"
-				/>
-				<Button size="sm" class="h-9 cursor-pointer px-4" onclick={addCustom}>
-					<Plus class="me-1 h-4 w-4" />
-					{t('cookies.customAdd')}
-				</Button>
-			</div>
 		</div>
 
 		{#if cookies.entries().length > 0}

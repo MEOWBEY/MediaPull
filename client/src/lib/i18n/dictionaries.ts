@@ -35,6 +35,25 @@ export const en = {
 	'input.extract': 'Extract links',
 	'input.extracting': 'Extracting…',
 	'input.cancel': 'Cancel',
+	'input.openFile': 'Open file',
+	'input.openFileHint': 'Open a local video or audio file',
+	'localFile.title': 'Local file',
+	'localFile.onDevice': 'Plays from your device — nothing is uploaded',
+	'localFile.localTag': 'local',
+	'localFile.splitAudio': 'Split audio',
+	'localFile.splitAudioHint': 'Split the audio track off the video and download it as MP3.',
+	'localFile.splittingAudio': 'Splitting audio…',
+	'localFile.downloadAudio': 'Download MP3',
+	'localFile.remove': 'Remove',
+	'localFile.tooBig': 'File is too large for transcription ({max}MB limit).',
+	'localFile.unsupported': 'Unsupported file type. Use a video or audio file.',
+	'localFile.dropAnywhere': 'Drop a file anywhere to open it',
+	'toast.localFileOpened': 'File opened: {name}',
+	'toast.audioSplitting': 'Splitting audio…',
+	'toast.audioReady': 'Audio ready — click Download MP3',
+	'toast.audioFailed': 'Audio split failed',
+	'toast.audioNoStream': 'This video has no audio track',
+	'toast.audioExpired': 'Audio expired on the server — split again to get a fresh copy',
 	'empty.title': 'Ready when you are',
 	'empty.body':
 		'Paste a page URL above. MediaPull will show the available video formats or image gallery here.',
@@ -76,6 +95,7 @@ export const en = {
 	'qr.desc': 'Point your phone’s camera at the QR code to open this link.',
 	'qr.error': 'Could not generate a QR code for this link.',
 	'player.audioLabel': 'Audio',
+	'player.videoLabel': 'Video',
 	'player.formatTabs': 'Format',
 	'player.error':
 		'This link couldn’t be played here. Try another quality (if available), retry through the other route below, or open the link in an external player.',
@@ -136,7 +156,8 @@ export const en = {
 	'how.step2.body':
 		'MediaPull finds the real media links — video formats with yt-dlp, image posts and albums with gallery-dl.',
 	'how.step3.title': 'Preview',
-	'how.step3.body': 'Play any available quality in the built-in player, with optional auto-generated subtitles.',
+	'how.step3.body':
+		'Play any available quality in the built-in player, with optional auto-generated subtitles.',
 	'how.step4.title': 'Save it',
 	'how.step4.body':
 		'Download any format directly, or route it through the built-in server when a link won’t load on its own.',
@@ -164,6 +185,7 @@ export const en = {
 	'toast.itemRemoved': 'Item removed',
 	'toast.prefsReset': 'Preferences reset to defaults',
 	'toast.dataCleared': 'All data cleared',
+	'toast.localFilesCleared': 'Local files cleared',
 	'errorPage.404Title': 'Page Not Found',
 	'errorPage.404Body': 'The page you’re looking for doesn’t exist.',
 	'errorPage.500Title': 'Server Error',
@@ -192,7 +214,8 @@ export const en = {
 	'prefs.preload.label': 'Preload metadata',
 	'prefs.preload.desc': 'Load video metadata in advance for faster playback',
 	'prefs.useProxy.label': 'Via server (proxy)',
-	'prefs.useProxy.desc': 'Route video links through the MediaPull server when direct access is blocked',
+	'prefs.useProxy.desc':
+		'Route video links through the MediaPull server when direct access is blocked',
 	'prefs.hlsDownload.label': 'Show HLS downloads',
 	'prefs.hlsDownload.desc': 'Show a download button for HLS videos',
 	'prefs.showExports.label': 'Show export buttons',
@@ -223,6 +246,11 @@ export const en = {
 	'prefs.storedData': 'Stored data',
 	'prefs.extractedVideos': 'Extracted videos',
 	'prefs.clearData': 'Clear all data',
+	'prefs.localFiles': 'Local files',
+	'prefs.storedSize': 'Stored size',
+	'prefs.clearLocalFiles': 'Clear local files',
+	'prefs.confirmClearLocal':
+		'Clear all local files? Their subtitles and audio splits will be removed too.',
 	'prefs.resetSection': 'Reset & defaults',
 	'prefs.resetDefaults': 'Reset to defaults',
 	'prefs.subtitlePanelSection': 'Subtitle panel',
@@ -258,7 +286,7 @@ export const en = {
 	'cookies.warnLocal':
 		'Cookies are sensitive and remain only in this browser. Do not use this feature on a shared computer.',
 	'cookies.clearAll': 'Remove all cookies',
-	'cookies.clearedAllToast': 'All cookies removed',
+	'cookies.clearedAllToast': 'All cookies removed'
 } as const;
 
 export type MessageKey = keyof typeof en;
@@ -282,6 +310,25 @@ export const fa: Record<MessageKey, string> = {
 	'input.extract': 'استخراج لینک‌ها',
 	'input.extracting': 'در حال استخراج…',
 	'input.cancel': 'لغو',
+	'input.openFile': 'باز کردن فایل',
+	'input.openFileHint': 'یک فایل ویدیو یا صدا را باز کنید',
+	'localFile.title': 'فایل محلی',
+	'localFile.onDevice': 'مستقیماً از دستگاه شما پخش میشود — چیزی آپلود نمیشود',
+	'localFile.localTag': 'محلی',
+	'localFile.splitAudio': 'جدا کردن صدا',
+	'localFile.splitAudioHint': 'فریم صوتی را از ویدیو جدا کنید و به‌صورت MP3 دانلود کنید.',
+	'localFile.splittingAudio': 'در حال جدا کردن صدا…',
+	'localFile.downloadAudio': 'دانلود MP3',
+	'localFile.remove': 'حذف',
+	'localFile.tooBig': 'فایل برای تبدیل متن بیش از حد بزرگ است (سقف {max} مگابایت).',
+	'localFile.unsupported': 'نوع فایل پشتیبانی نمی‌شود. از فایل ویدیو یا صدا استفاده کنید.',
+	'localFile.dropAnywhere': 'فایل را هر جا رها کنید تا باز شود',
+	'toast.localFileOpened': 'فایل باز شد: {name}',
+	'toast.audioSplitting': 'در حال جدا کردن صدا…',
+	'toast.audioReady': 'صدا آماده است — روی دانلود MP3 کلیک کنید',
+	'toast.audioFailed': 'جدا کردن صدا ناموفق بود',
+	'toast.audioNoStream': 'این ویدیو فاقد آهنگ صوتی است',
+	'toast.audioExpired': 'صدا روی سرور منقضی شده — دوباره جدا کنید تا نسخهٔ تازه بگیرید',
 	'empty.title': 'آمادهٔ دریافت لینک',
 	'empty.body':
 		'نشانی صفحه را در کادر بالا وارد کنید. مدیاپول فرمت‌های ویدیو یا گالری تصاویر را اینجا نمایش می‌دهد.',
@@ -323,6 +370,7 @@ export const fa: Record<MessageKey, string> = {
 	'qr.desc': 'دوربین گوشی را به‌سمت کد QR بگیرید تا لینک باز شود.',
 	'qr.error': 'ایجاد کد QR برای این لینک ممکن نبود.',
 	'player.audioLabel': 'صدا',
+	'player.videoLabel': 'ویدیو',
 	'player.formatTabs': 'فرمت',
 	'player.error':
 		'این لینک در اینجا پخش نشد. کیفیت دیگری را امتحان کنید، مسیر دیگر را در پایین آزمایش کنید یا لینک را در پخش‌کننده‌ای دیگر باز کنید.',
@@ -384,7 +432,8 @@ export const fa: Record<MessageKey, string> = {
 	'how.step2.body':
 		'مدیاپول لینک‌های واقعی رسانه را پیدا می‌کند — فرمت‌های ویدیویی با yt-dlp و پست‌ها و آلبوم‌های تصویری با gallery-dl.',
 	'how.step3.title': 'پیش‌نمایش',
-	'how.step3.body': 'هر کیفیت موجود را در پخش‌کنندهٔ داخلی، همراه با زیرنویس خودکار اختیاری، پخش کنید.',
+	'how.step3.body':
+		'هر کیفیت موجود را در پخش‌کنندهٔ داخلی، همراه با زیرنویس خودکار اختیاری، پخش کنید.',
 	'how.step4.title': 'ذخیره',
 	'how.step4.body':
 		'هر فرمتی را مستقیم دانلود کنید، یا اگر لینک به‌تنهایی بارگذاری نمی‌شود، آن را از طریق سرور داخلی عبور دهید.',
@@ -399,7 +448,8 @@ export const fa: Record<MessageKey, string> = {
 	'toast.foundManyImages': '{n} تصویر پیدا شد',
 	'toast.batchDone': '{n} لینک پردازش شد',
 	'toast.batchPartial': 'پایان پردازش: {ok} موفق و {failed} ناموفق',
-	'toast.batchCapped': 'لینک‌ها بیش از حد است؛ {max} لینک اول پردازش شد و {dropped} لینک نادیده گرفته شد.',
+	'toast.batchCapped':
+		'لینک‌ها بیش از حد است؛ {max} لینک اول پردازش شد و {dropped} لینک نادیده گرفته شد.',
 	'toast.cancelled': 'عملیات لغو شد',
 	'toast.unknownError': 'خطایی ناشناخته رخ داد',
 	'toast.noUrlCopy': 'برای این فرمت، لینکی برای کپی‌کردن وجود ندارد',
@@ -412,6 +462,7 @@ export const fa: Record<MessageKey, string> = {
 	'toast.itemRemoved': 'مورد حذف شد',
 	'toast.prefsReset': 'تنظیمات به حالت پیش‌فرض بازنشانی شد',
 	'toast.dataCleared': 'همهٔ داده‌ها پاک شد',
+	'toast.localFilesCleared': 'فایل‌های محلی پاک شدند',
 	'errorPage.404Title': 'صفحه پیدا نشد',
 	'errorPage.404Body': 'صفحه‌ای که به‌دنبال آن هستید وجود ندارد.',
 	'errorPage.500Title': 'خطای سرور',
@@ -470,6 +521,11 @@ export const fa: Record<MessageKey, string> = {
 	'prefs.storedData': 'داده‌های ذخیره‌شده',
 	'prefs.extractedVideos': 'ویدیوهای استخراج‌شده',
 	'prefs.clearData': 'پاک‌کردن همهٔ داده‌ها',
+	'prefs.localFiles': 'فایل‌های محلی',
+	'prefs.storedSize': 'اندازهٔ ذخیره‌شده',
+	'prefs.clearLocalFiles': 'پاک‌کردن فایل‌های محلی',
+	'prefs.confirmClearLocal':
+		'همهٔ فایل‌های محلی پاک شوند؟ زیرنویس‌ها و فایل‌های صوتی آن‌ها نیز حذف خواهند شد.',
 	'prefs.resetSection': 'بازنشانی و تنظیمات پیش‌فرض',
 	'prefs.resetDefaults': 'بازنشانی به حالت پیش‌فرض',
 	'prefs.subtitlePanelSection': 'پنل زیرنویس',
@@ -511,4 +567,4 @@ export const fa: Record<MessageKey, string> = {
 export const DICTIONARIES: Record<Locale, Record<MessageKey, string>> = {
 	en,
 	fa
-};
+};

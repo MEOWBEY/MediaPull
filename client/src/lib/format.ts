@@ -91,7 +91,7 @@ export function qualityLabel(
 }
 
 /** Short human label for a media-kind (e.g. "HLS", "MP4 Video", "AAC Audio"). */
-export function mediaKindLabel(type: string, audioWord: string): string {
+export function mediaKindLabel(type: string, audioWord: string, videoWord: string): string {
 	if (type === 'application/x-mpegURL') {
 		return 'HLS';
 	}
@@ -102,7 +102,7 @@ export function mediaKindLabel(type: string, audioWord: string): string {
 		return `${AUDIO_LABELS[type]} ${audioWord}`;
 	}
 	if (VIDEO_LABELS[type]) {
-		return `${VIDEO_LABELS[type]} Video`;
+		return `${VIDEO_LABELS[type]} ${videoWord}`;
 	}
 	if (isAudioType(type)) {
 		return `${type.split('/')[1]?.toUpperCase()} ${audioWord}`;

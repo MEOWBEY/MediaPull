@@ -10,7 +10,7 @@
  *  - `cancelTranscription()` sends `DELETE /transcribe/{jobId}`.
  */
 
-import { del, postJson } from '$lib/api/client';
+import { del, postJson, uploadFile } from '$lib/api/client';
 import type { VideoFormat } from '$lib/types';
 
 /** The bits of a `GroupedVideo` the transcription job needs -- accepted as
@@ -67,6 +67,13 @@ export function startTranscription(
 		},
 		opts
 	);
+}
+
+export function startTranscriptionLocal(
+	file: File,
+	opts: { signal?: AbortSignal } = {}
+): Promise<{ jobId: string }> {
+	return uploadFile<{ jobId: string }>('/transcribe/local', file, opts);
 }
 
 /**

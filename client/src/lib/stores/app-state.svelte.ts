@@ -7,6 +7,7 @@
  */
 
 import type {
+	AudioSplitDone,
 	GroupedGallery,
 	GroupedVideo,
 	IncomingGallery,
@@ -91,6 +92,12 @@ class AppStore {
 	 *  refresh doesn't lose it (and removing the video drops it automatically). */
 	setSubtitleTrackForVideo(target: GroupedVideo, track: SubtitleTrackResult | null): void {
 		this.library.setSubtitleTrack(target, track);
+	}
+
+	/** Persists an online card's finished audio split (same lifecycle as the
+	 *  subtitle track; see `LibraryStore.setAudioSplit`). */
+	setAudioSplitForVideo(target: GroupedVideo, audioSplit: AudioSplitDone | null): void {
+		this.library.setAudioSplit(target, audioSplit);
 	}
 
 	clearVideoExtractResultsFromStore(): void {

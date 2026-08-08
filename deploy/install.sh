@@ -27,14 +27,14 @@ ask() {
     return
   fi
   local answer
-  read -r -p "$question${default:+ [$default]}: " answer || true
+  read -r -p "${C_CYAN}${question}${C_RESET}${C_DIM}${default:+ [$default]}${C_RESET}: " answer || true
   printf -v "$var" '%s' "${answer:-$default}"
   export "$var"
 }
 
-echo "==> MediaPull VPS installer"
-echo "    This sets up the backend and, if you want, the web client too."
-echo "    Leave any answer blank to accept the default shown in [brackets]."
+echo -e "${C_GREEN}==>${C_RESET} ${C_BOLD}MediaPull VPS installer${C_RESET}"
+echo -e "    This sets up the backend and, if you want, the web client too."
+echo -e "    Leave any answer blank to accept the default shown in ${C_DIM}[brackets]${C_RESET}."
 echo
 
 ask DOMAIN "What domain will the API use? (e.g. api.example.com -- blank skips HTTPS/nginx, service stays on 127.0.0.1 only)" ""
@@ -69,7 +69,7 @@ if [[ -n "$DOMAIN" ]]; then
     PUBLIC_PORT="80"
   else
     while true; do
-      read -r -p "Public port for the reverse proxy? [80]: " PUBLIC_PORT || true
+      read -r -p "${C_CYAN}Public port for the reverse proxy?${C_RESET}${C_DIM} [80]${C_RESET}: " PUBLIC_PORT || true
       PUBLIC_PORT="${PUBLIC_PORT:-80}"
       if port_in_use "$PUBLIC_PORT"; then
         echo "    Something is already listening on port $PUBLIC_PORT -- this usually means"

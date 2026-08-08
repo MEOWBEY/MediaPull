@@ -15,7 +15,8 @@ uvicorn app.main:app --reload   # or: python run.py
 ```
 
 yt-dlp and gallery-dl must be installed and on PATH (or available as Python
-packages — they're in `requirements.txt`). ffmpeg is required for subtitles.
+packages — they're in `requirements.txt`). ffmpeg is required for both
+auto-subtitles and split-audio.
 
 ## Configuration
 
@@ -35,6 +36,10 @@ All config via `server/.env` (see `.env.example`).
 |----------|---------|---------|
 | `GROQ_API_KEY` | — | Groq Whisper for subtitles. Empty = disabled. |
 | `TRANSCRIBE_ENABLED` | `true` | Master toggle for subtitle feature |
+| `LOCAL_FILES_ENABLED` | `true` | Client-side local-file playback (no upload) |
+| `SPLIT_AUDIO_ENABLED` | `true` | Master toggle for `POST /split-audio/*` |
+| `SPLIT_AUDIO_TTL` | `300` | Seconds a split MP3 is kept before it's swept |
+| `MEDIA_MAX_SOURCE_BYTES` | `300000000` | Cap on any client-supplied media (transcribe download/upload + split audio) |
 | `COOKIE_FILE_PATHS` | — | Shared cookies file(s), comma-separated (Netscape format). Enables age-gated/login content. |
 | `PROXY_URL` | — | Outbound proxy for extraction and streaming |
 | `ENABLE_IMPERSONATION` | `true` | Browser impersonation to bypass anti-bot blocks |
@@ -48,7 +53,6 @@ All config via `server/.env` (see `.env.example`).
 | `EXTRACT_WORKERS` | `4` | Concurrent extraction subprocesses |
 | `CACHE_TTL` | `300` | Response cache TTL (seconds) |
 | `TRANSCRIBE_MAX_CONCURRENT_JOBS` | `2` | Parallel subtitle jobs |
-| `TRANSCRIBE_MAX_DOWNLOAD_BYTES` | `300000000` | Audio download cap (300 MB) |
 | `TRANSCRIBE_JOB_TIMEOUT` | `3600` | Whole-job wall-clock cap (s). A stuck job is killed and reported as an error rather than holding a slot forever. |
 
 ### Proxy security

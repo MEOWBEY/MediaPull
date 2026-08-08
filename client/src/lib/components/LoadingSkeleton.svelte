@@ -22,11 +22,11 @@
 			: 'grid-cols-1'}"
 	>
 		<div
-			class="border-border/70 bg-card/60 overflow-hidden rounded-lg border py-3.5 sm:p-4"
+			class="border-border/70 bg-card/60 overflow-hidden rounded-lg border py-3.5"
 		>
 			<!-- Header: source icon + label + a small action cluster -->
 			<div
-				class="border-border/60 mb-3 flex flex-wrap items-center gap-2 border-b px-3.5 pb-2.5 sm:px-0"
+				class="border-border/60 mb-3 flex flex-wrap items-center gap-2 border-b pb-2.5"
 			>
 				<div class="bg-muted h-3.5 w-3.5 shrink-0 animate-pulse rounded-sm"></div>
 				<div class="bg-muted h-3.5 w-40 max-w-full animate-pulse rounded-sm"></div>
@@ -42,15 +42,15 @@
 			<div class={preferences.layoutList === 'row' ? 'lg:flex lg:items-start lg:gap-5' : ''}>
 				<div
 					class="overflow-hidden rounded-none sm:rounded-md {preferences.layoutList === 'row'
-						? 'lg:w-[28rem] lg:shrink-0 xl:w-[32rem]'
+						? 'lg:w-full lg:max-w-xl'
 						: ''}"
 				>
-					<div class="bg-muted aspect-[16/10] w-full animate-pulse"></div>
+					<div class="bg-muted aspect-16/10 w-full animate-pulse"></div>
 				</div>
 
 				<!-- A couple of text lines + a pill, common to both result kinds. -->
 				<div
-					class="space-y-3 px-3.5 pt-3 sm:px-0 {preferences.layoutList === 'row'
+					class="space-y-3 pt-3 {preferences.layoutList === 'row'
 						? 'lg:flex-1 lg:pt-0'
 						: ''}"
 				>

@@ -279,6 +279,27 @@ export function getJson<T>(endpoint: string, options: PostOptions = {}): Promise
 	return rawJson<T>(endpoint, { method: 'GET' }, options);
 }
 
+/** POST a file as multipart/form-data (`file` field), returning the raw JSON
+ *  body — same envelope/timeout/abort semantics as the other helpers. No
+ *  in-flight de-duplication: uploads are one-shot, and a retry must be a
+ *  fresh request. */
+export async function uploadFile<T>(
+	endpoint: string,
+	file: File,
+	options: PostOptions = {}
+): Promise<T> {
+	const form = new FormData();
+
+	form.append('file', file, file.name);
+	const { data, status, ok } = await doFetch(endpoint, { method: 'POST', body: form }, options);
+
+	if (!ok) {
+		throw new ApiError(errorMessage(data as Partial<ApiEnvelope<unknown>>, status), { status });
+	}
+
+	return data as T;
+}
+
 /**
  * DELETE with no response body expected (a 204 on success). Unlike
  * `rawJson`, this never calls `response.json()` — cancel-style endpoints

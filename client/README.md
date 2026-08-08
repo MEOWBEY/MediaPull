@@ -12,7 +12,8 @@ npm run dev        # http://localhost:5173
 ```
 
 In dev, Vite proxies `/extract-*`, `/proxy-video`, `/proxy-token`, `/health`,
-and `/transcribe` to the backend (`http://localhost:8000` by default).
+`/split-audio`, and `/transcribe` to the backend (`http://localhost:8000` by
+default).
 
 ## Build for production
 

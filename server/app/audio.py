@@ -23,6 +23,7 @@ import math
 import shutil
 import subprocess
 import tempfile
+from collections import namedtuple
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -248,10 +249,9 @@ class AudioError(Exception):
     """Raised when audio acquisition/extraction/chunking fails."""
 
 
-@dataclass
-class AudioChunk:
-    path: Path
-    offset_seconds: float
+
+
+AudioChunk = namedtuple("AudioChunk", ["path", "offset_seconds"])
 
 
 @dataclass(frozen=True)
@@ -603,9 +603,10 @@ async def _download_stream(
     on_progress: ProgressFn | None = None,
 ) -> Path:
     """Stream a progressive media URL to disk (with browser impersonation),
-    capped at ``transcribe_max_download_bytes``. Reports bytes/Content-Length
-    as fractional progress when the server discloses a length."""
-    max_bytes = settings.transcribe_max_download_bytes
+    capped at ``media_max_source_bytes`` (MEDIA_MAX_SOURCE_BYTES). Reports
+    bytes/Content-Length as fractional progress when the server discloses a
+    length."""
+    max_bytes = settings.media_max_source_bytes
     dest = work_dir / f"source.{ext or 'bin'}"
 
     # Shared, long-lived session (see _get_download_session) -- NOT an
@@ -634,8 +635,6 @@ async def _download_stream(
                 raise AudioError(str(exc)) from exc
         else:
             raise AudioError("Source media redirected too many times")
-    except AudioError:
-        raise
     except NotImplementedError as exc:
         # curl_cffi raises a bare (often message-less) NotImplementedError
         # when the configured IMPERSONATE_CLIENT needs a TLS feature the

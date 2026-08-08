@@ -75,6 +75,9 @@ export interface GroupedVideo {
 	subtitleTracks?: SubtitleTrack[];
 	/** Generated/reused subtitle track, persisted so a refresh doesn't lose it. */
 	subtitleTrack?: SubtitleTrackResult;
+	/** Finished audio split (server mp3 lives for SPLIT_AUDIO_TTL), persisted
+	 *  on the card so a refresh doesn't lose it; re-verified on mount. */
+	audioSplit?: AudioSplitDone | null;
 }
 
 /** Raw shapes as they arrive from the backend (pre-grouping). The client builds
@@ -206,6 +209,14 @@ export interface SubtitleTrackResult {
 export interface GalleryWarning {
 	code: string;
 	message: string;
+}
+
+/** A finished audio split (the server holds the mp3 for SPLIT_AUDIO_TTL;
+ *  the entry is re-verified on mount and dropped if the server evicted it). */
+export interface AudioSplitDone {
+	state: 'done';
+	exportId: string;
+	filename: string;
 }
 
 /** Wire shape of `GET /transcribe/{jobId}` (NOT wrapped in `ApiEnvelope` —

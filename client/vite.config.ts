@@ -17,6 +17,7 @@ const proxied = [
 	'/proxy-video',
 	'/proxy-token',
 	'/health',
+	'/split-audio',
 	'/transcribe'
 ];
 

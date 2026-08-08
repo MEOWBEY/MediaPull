@@ -331,7 +331,7 @@
 <Dialog.Root bind:open={lightboxOpen}>
 	<Dialog.Content
 		onkeydown={onLightboxKeydown}
-		class="!grid-cols-1 w-fit max-w-[100vw] justify-items-center gap-0 border-none bg-transparent p-0 shadow-none sm:max-w-[92vw]"
+		class="grid-cols-1! w-fit max-w-[100vw] justify-items-center gap-0 border-none bg-transparent p-0 shadow-none sm:max-w-[92vw]"
 		closeLabel={t('common.close')}
 		showCloseButton
 	>

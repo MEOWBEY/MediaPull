@@ -8,7 +8,12 @@
 
 import { toast } from 'svelte-sonner';
 
-import { cancelTranscription, startTranscription, type TranscribeSource } from '$lib/api/transcribe';
+import {
+	cancelTranscription,
+	startTranscription,
+	startTranscriptionLocal,
+	type TranscribeSource
+} from '$lib/api/transcribe';
 import { resolveApiUrl } from '$lib/config';
 import { i18n } from '$lib/i18n/index.svelte';
 import {
@@ -20,6 +25,10 @@ import {
 import type { SubtitleTrackResult, TranscribeStatus } from '$lib/types';
 
 export type { SubtitleTrackResult } from '$lib/types';
+
+/** What a generation run takes: the URL-based source shape (proxied quality
+ *  URLs + optional duration) or a local file uploaded to `/transcribe/local`. */
+export type TranscribeRequest = TranscribeSource | { kind: 'file'; file: File };
 
 const { t } = i18n;
 
@@ -125,7 +134,7 @@ export class TranscriptionController {
 		return this.isRunning ? this.jobId : null;
 	}
 
-	async generate(source: TranscribeSource): Promise<void> {
+	async generate(source: TranscribeRequest): Promise<void> {
 		// Supersede any job still in flight: abort it, close its stream, and
 		// clear its trickle timer so the old run can't keep writing into this
 		// shared state — and tell the server to free the old job's slot.
@@ -148,17 +157,17 @@ export class TranscriptionController {
 		this.startTrickle();
 
 		try {
-			const result = await this.runJob(source);
+			// `TranscribeSource` has no `kind` member, so a literal check can't
+			// discriminate the union — use `in`-narrowing instead.
+			const result =
+				'file' in source
+					? await this.runLocalJob(source.file, controller.signal)
+					: await this.runJob(source);
 
-			// A job that was superseded/cancelled while its final fetch was in
-			// flight can still resolve — its result must not clobber the state
-			// the newer run (or the idle UI) now owns.
 			if (controller.signal.aborted) {
 				return;
 			}
 
-			// The old track is being replaced and nothing renders it past this
-			// assignment — release its blob URLs so they don't accumulate.
 			revokeTrackUrls(this.track);
 			this.track = result;
 			this.progress = 1;
@@ -172,14 +181,27 @@ export class TranscriptionController {
 			this.error = message;
 			toast.error(message);
 		} finally {
-			// Only the latest run may tear down the shared flags/stream/timer —
-			// a newer generate() owns them now.
 			if (this.controller === controller) {
 				this.isRunning = false;
 				this.stopStream();
 				this.stopTrickle();
 			}
 		}
+	}
+
+	private runLocalJob(file: File, signal: AbortSignal): Promise<SubtitleTrackResult> {
+		return new Promise((resolve, reject) => {
+			startTranscriptionLocal(file, { signal })
+				.then(({ jobId }) => {
+					this.jobId = jobId;
+					const es = new EventSource(resolveApiUrl(`/transcribe/${jobId}/events`));
+
+					this.eventSource = es;
+					// Reuse the same SSE handler as the URL-based path
+					this._attachEventSource(es, resolve, reject);
+				})
+				.catch(reject);
+		});
 	}
 
 	cancel(): void {
@@ -203,102 +225,95 @@ export class TranscriptionController {
 				.then(({ jobId }) => {
 					this.jobId = jobId;
 
-					// Native browser API -- no library needed. Auto-reconnects on a
-					// dropped connection on its own; `onerror` below only treats it
-					// as fatal once the browser itself gives up (readyState CLOSED),
-					// not on every transient blip.
 					const es = new EventSource(resolveApiUrl(`/transcribe/${jobId}/events`));
 
 					this.eventSource = es;
-
-					es.onmessage = (ev) => {
-						let status: TranscribeStatus;
-
-						try {
-							status = JSON.parse(ev.data);
-						} catch {
-							return;
-						}
-
-						// The real value is a floor, never a regression -- the trickle
-						// may already be displaying something higher within this stage's
-						// look-ahead window, and jumping backward would look broken.
-						this.serverProgress = status.progress;
-						this.progress = Math.max(this.progress, status.progress);
-						this.stepLabel = stageLabel(status) || this.stepLabel;
-
-						if (status.status === 'error') {
-							this.stopStream();
-							reject(new Error(status.error || t('subtitles.error.generic')));
-
-							return;
-						}
-
-						// A server-side cancellation (e.g. triggered from another tab,
-						// or a future admin action) -- handled the same way as a local
-						// `cancel()` call: abort so `generate()`'s catch treats this as
-						// a silent stop rather than an error to surface.
-						if (status.status === 'cancelled') {
-							this.stopStream();
-							this.controller?.abort();
-							reject(new Error('Transcription cancelled'));
-
-							return;
-						}
-
-						if (status.status === 'done' && status.result) {
-							this.stopStream();
-
-							const { language } = status.result;
-							const serverVttUrl = resolveApiUrl(status.result.vttUrl);
-							const serverSrtUrl = resolveApiUrl(status.result.srtUrl);
-							const dialogueMap =
-								status.result.dialogueMap ?? status.result.waveform ?? null;
-
-							// Prefer durable blob URLs built from segments so download
-							// and player tracks survive job TTL / server restart.
-							fetchAndParseVtt(serverVttUrl)
-								.then((segments) => {
-									if (segments.length) {
-										resolve({
-											language,
-											segments,
-											vttUrl: segmentsToVttUrl(segments),
-											srtUrl: segmentsToSrtUrl(segments),
-											dialogueMap
-										});
-
-										return;
-									}
-									resolve({
-										language,
-										segments,
-										vttUrl: serverVttUrl,
-										srtUrl: serverSrtUrl,
-										dialogueMap
-									});
-								})
-								.catch(() =>
-									resolve({
-										language,
-										segments: [],
-										vttUrl: serverVttUrl,
-										srtUrl: serverSrtUrl,
-										dialogueMap
-									})
-								);
-						}
-					};
-
-					es.onerror = () => {
-						if (es.readyState === EventSource.CLOSED) {
-							this.stopStream();
-							reject(new Error(t('subtitles.error.generic')));
-						}
-					};
+					this._attachEventSource(es, resolve, reject);
 				})
 				.catch(reject);
 		});
+	}
+
+	private _attachEventSource(
+		es: EventSource,
+		resolve: (r: SubtitleTrackResult) => void,
+		reject: (e: unknown) => void
+	): void {
+		es.onmessage = (ev) => {
+			let status: TranscribeStatus;
+
+			try {
+				status = JSON.parse(ev.data);
+			} catch {
+				return;
+			}
+
+			this.serverProgress = status.progress;
+			this.progress = Math.max(this.progress, status.progress);
+			this.stepLabel = stageLabel(status) || this.stepLabel;
+
+			if (status.status === 'error') {
+				this.stopStream();
+				reject(new Error(status.error || t('subtitles.error.generic')));
+
+				return;
+			}
+
+			if (status.status === 'cancelled') {
+				this.stopStream();
+				this.controller?.abort();
+				reject(new Error('Transcription cancelled'));
+
+				return;
+			}
+
+			if (status.status === 'done' && status.result) {
+				this.stopStream();
+
+				const { language } = status.result;
+				const serverVttUrl = resolveApiUrl(status.result.vttUrl);
+				const serverSrtUrl = resolveApiUrl(status.result.srtUrl);
+				const dialogueMap = status.result.dialogueMap ?? status.result.waveform ?? null;
+
+				fetchAndParseVtt(serverVttUrl)
+					.then((segments) => {
+						if (segments.length) {
+							resolve({
+								language,
+								segments,
+								vttUrl: segmentsToVttUrl(segments),
+								srtUrl: segmentsToSrtUrl(segments),
+								dialogueMap
+							});
+
+							return;
+						}
+						resolve({
+							language,
+							segments,
+							vttUrl: serverVttUrl,
+							srtUrl: serverSrtUrl,
+							dialogueMap
+						});
+					})
+					.catch(() =>
+						resolve({
+							language,
+							segments: [],
+							vttUrl: serverVttUrl,
+							srtUrl: serverSrtUrl,
+							dialogueMap
+						})
+					);
+			}
+		};
+
+		es.onerror = () => {
+			if (es.readyState === EventSource.CLOSED) {
+				this.stopStream();
+				reject(new Error(t('subtitles.error.generic')));
+			}
+		};
 	}
 
 	private startTrickle(): void {

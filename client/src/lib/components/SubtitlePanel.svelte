@@ -193,7 +193,7 @@
 								<!-- scaleX (not width) so progress ticks animate on the
 								     compositor without relayout; origin flips for RTL. -->
 								<div
-									class="bg-primary h-full w-full rounded-full transition-transform duration-300 [transform-origin:0_50%] rtl:[transform-origin:100%_50%]"
+									class="bg-primary h-full w-full rounded-full transition-transform duration-300 origin-[0_50%] rtl:origin-[100%_50%]"
 									style="transform: scaleX({Math.min(1, Math.max(0, progress))})"
 								></div>
 							</div>

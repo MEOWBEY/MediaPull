@@ -37,7 +37,7 @@
 	<ol class="border-border/70 bg-card grid overflow-hidden rounded-lg border sm:grid-cols-2 lg:grid-cols-4">
 		{#each steps as step, i (i)}
 			<li
-				class="border-border/70 flex flex-col gap-2 p-4 [&:not(:last-child)]:border-b sm:[&:not(:last-child)]:border-e lg:[&:not(:last-child)]:border-b-0"
+				class="border-border/70 flex flex-col gap-2 p-4 not-last:border-b sm:not-last:border-e lg:not-last:border-b-0"
 			>
 				<div class="flex items-center gap-2">
 					<span class="text-signal font-mono text-xs font-bold tabular-nums">

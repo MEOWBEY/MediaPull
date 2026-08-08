@@ -10,12 +10,15 @@ import os
 import secrets
 import shutil
 import sys
-from collections.abc import AsyncGenerator
+import tempfile
+import urllib.parse
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TypeVar
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
@@ -23,11 +26,12 @@ import httpx
 
 
 from . import __version__
-from .audio import close_download_session
+from .audio import AudioError, close_download_session, pick_audio_format
 from .cache import TTLCache
 from .config import settings
 from .extractor import ExtractionError, Extractor
 from .gallery import GalleryExtractor
+from .split_audio import SplitAudioStore, run_split_audio_job
 from .jobs import JobStore, TranscriptionJob, run_transcription_job
 from .logging_context import LogContextMiddleware, RequestContextFilter
 from .net_common import normalize_cookies
@@ -41,6 +45,9 @@ from .models import (
     HealthResponse,
     ProxyTokenRequest,
     ProxyTokenResponse,
+    SplitAudioStartResponse,
+    SplitAudioStatus,
+    SplitAudioUrlRequest,
     TranscribeRequest,
     TranscribeResult,
     TranscribeStartResponse,
@@ -139,6 +146,48 @@ async def _check_pot_provider(base_url: str) -> bool:
     return ok
 
 
+async def _save_upload(
+    file: UploadFile,
+    max_bytes: int,
+    prefix: str,
+    what: str,
+) -> tuple[Path, int]:
+    """Stream an UploadFile into a temp file, capped at ``max_bytes``.
+
+    Returns the temp path (owned by the caller -- it is deleted in the
+    caller's cleanup) and the number of bytes written. A file over the cap
+    returns a 413 before any more bytes are written; any I/O failure logs
+    under ``what`` and reports a 500. Both paths unlink the temp file."""
+    suffix = Path(file.filename or "upload").suffix or ".bin"
+    tmp_fd, tmp_path_str = tempfile.mkstemp(suffix=suffix, prefix=prefix)
+    tmp_path = Path(tmp_path_str)
+    try:
+        written = 0
+        with os.fdopen(tmp_fd, "wb") as fh:
+            while True:
+                chunk = await file.read(65536)
+                if not chunk:
+                    break
+                written += len(chunk)
+                if written > max_bytes:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=(
+                            f"File exceeds the server's "
+                            f"{max_bytes // 1_000_000}MB {what} limit"
+                        ),
+                    )
+                fh.write(chunk)
+    except HTTPException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+    except Exception as exc:
+        tmp_path.unlink(missing_ok=True)
+        logger.error("%s upload failed: %s", what, exc)
+        raise HTTPException(status_code=500, detail="Upload failed") from exc
+    return tmp_path, written
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _configure_logging()
@@ -152,6 +201,14 @@ async def lifespan(app: FastAPI):
         ttl=settings.cache_ttl, max_entries=settings.cache_max_entries
     )
     app.state.jobs = JobStore(settings)
+    app.state.split_audio = SplitAudioStore(settings)
+    # Extractions whose HTTP client disconnected before they finished. The
+    # request has to return immediately, but the yt-dlp thread-pool run can't
+    # be cancelled mid-flight — so it keeps going detached and feeds the TTL
+    # cache (a re-extract of the same URL then cache-hits). This set holds a
+    # reference so the pending task isn't garbage-collected (and therefore
+    # cancelled) between the client's disconnect and the run's natural end.
+    app.state.detached_extracts: set[asyncio.Task] = set()
     # None when unconfigured -- /transcribe responds 503 rather than the
     # whole app failing to start over a missing optional feature's key.
     app.state.transcriber = GroqTranscriber(settings) if settings.groq_api_keys else None
@@ -225,6 +282,59 @@ def create_app() -> FastAPI:
     # jobs (and hold ASGI connections open) on a public VPS.
     extract_slots = asyncio.Semaphore(settings.extract_max_in_flight)
 
+    async def _poll_disconnected(request: Request) -> None:
+        """Return once the client's connection has gone away. Starlette's
+        ``is_disconnected`` is a one-shot-per-message check, so poll it while
+        the extract runs; the first disconnect trips this coroutine."""
+        while not await request.is_disconnected():
+            await asyncio.sleep(0.1)
+
+    _T = TypeVar("_T")
+
+    async def _extract_until_done_or_disconnect(
+        run: Callable[[], Awaitable[_T]],
+        cache: TTLCache[_T],
+        cache_key: str,
+        request: Request,
+        endpoint: str,
+    ) -> _T:
+        """Run one extraction, racing it against the client's connection.
+
+        A disconnect must free the request AND its admission slot as soon as
+        it's noticed, not after yt-dlp finishes (the thread-pool run can't be
+        cancelled, so it used to hold the connection open for the whole
+        REQUEST_TIMEOUT). On disconnect the run is therefore let go detached:
+        it keeps its slot until it genuinely ends, and its result still lands
+        in the TTL cache — a re-extract of the same URL cache-hits instead of
+        burning a second yt-dlp run nobody asked for."""
+        task = asyncio.create_task(run())
+        disconnect_task = asyncio.create_task(_poll_disconnected(request))
+        try:
+            done, _ = await asyncio.wait(
+                {task, disconnect_task}, return_when=asyncio.FIRST_COMPLETED
+            )
+        finally:
+            if disconnect_task in done:
+                disconnect_task.cancel()
+                await asyncio.gather(disconnect_task, return_exceptions=True)
+
+        if task in done:
+            video = task.result()
+            await cache.set(cache_key, video)
+            return video
+
+        logger.info(
+            "%s: client disconnected during extraction, continuing in the "
+            "background (result will be cached): %s",
+            endpoint,
+            cache_key.partition("#")[0],
+        )
+        # Keep the pending task alive (see lifespan's detached_extracts) and
+        # unlink it once it settles so it doesn't linger in the set forever.
+        app.state.detached_extracts.add(task)
+        task.add_done_callback(app.state.detached_extracts.discard)
+        raise HTTPException(status_code=499, detail="Client disconnected")
+
     @app.exception_handler(ExtractionError)
     async def _extraction_error(_: Request, exc: ExtractionError) -> JSONResponse:
         logger.warning("extraction failed (%s): %s", exc.status, exc)
@@ -233,7 +343,7 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/extract-videos", response_model=ExtractResponse)
-    async def extract_videos(payload: ExtractRequest) -> ExtractResponse:
+    async def extract_videos(request: Request, payload: ExtractRequest) -> ExtractResponse:
         url = payload.url.strip()
         cookies = payload.cookies
         cache: TTLCache[VideoInfo] = app.state.cache
@@ -254,26 +364,30 @@ def create_app() -> FastAPI:
             )
 
         logger.info("extracting: %s (cookies=%s)", url, _cookie_tag(cookies))
-        try:
-            await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
-        except TimeoutError as exc:
-            raise HTTPException(status_code=503, detail="Server busy, try again") from exc
-        try:
-            try:
-                video = await app.state.extractor.extract(url, cookies=cookies)
-            except ValueError as exc:
-                logger.warning("invalid extract-videos request for %s: %s", url, exc)
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        finally:
-            extract_slots.release()
 
-        await cache.set(cache_key, video)
+        async def _run_extract() -> VideoInfo:
+            try:
+                await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
+            except TimeoutError as exc:
+                raise HTTPException(status_code=503, detail="Server busy, try again") from exc
+            try:
+                try:
+                    return await app.state.extractor.extract(url, cookies=cookies)
+                except ValueError as exc:
+                    logger.warning("invalid extract-videos request for %s: %s", url, exc)
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            finally:
+                extract_slots.release()
+
+        video = await _extract_until_done_or_disconnect(
+            _run_extract, cache, cache_key, request, "extract-videos"
+        )
         return ExtractResponse(
             video=to_client_video(video), method=video.method, cached=False
         )
 
     @app.post("/extract-gallery", response_model=GalleryResponse)
-    async def extract_gallery(payload: ExtractRequest) -> GalleryResponse:
+    async def extract_gallery(request: Request, payload: ExtractRequest) -> GalleryResponse:
         url = payload.url.strip()
         cookies = payload.cookies
         cache: TTLCache[GalleryInfo] = app.state.gallery_cache
@@ -294,20 +408,24 @@ def create_app() -> FastAPI:
             )
 
         logger.info("extracting gallery: %s (cookies=%s)", url, _cookie_tag(cookies))
-        try:
-            await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
-        except TimeoutError as exc:
-            raise HTTPException(status_code=503, detail="Server busy, try again") from exc
-        try:
-            try:
-                gallery = await app.state.gallery_extractor.extract(url, cookies=cookies)
-            except ValueError as exc:
-                logger.warning("invalid extract-gallery request for %s: %s", url, exc)
-                raise HTTPException(status_code=400, detail=str(exc)) from exc
-        finally:
-            extract_slots.release()
 
-        await cache.set(cache_key, gallery)
+        async def _run_gallery_extract() -> GalleryInfo:
+            try:
+                await asyncio.wait_for(extract_slots.acquire(), timeout=0.05)
+            except TimeoutError as exc:
+                raise HTTPException(status_code=503, detail="Server busy, try again") from exc
+            try:
+                try:
+                    return await app.state.gallery_extractor.extract(url, cookies=cookies)
+                except ValueError as exc:
+                    logger.warning("invalid extract-gallery request for %s: %s", url, exc)
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
+            finally:
+                extract_slots.release()
+
+        gallery = await _extract_until_done_or_disconnect(
+            _run_gallery_extract, app.state.gallery_cache, cache_key, request, "extract-gallery"
+        )
         return GalleryResponse(
             gallery=to_client_gallery(gallery), method=gallery.method, cached=False
         )
@@ -326,12 +444,17 @@ def create_app() -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     async def health() -> HealthResponse:
+        ffmpeg_ok = app.state.ffmpeg_available and app.state.ffprobe_available
         return HealthResponse(
             version=__version__,
             timestamp=datetime.now(timezone.utc).isoformat(),
-            ffmpeg_available=app.state.ffmpeg_available and app.state.ffprobe_available,
+            ffmpeg_available=ffmpeg_ok,
             gallery_dl_available=app.state.gallery_dl_available,
             pot_available=app.state.pot_available,
+            transcribe_enabled=app.state.transcriber is not None and settings.transcribe_enabled,
+            media_max_bytes=settings.media_max_source_bytes,
+            local_files_enabled=settings.local_files_enabled,
+            split_audio_enabled=ffmpeg_ok and settings.split_audio_enabled,
         )
 
     @app.post("/admin/cookies", response_model=CookieUploadResponse)
@@ -396,6 +519,118 @@ def create_app() -> FastAPI:
         )
         return CookieUploadResponse(path=str(target), cookie_lines=cookie_lines)
 
+    # ---- Audio split (strip the audio track from a media file) ----------
+    # Two sources: a local upload and a URL the server downloads.
+    # Both are gated by SPLIT_AUDIO_ENABLED + ffmpeg being available.
+    # The split mp3 lives for SPLIT_AUDIO_TTL seconds, then is swept.
+
+    def _split_audio_guard() -> None:
+        if not app.state.ffmpeg_available or not app.state.ffprobe_available:
+            raise HTTPException(status_code=503, detail="ffmpeg is not available on this server")
+        if not settings.split_audio_enabled:
+            raise HTTPException(status_code=503, detail="Split audio is disabled on this server")
+
+    @app.post("/split-audio/local", response_model=SplitAudioStartResponse)
+    async def split_audio_local(file: UploadFile = File(...)) -> SplitAudioStartResponse:
+        _split_audio_guard()
+        original_stem = Path(file.filename or "audio").stem
+        src_path, _ = await _save_upload(
+            file, settings.media_max_source_bytes, "mediapull-split-src-", "split audio"
+        )
+
+        job = await app.state.split_audio.create()
+        output_filename = f"{original_stem}.mp3"
+        task = asyncio.create_task(
+            run_split_audio_job(job.id, src_path, output_filename, app.state.split_audio, settings, delete_source=True)
+        )
+        app.state.split_audio.attach(job.id, task)
+        return SplitAudioStartResponse(export_id=job.id)
+
+    @app.post("/split-audio/url", response_model=SplitAudioStartResponse)
+    async def split_audio_url(payload: SplitAudioUrlRequest) -> SplitAudioStartResponse:
+        _split_audio_guard()
+
+        # Same contract as /transcribe: the client sends its whole format list
+        # (proxied URLs) and the SERVER picks the smallest sound-bearing source
+        # -- the playback track is often the biggest file, and for "just the
+        # audio out of it" any sound-bearing stream works.
+        if payload.formats is not None:
+            try:
+                fmt = pick_audio_format(payload.formats)
+            except AudioError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raw_url = (fmt.url or "").strip()
+            protocol = fmt.protocol
+        else:
+            # Bare-URL legacy call: treat it as one unknown-protocol format.
+            raw_url = (payload.url or "").strip()
+            protocol = None
+        if not raw_url:
+            raise HTTPException(status_code=422, detail="url is required")
+
+        # Unwrap /proxy-video URLs to get the real source + headers, so ffmpeg
+        # fetches the origin directly (with proper headers) instead of bouncing
+        # back through our own proxy (which would fail the SSRF guard).
+        from .audio import _unwrap_proxied
+        real_url, headers = _unwrap_proxied(
+            raw_url, resolve_cookie_token=app.state.proxy.resolve_cookie_token
+        )
+
+        from .ssrf import assert_public_resolved_url
+        try:
+            await assert_public_resolved_url(real_url)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+        original_stem = Path(urllib.parse.urlparse(real_url).path).stem or "audio"
+
+        job = await app.state.split_audio.create()
+        output_filename = f"{original_stem}.mp3"
+        # Pass the real URL — ffmpeg fetches HTTP sources natively with headers.
+        task = asyncio.create_task(
+            run_split_audio_job(
+                job.id, real_url, output_filename, app.state.split_audio,
+                settings, headers=headers, protocol=protocol, delete_source=False
+            )
+        )
+        app.state.split_audio.attach(job.id, task)
+        return SplitAudioStartResponse(export_id=job.id)
+
+    @app.get("/split-audio/{export_id}/status", response_model=SplitAudioStatus)
+    async def get_split_audio_status(export_id: str) -> SplitAudioStatus:
+        job = await app.state.split_audio.get(export_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown or expired split audio job")
+        return SplitAudioStatus(
+            export_id=job.id,
+            status=job.status,
+            progress=job.progress,
+            error=job.error,
+            download_url=f"/split-audio/{job.id}/file" if job.status == "done" else None,
+            filename=job.filename,
+            step_label=job.step_label or ("Queued" if job.status == "queued" else None),
+        )
+
+    @app.post("/split-audio/{export_id}/cancel")
+    async def cancel_split_audio(export_id: str) -> dict:
+        job = await app.state.split_audio.get(export_id)
+        if job is None:
+            raise HTTPException(status_code=404, detail="Unknown or expired split audio job")
+        cancelled = await app.state.split_audio.cancel(export_id)
+        return {"cancelled": cancelled}
+
+    @app.get("/split-audio/{export_id}/file", include_in_schema=False)
+    async def download_split_audio(export_id: str) -> Response:
+        job = await app.state.split_audio.get(export_id)
+        if job is None or job.status != "done" or job.output_path is None:
+            raise HTTPException(status_code=404, detail="Split audio not ready or expired")
+        filename = job.filename or "audio.mp3"
+        return FileResponse(
+            path=job.output_path,
+            media_type="audio/mpeg",
+            filename=filename,
+        )
+
     # ---- Auto-subtitles (speech-to-text via Groq Whisper) ---------------
     # Opt-in, explicit, minutes-long job -- the only place in the app that
     # downloads media bytes to disk. Progress is pushed over SSE
@@ -452,6 +687,43 @@ def create_app() -> FastAPI:
                 app.state.transcriber,
                 duration_hint=payload.duration_seconds,
                 resolve_cookie_token=app.state.proxy.resolve_cookie_token,
+            )
+        )
+        await app.state.jobs.set_task(job.id, task)
+        return TranscribeStartResponse(job_id=job.id)
+
+    @app.post("/transcribe/local", response_model=TranscribeStartResponse)
+    async def start_transcribe_local(file: UploadFile = File(...)) -> TranscribeStartResponse:
+        # Gated by the same TRANSCRIBE_ENABLED flag as the URL-based endpoint.
+        if app.state.transcriber is None:
+            raise HTTPException(
+                status_code=503, detail="Auto-subtitles are not configured on this server"
+            )
+
+        # Cap upload size to the same limit as the download path
+        # (MEDIA_MAX_SOURCE_BYTES).
+        tmp_path, written = await _save_upload(
+            file, settings.media_max_source_bytes, "mediapull-local-", "transcription"
+        )
+
+        try:
+            job = await app.state.jobs.create()
+        except RuntimeError as exc:
+            tmp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        logger.info(
+            "local transcription job %s started: %s bytes, file=%s",
+            job.id, written, file.filename or "<unnamed>",
+        )
+        task = asyncio.create_task(
+            run_transcription_job(
+                job.id,
+                formats=None,
+                settings=settings,
+                store=app.state.jobs,
+                transcriber=app.state.transcriber,
+                source_path=tmp_path,
             )
         )
         await app.state.jobs.set_task(job.id, task)

@@ -3,7 +3,7 @@
  *  so the two can't drift on what "visible" means for a card. */
 
 import { isAudioType } from '$lib/format';
-import type { FormatGroup, GroupedVideo, Preferences } from '$lib/types';
+import type { FormatGroup, GroupedVideo, Preferences, VideoFormat } from '$lib/types';
 
 // Tab/list order: easiest-to-play first (progressive MP4 -- universal
 // browser support, no special handling), then everything else that still
@@ -14,6 +14,14 @@ export function groupRank(type: string): number {
 	}
 
 	return type === 'video/mp4' ? 0 : 1;
+}
+
+// With "Show video-only qualities" enabled, keep the sound-bearing streams
+// first inside every group -- an adaptive (silent) 4K stream shouldn't push
+// the playable sound quality down the list. Stable sort, so the relative
+// order within each bucket is untouched (e.g. resolution desc from grouping).
+function soundFirst(qualities: VideoFormat[]): VideoFormat[] {
+	return [...qualities].sort((a, b) => Number(a.videoOnly) - Number(b.videoOnly));
 }
 
 // Qualities to actually show. By default we hide adaptive video-only (no-audio)
@@ -30,7 +38,7 @@ export function visibleFormatGroups(
 		.map((g) => ({
 			type: g.type,
 			qualities: preferences.showVideoOnlyFormats
-				? g.qualities
+				? soundFirst(g.qualities)
 				: g.qualities.filter((q) => !q.videoOnly)
 		}))
 		.filter((g) => g.qualities.length > 0)

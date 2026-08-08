@@ -53,6 +53,7 @@
 		useProxy = true,
 		onToggleProxy,
 		rowLayout = false,
+		showFormatTabs = false,
 		title = '',
 		webpageUrl = '',
 		duration = 0,
@@ -72,6 +73,9 @@
 		 *  format-kind tabs stack vertically (one per line) instead of a horizontal
 		 *  strip that would wrap awkwardly in the tight column. */
 		rowLayout?: boolean;
+		/** Force the format-kind tab strip even with a single group (local
+		 *  files) so local cards carry the same kind badge as online tabs. */
+		showFormatTabs?: boolean;
 		/** Video title -- used to name the downloaded subtitle (.srt) file. */
 		title?: string;
 		webpageUrl?: string;
@@ -149,7 +153,22 @@
 	// source already provides) -- see subtitle-resolver.svelte.ts. -----------
 	const subtitles = new SubtitleResolver();
 
-	untrack(() => subtitles.restore(initialSubtitleTrack));
+	// Reactive (not mount-only) restore: a parent card hands a resolved track
+	// in via prop WHILE the player is already mounted -- a local file's
+	// generation finishes server-side, and LocalFileCard only then mirrors the
+	// result into initialSubtitleTrack. The $effect re-runs whenever the prop
+	// changes, so that late hand-off is picked up; the tracked read is just
+	// the prop (wrap restore's own reads in untrack so its internal writes
+	// can't re-trigger the effect), and `restore` is idempotent for a prop
+	// that hasn't changed. Online cards never set this prop -- they generate
+	// through this resolver's own pipeline, so nothing changes for them.
+	$effect(() => {
+		if (!initialSubtitleTrack) {
+			return;
+		}
+
+		untrack(() => subtitles.restore(initialSubtitleTrack));
+	});
 
 	let subtitlePanelOpen = $state(false);
 	let playerCurrentTime = $state(0);
@@ -188,8 +207,7 @@
 	// Drive the subtitle panel's "now playing" position. Runs while a track
 	// exists and the panel is open.
 	$effect(() => {
-		const needTime =
-			Boolean(activeSubtitleTrack) && Boolean(videoEl) && subtitlePanelOpen;
+		const needTime = Boolean(activeSubtitleTrack) && Boolean(videoEl) && subtitlePanelOpen;
 
 		if (!needTime || !videoEl) {
 			return;
@@ -263,7 +281,8 @@
 			useExistingTrack: (track: SubtitleTrack) => subtitles.useExisting(track),
 			cancelSubtitles,
 			switchGroup: (index: number) => void switchGroup(index)
-		});	});
+		});
+	});
 
 	// Removing this card (unmounts VideoPlayer) or navigating away shouldn't
 	// leave an in-flight Groq job running server-side with nobody watching
@@ -289,7 +308,9 @@
 				return;
 			}
 
-			fetch(resolveApiUrl(`/transcribe/${jobId}`), { method: 'DELETE', keepalive: true }).catch(() => {});
+			fetch(resolveApiUrl(`/transcribe/${jobId}`), { method: 'DELETE', keepalive: true }).catch(
+				() => {}
+			);
 		};
 
 		window.addEventListener('beforeunload', onBeforeUnload);
@@ -853,13 +874,15 @@
 	</div>
 {/if}
 
-{#if formatGroups.length && !rowLayout}
+{#if (formatGroups.length > 1 || showFormatTabs) && !rowLayout}
 	<!-- Format-kind tabs: one card, several tabs (progressive/HLS/audio-only/...)
 	     -- they're all the same source, so switching tabs stays in this one
 	     player instance (see switchGroup) rather than swapping components.
 	     Horizontal underline strip. In row layout the PARENT card renders the tab
 	     strip instead (as a column between player and details), driving switches
-	     through the exposed `switchGroup` handle -- so this is suppressed there. -->
+	     through the exposed `switchGroup` handle -- so this is suppressed there.
+	     `showFormatTabs` forces the strip for a single group so local cards
+	     carry the same kind badge as online tabs. -->
 	<div
 		class="border-border/60 mt-3 flex w-full items-stretch gap-5 border-b px-1.5 sm:px-2"
 		role="tablist"
@@ -878,7 +901,7 @@
 					: 'text-muted-foreground hover:text-foreground'}"
 				onclick={() => switchGroup(i)}
 			>
-				{mediaKindLabel(group.type, t('player.audioLabel'))}
+				{mediaKindLabel(group.type, t('player.audioLabel'), t('player.videoLabel'))}
 				{#if i === activeGroupIndex}
 					<span class="bg-signal absolute inset-x-0 -bottom-px h-0.5"></span>
 				{/if}

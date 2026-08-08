@@ -3,6 +3,7 @@
 	import Captions from '@lucide/svelte/icons/captions';
 	import Download from '@lucide/svelte/icons/download';
 	import Grid3X3 from '@lucide/svelte/icons/grid-3x3';
+	import HardDrive from '@lucide/svelte/icons/hard-drive';
 	import Image from '@lucide/svelte/icons/image';
 	import Info from '@lucide/svelte/icons/info';
 	import Languages from '@lucide/svelte/icons/languages';
@@ -24,8 +25,10 @@
 	import { i18n, LOCALES } from '$lib/i18n/index.svelte';
 	import type { MessageKey } from '$lib/i18n/index.svelte';
 	import { appStore } from '$lib/stores/app-state.svelte';
+	import { localFiles } from '$lib/stores/local-library.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { MediaQuery } from '$lib/viewport.svelte';
+	import { formatBytesToMB } from '$lib/format';
 
 	import type { Component, Snippet } from 'svelte';
 
@@ -51,11 +54,15 @@
 
 	// Two-step confirm for the destructive "clear library" action so a stray tap
 	// on mobile can't wipe everything. Reset on close so it never re-opens armed.
+	// Two separate armed flags: clearing the whole app (library + preferences +
+	// local files) is far more destructive than clearing just local files.
 	let confirmClear = $state(false);
+	let confirmClearLocal = $state(false);
 
 	$effect(() => {
 		if (!isPreferencesDialogOpen) {
 			confirmClear = false;
+			confirmClearLocal = false;
 		}
 	});
 
@@ -175,8 +182,15 @@
 
 	function clearAllData() {
 		appStore.reset();
+		localFiles.clear();
 		confirmClear = false;
 		toast.success(t('toast.dataCleared'));
+	}
+
+	function clearLocalFiles() {
+		localFiles.clear();
+		confirmClearLocal = false;
+		toast.success(t('toast.localFilesCleared'));
 	}
 </script>
 
@@ -208,10 +222,7 @@
 						<Label for={setting.id} class="cursor-pointer text-sm font-medium">
 							{t(setting.labelKey)}
 						</Label>
-						<span
-							title={t(setting.descKey)}
-							class="text-muted-foreground/70"
-						>
+						<span title={t(setting.descKey)} class="text-muted-foreground/70">
 							<Info class="h-3 w-3" />
 						</span>
 					</div>
@@ -366,14 +377,64 @@
 
 				{#snippet storedBody()}
 					<div class="space-y-4">
-						<div class="bg-muted/60 rounded-xl border p-3 text-center sm:p-4">
-							<div class="text-primary text-xl font-bold sm:text-3xl">
-								{appStore.getStats().extracted}
+						<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+							<div class="bg-muted/60 rounded-xl border p-3 text-center sm:p-4">
+								<div class="text-primary text-xl font-bold sm:text-3xl">
+									{appStore.getStats().extracted}
+								</div>
+								<div class="text-muted-foreground text-xs font-medium sm:text-sm">
+									{t('prefs.extractedVideos')}
+								</div>
 							</div>
-							<div class="text-muted-foreground text-xs font-medium sm:text-sm">
-								{t('prefs.extractedVideos')}
+
+							<div class="bg-muted/60 rounded-xl border p-3 text-center sm:p-4">
+								<div class="text-primary text-xl font-bold sm:text-3xl">
+									{localFiles.entries.length}
+								</div>
+								<div class="text-muted-foreground text-xs font-medium sm:text-sm">
+									{t('prefs.localFiles')}
+								</div>
+								<div class="text-muted-foreground/70 mt-1 text-xs" title={t('prefs.storedSize')}>
+									{localFiles.usedBytes > 0 ? formatBytesToMB(localFiles.usedBytes) : '0 MB'}
+								</div>
 							</div>
 						</div>
+
+						{#if confirmClearLocal}
+							<div class="border-destructive/40 bg-destructive/5 space-y-3 rounded-xl border p-3">
+								<p class="text-sm">{t('prefs.confirmClearLocal')}</p>
+								<div class="flex flex-col gap-2 sm:flex-row">
+									<Button
+										variant="destructive"
+										size="sm"
+										onclick={clearLocalFiles}
+										class="flex-1 cursor-pointer"
+									>
+										<Trash2 class="me-2 h-4 w-4" />
+										{t('prefs.confirmClearYes')}
+									</Button>
+									<Button
+										variant="outline"
+										size="sm"
+										onclick={() => (confirmClearLocal = false)}
+										class="flex-1 cursor-pointer"
+									>
+										{t('prefs.confirmClearNo')}
+									</Button>
+								</div>
+							</div>
+						{:else if !confirmClear}
+							<Button
+								variant="outline"
+								size="sm"
+								disabled={localFiles.entries.length === 0}
+								onclick={() => (confirmClearLocal = true)}
+								class="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 h-12 w-full cursor-pointer px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:py-1.5"
+							>
+								<HardDrive class="me-2 h-4 w-4" />
+								{t('prefs.clearLocalFiles')}
+							</Button>
+						{/if}
 
 						{#if confirmClear}
 							<div class="border-destructive/40 bg-destructive/5 space-y-3 rounded-xl border p-3">
@@ -447,7 +508,9 @@
 							>
 								<Minus class="h-4 w-4" />
 							</Button>
-							<span class="w-10 text-center text-sm font-semibold tabular-nums">
+							<span
+								class="text-muted-foreground flex min-w-14 items-center justify-center px-2 font-mono text-sm font-semibold tabular-nums"
+							>
 								{preferences.subtitlePanelMinWords === 0
 									? t('prefs.minWords.off')
 									: preferences.subtitlePanelMinWords}
