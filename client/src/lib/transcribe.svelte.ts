@@ -151,18 +151,18 @@ export class TranscriptionController {
 		this.error = null;
 		this.progress = 0;
 		this.serverProgress = 0;
-		this.stepLabel = t('subtitles.generating');
 		this.isRunning = true;
 		this.jobId = null;
+
+		const isLocalFile = 'file' in source;
+
+		this.stepLabel = isLocalFile ? t('subtitles.stage.uploading') : t('subtitles.generating');
 		this.startTrickle();
 
 		try {
-			// `TranscribeSource` has no `kind` member, so a literal check can't
-			// discriminate the union — use `in`-narrowing instead.
-			const result =
-				'file' in source
-					? await this.runLocalJob(source.file, controller.signal)
-					: await this.runJob(source);
+			const result = isLocalFile
+				? await this.runLocalJob((source as { file: File }).file, controller.signal)
+				: await this.runJob(source as TranscribeSource);
 
 			if (controller.signal.aborted) {
 				return;

@@ -41,6 +41,7 @@
 	let filename = $state<string | null>(seedPersisted()?.filename ?? null);
 	let progress = $state(0);
 	let stepLabel = $state('');
+	let uploadingFile = $state(false);
 	let controller: AbortController | null = null;
 	let stopped = false;
 
@@ -80,10 +81,13 @@
 		stopped = false;
 		phase = 'splitting';
 		progress = 0;
+		uploadingFile = true;
 		toast.info(t('toast.audioSplitting'));
 
 		try {
 			const { exportId: id } = await run(controller.signal);
+
+			uploadingFile = false;
 
 			exportId = id;
 
@@ -133,10 +137,12 @@
 		} catch (err) {
 			if ((err as Error)?.name === 'AbortError' || stopped) {
 				phase = 'idle';
+				uploadingFile = false;
 
 				return;
 			}
 			phase = 'error';
+			uploadingFile = false;
 			const msg = (err as Error)?.message ?? '';
 
 			// Surface the server's own error text (it carries the real ffmpeg
@@ -157,6 +163,7 @@
 			return;
 		}
 		stopped = true;
+		uploadingFile = false;
 		controller?.abort();
 		controller = null;
 		if (exportId) {
@@ -225,13 +232,13 @@
 		>
 			<span
 				class="text-muted-foreground inline-flex min-w-0 flex-1 items-center gap-1 px-2 py-1.5 font-mono text-xs sm:flex-none"
-				title={stepLabel || t('localFile.splittingAudio')}
+				title={uploadingFile ? t('localFile.uploading') : (stepLabel || t('localFile.splittingAudio'))}
 				role="status"
 			>
 				<Loader2 class="h-3 w-3 shrink-0 animate-spin" />
-				<span class="inline min-w-0 max-w-48 truncate text-xs">{stepLabel || t('localFile.splittingAudio')}</span
+				<span class="inline min-w-0 max-w-48 truncate text-xs">{uploadingFile ? t('localFile.uploading') : (stepLabel || t('localFile.splittingAudio'))}</span
 				>
-				<span class="ms-auto tabular-nums sm:ms-0">{Math.round(progress * 100)}%</span>
+				<span class="ms-auto tabular-nums sm:ms-0">{uploadingFile ? '' : `${Math.round(progress * 100)}%`}</span>
 			</span>
 			<button
 				type="button"

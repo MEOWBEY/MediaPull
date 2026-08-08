@@ -2,8 +2,8 @@
 	import AlertCircle from '@lucide/svelte/icons/alert-circle';
 	import Captions from '@lucide/svelte/icons/captions';
 	import Download from '@lucide/svelte/icons/download';
+	import Eraser from '@lucide/svelte/icons/eraser';
 	import Grid3X3 from '@lucide/svelte/icons/grid-3x3';
-	import HardDrive from '@lucide/svelte/icons/hard-drive';
 	import Image from '@lucide/svelte/icons/image';
 	import Info from '@lucide/svelte/icons/info';
 	import Languages from '@lucide/svelte/icons/languages';
@@ -408,7 +408,7 @@
 										variant="destructive"
 										size="sm"
 										onclick={clearLocalFiles}
-										class="flex-1 cursor-pointer"
+										class="h-12 flex-1 cursor-pointer py-2 sm:h-auto sm:py-1.5"
 									>
 										<Trash2 class="me-2 h-4 w-4" />
 										{t('prefs.confirmClearYes')}
@@ -417,7 +417,7 @@
 										variant="outline"
 										size="sm"
 										onclick={() => (confirmClearLocal = false)}
-										class="flex-1 cursor-pointer"
+										class="h-12 flex-1 cursor-pointer py-2 sm:h-auto sm:py-1.5"
 									>
 										{t('prefs.confirmClearNo')}
 									</Button>
@@ -431,7 +431,7 @@
 								onclick={() => (confirmClearLocal = true)}
 								class="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 h-12 w-full cursor-pointer px-4 py-2 transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:h-10 sm:py-1.5"
 							>
-								<HardDrive class="me-2 h-4 w-4" />
+								<Trash2 class="me-2 h-4 w-4" />
 								{t('prefs.clearLocalFiles')}
 							</Button>
 						{/if}
@@ -444,16 +444,16 @@
 										variant="destructive"
 										size="sm"
 										onclick={clearAllData}
-										class="flex-1 cursor-pointer"
+										class="h-12 flex-1 cursor-pointer py-2 sm:h-auto sm:py-1.5"
 									>
-										<Trash2 class="me-2 h-4 w-4" />
+										<Eraser class="me-2 h-4 w-4" />
 										{t('prefs.confirmClearYes')}
 									</Button>
 									<Button
 										variant="outline"
 										size="sm"
 										onclick={() => (confirmClear = false)}
-										class="flex-1 cursor-pointer"
+										class="h-12 flex-1 cursor-pointer py-2 sm:h-auto sm:py-1.5"
 									>
 										{t('prefs.confirmClearNo')}
 									</Button>
@@ -466,7 +466,7 @@
 								onclick={() => (confirmClear = true)}
 								class="hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40 h-12 w-full cursor-pointer px-4 py-2 transition-colors sm:h-10 sm:py-1.5"
 							>
-								<Trash2 class="me-2 h-4 w-4" />
+								<Eraser class="me-2 h-4 w-4" />
 								{t('prefs.clearData')}
 							</Button>
 						{/if}
