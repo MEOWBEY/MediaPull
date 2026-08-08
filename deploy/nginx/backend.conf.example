@@ -14,7 +14,7 @@ server {
     listen [::]:__PUBLIC_PORT__;
     server_name api.example.com;
 
-    client_max_body_size 25m;
+    client_max_body_size 300m;
 
     location /health {
         proxy_pass http://127.0.0.1:__PORT__;
@@ -32,9 +32,9 @@ server {
         # /extract-videos and /proxy-video can run long (extraction,
         # streaming through the proxy) -- don't cut them off at nginx's
         # 60s defaults.
-        proxy_connect_timeout 30s;
-        proxy_send_timeout    300s;
-        proxy_read_timeout    300s;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout    900s;
+        proxy_read_timeout    900s;
 
         # /proxy-video streams media through -- buffering would defeat
         # range/seek support and double the memory per request.
