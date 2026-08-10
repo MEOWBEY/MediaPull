@@ -165,6 +165,8 @@ For a production box, in `.env`:
   (`chmod 600`, owned by `mediapull`).
 - `ADMIN_TOKEN=…` to enable refreshing those cookies over HTTP without SSH — see
   [Server-wide cookies](#server-wide-cookies). Empty = disabled.
+- `ADMIN_USERNAME` + `ADMIN_PASSWORD_HASH` to enable the admin panel — see
+  [Admin panel](#admin-panel). Empty = disabled.
 - `PROXY_ALLOWED_HOSTS=googlevideo.com,cdninstagram.com,fbcdn.net,…` if you
   expose the box publicly — see [Security](#security).
 - Leave `PORT` alone here; the bound port comes from the systemd unit (step 4).
@@ -293,6 +295,44 @@ curl -X POST https://YOUR_DOMAIN/admin/cookies \
 It writes the first path in `COOKIE_FILE_PATHS`. Leave `ADMIN_TOKEN` empty to
 disable the endpoint (it returns 404). **Only call it over HTTPS** — the token
 is a bearer secret. Rotate it by changing `.env` and restarting.
+
+## Admin panel
+
+Served at `https://YOUR_DOMAIN/admin` — a small ops console with live logs &
+SSE tail, job list/cancel, banned-IP & blocked-domain rules, a safe `.env`
+editor (validates, keeps a `.bak` before writing), and a server-cookie editor,
+plus the `POST /admin/cookies` upload flow from above without needing the
+token.
+
+`install.sh` sets this up if you answer its username/password prompt (it hashes
+the password with the app's own PBKDF2 before writing `.env`); it also installs
+a polkit rule letting the `mediapull` user restart its own unit, which powers
+the panel's "Restart service" button (systemd installs only — Docker/small
+hosts without polkit just get "restart manually").
+
+Manual setup instead:
+
+```bash
+cd /opt/mediapull/server
+sudo -u mediapull venv/bin/python - <<'PY'
+from app.admin import hash_password
+print(hash_password('choose-a-strong-password'))
+PY
+# add the printed value to server/.env:
+#   ADMIN_USERNAME=yourname
+#   ADMIN_PASSWORD_HASH=pbkdf2_sha256$...
+# then:
+sudo sed 's/__SERVICE_USER__/mediapull/g' \
+  /opt/mediapull/deploy/polkit/mediapull.rules \
+  > /etc/polkit-1/rules.d/50-mediapull.rules
+sudo systemctl restart mediapull
+```
+
+Admin credentials are never stored plaintext: only the PBKDF2 hash lands in
+`.env` (update.sh never touches it — your password survives every update).
+Change a password later from the panel's Settings files tab, or by editing
+`ADMIN_PASSWORD_HASH` in `server/.env` and restarting. Left blank at install,
+the panel stays disabled until both keys are set.
 
 ## Resource limits
 

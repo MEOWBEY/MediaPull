@@ -212,6 +212,10 @@ an empty `.env` runs fine in dev. The client has exactly one variable, in
 | `COOKIE_FILE_PATHS` | *(empty)* | Server-side default cookies (Netscape `cookies.txt`), comma-separated for rotation. Unlocks login-gated/age-restricted content |
 | `MAX_COOKIE_BYTES` | `262144` | Cap on per-request cookie blobs from the client |
 | `ADMIN_TOKEN` | *(empty)* | Enables `POST /admin/cookies` (push fresh cookies without redeploy). Empty = endpoint returns 404 |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | *(empty)* | Enables the `/admin` panel (logs, jobs, rules, .env editor, cookie editor). Password is stored PBKDF2-hashed, never plaintext |
+| `ADMIN_SESSION_TTL_MIN` | `720` | Admin panel session lifetime (minutes) |
+| `ADMIN_LOGIN_RATE_LIMIT` | `20` | Failed admin logins per IP per 15 min before throttling |
+| `PAYLOAD_RATE_LIMIT` | `30` | Per-IP cap on quota-burning POST endpoints per 60 s (`0` = off) |
 | `PROXY_URL` | *(empty)* | Outbound http/https/socks5 proxy for extraction and the media proxy |
 | `YOUTUBE_PLAYER_CLIENTS` | *(empty)* | yt-dlp `player_client` list, e.g. `default,tv,web_safari` |
 | `YOUTUBE_POT_BASE_URL` | *(empty)* | bgutil PO-token sidecar URL; only needed off the default `127.0.0.1:4416` |

@@ -18,7 +18,10 @@ const proxied = [
 	'/proxy-token',
 	'/health',
 	'/split-audio',
-	'/transcribe'
+	'/transcribe',
+	// Trailing slash keeps the bare /admin PAGE in vite (it serves the built SPA
+	// otherwise, which 404s on its chunks) while the /admin/* API still proxies.
+	'/admin/'
 ];
 
 export default defineConfig({

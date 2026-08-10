@@ -31,6 +31,12 @@ def set_request_context(client_ip: str, request_id: str) -> None:
     _request_id.set(request_id or "-")
 
 
+def current_client_ip() -> str:
+    """Read back the request context's client IP (set per request by the
+    middleware). Never raises -- defaults to '-' outside a request."""
+    return _client_ip.get()
+
+
 def client_ip_from_headers(headers, client_host: str | None) -> str:
     """Real client IP behind a reverse proxy (see deploy/) falls back to the
     socket peer when there's no proxy in front (e.g. local dev)."""

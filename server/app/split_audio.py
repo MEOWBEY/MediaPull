@@ -100,6 +100,9 @@ class SplitAudioJob:
     filename: str | None = None
     step_label: str | None = None
     created_at: float = field(default_factory=time.monotonic)
+    # Client IP stamped at creation (from the request context) so the admin
+    # panel can see who started what.
+    client_ip: str = "-"
 
 
 class SplitAudioStore:
@@ -137,6 +140,11 @@ class SplitAudioStore:
         async with self._lock:
             self._sweep_expired()
             return self._jobs.get(job_id)
+
+    async def all(self) -> list[SplitAudioJob]:
+        async with self._lock:
+            self._sweep_expired()
+            return list(self._jobs.values())
 
     async def cancel(self, job_id: str) -> bool:
         """Stop a running split: kill its ffmpeg child (the job's cancel path

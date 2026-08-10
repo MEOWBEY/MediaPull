@@ -72,6 +72,9 @@ class TranscriptionJob:
     dialogue_map: list[float] | None = None
     error: str | None = None
     created_at: float = field(default_factory=time.monotonic)
+    # Client IP stamped at creation (from the request context) so the admin
+    # panel can see who started what.
+    client_ip: str = "-"
 
     @property
     def is_terminal(self) -> bool:
@@ -103,6 +106,10 @@ class JobStore:
     async def get(self, job_id: str) -> TranscriptionJob | None:
         async with self._lock:
             return self._jobs.get(job_id)
+
+    async def all(self) -> list[TranscriptionJob]:
+        async with self._lock:
+            return list(self._jobs.values())
 
     async def update(self, job_id: str, **fields: object) -> None:
         async with self._lock:

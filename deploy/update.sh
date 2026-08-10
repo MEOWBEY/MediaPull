@@ -41,5 +41,6 @@ build_client "$CLIENT_MODE" "$DOMAIN"
 detect_resource_limits
 echo "==> syncing the systemd unit (MemoryMax=$MEMORY_MAX, CPUQuota=$CPU_QUOTA)"
 sync_systemd_unit "$PORT" "$MEMORY_MAX" "$CPU_QUOTA"
+sync_polkit_rule
 
 restart_and_health "$PORT"

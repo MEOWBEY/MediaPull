@@ -54,6 +54,31 @@ class Settings(BaseSettings):
     # pushing freshly-exported cookies to the server without a redeploy.
     admin_token: str = Field(default="", alias="ADMIN_TOKEN")
 
+    # ----- Admin panel ----------------------------------------------------
+    # Single admin account for the panel (login at /admin). Both must be set
+    # for the panel to exist; empty -> /admin/* is disabled (404-on-empty
+    # pattern, same as ADMIN_TOKEN) and the client hides the panel entry.
+    # The password is stored as a PBKDF2-SHA256 hash, not plaintext:
+    #   hash format:  pbkdf2_sha256$600000$<salt>$<digest>
+    #   generate with app.admin.hash_password() -- deploy/install.sh does
+    #   this at install time and writes ADMIN_PASSWORD_HASH for you.
+    admin_username: str = Field(default="", alias="ADMIN_USERNAME")
+    admin_password_hash: str = Field(default="", alias="ADMIN_PASSWORD_HASH")
+    # Admin session lifetime (minutes).
+    admin_session_ttl_min: int = Field(default=720, ge=15, le=2880, alias="ADMIN_SESSION_TTL_MIN")
+    # Failed login attempts allowed per IP per 15 minutes before /admin/login
+    # answers 429 (the attempt window is fixed at 15 min).
+    admin_login_rate_limit: int = Field(default=20, ge=1, le=100, alias="ADMIN_LOGIN_RATE_LIMIT")
+    # JSON file holding the admin's moderation state (banned IPs, blocked
+    # domains) -- gitignored, chmod 600, survives restarts. Relative paths
+    # resolve to server/ (the process working dir and repo both live there).
+    admin_state_path: str = Field(default="./admin-state.json", alias="ADMIN_STATE_PATH")
+    # Per-IP rate cap on the payload endpoints that burn server quota
+    # (/extract-videos, /extract-gallery, /transcribe*, /split-audio/url,
+    # /proxy-token): hits per 60 seconds. 0 disables. In-memory, single
+    # process, resets on restart.
+    payload_rate_limit: int = Field(default=30, ge=0, le=10000, alias="PAYLOAD_RATE_LIMIT")
+
     # Outbound proxy (http/https/socks5) for extraction, link probing AND the
     # media proxy — routes around datacenter-IP blocks and rate limits. e.g.
     # "http://user:pass@host:port" or "socks5://host:port". Empty = direct.

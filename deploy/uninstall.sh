@@ -32,6 +32,9 @@ systemctl stop mediapull-pot 2>/dev/null || true
 systemctl disable mediapull-pot 2>/dev/null || true
 rm -f /etc/systemd/system/mediapull-pot.service
 
+echo "==> removing the admin-panel polkit rule (if present)"
+rm -f /etc/polkit-1/rules.d/50-$SERVICE.rules
+
 systemctl daemon-reload
 
 echo "==> removing the nginx site(s) (if present)"

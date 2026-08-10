@@ -156,6 +156,53 @@ sync_pot_service() {
   systemctl daemon-reload
 }
 
+# ---- admin panel credentials ----------------------------------------------
+
+# Set or append `KEY=VALUE` in a .env file, value-safe (no sed escaping).
+env_set_key() {  # FILE KEY VALUE
+  local file="$1" key="$2" value="$3"
+  sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/python" - "$file" "$key" "$value" <<'PY'
+import pathlib, sys
+path, key, value = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+lines = path.read_text().splitlines() if path.exists() else []
+out, found = [], False
+for line in lines:
+    if line.lstrip().startswith(f"{key}="):
+        out.append(f"{key}={value}")
+        found = True
+    else:
+        out.append(line)
+if not found:
+    out.append(f"{key}={value}")
+path.write_text("\n".join(out) + "\n")
+PY
+}
+
+# Turning ADMIN_PASSWORD into the PBKDF2-SHA256 hash the panel verifies.
+# Uses the repo's own venv + hash_password() so the stored value always
+# matches; plaintext never ends up in .env or on disk.
+hash_admin_password() {  # PASSWORD -> hash
+  local password="$1"
+  printf '%s' "$password" | sudo -u "$SERVICE_USER" \
+    PYTHONPATH="$REPO_DIR/server" "$REPO_DIR/server/venv/bin/python" -c \
+    "import sys; from app.admin import hash_password; print(hash_password(sys.stdin.read()))"
+}
+
+# Let the service user restart its own unit from the admin panel (polkit).
+# No-op on hosts without polkit (Docker, minimal containers) -- the panel
+# simply reports "restart manually". Idempotent.
+sync_polkit_rule() {
+  if [[ ! -d /etc/polkit-1/rules.d ]]; then
+    echo "    polkit not present -- admin panel 'Restart' button will be unsupported (restart manually)"
+    return 0
+  fi
+  echo "==> allowing '$SERVICE_USER' to restart the $SERVICE service (admin panel button)"
+  sed "s#__SERVICE_USER__#$SERVICE_USER#; s#__SERVICE__#$SERVICE#" \
+    "$DEPLOY_DIR/polkit/$SERVICE.rules" \
+    > /etc/polkit-1/rules.d/50-$SERVICE.rules
+  chmod 644 /etc/polkit-1/rules.d/50-$SERVICE.rules
+}
+
 # ---- client build ----------------------------------------------------------
 build_client() {
   local mode="$1" domain="${2:-}"

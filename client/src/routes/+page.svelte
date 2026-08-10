@@ -117,33 +117,10 @@
 		void appStore.remintLibraryProxyTokens();
 		void localFiles.restore();
 	});
-
-	$effect(() => {
-		if (typeof document === 'undefined' || !preferences) {
-			return;
-		}
-
-		const { theme } = preferences;
-		const media = window.matchMedia('(prefers-color-scheme: dark)');
-
-		const applyTheme = () => {
-			const dark = theme === 'dark' || (theme === 'system' && media.matches);
-
-			document.documentElement.classList.toggle('dark', dark);
-		};
-
-		applyTheme();
-
-		if (theme === 'system') {
-			media.addEventListener('change', applyTheme);
-
-			return () => media.removeEventListener('change', applyTheme);
-		}
-	});
 </script>
 
 <svelte:head>
-	<title>MediaPull — Paste a link. Pull the media.</title>
+	<title>MediaPull — {i18n.t('app.tagline')}</title>
 	<meta
 		name="description"
 		content="Paste a URL to extract downloadable video formats or image galleries. Built-in player, optional subtitles, cookies for signed-in sites, and proxy when direct play fails."

@@ -151,6 +151,28 @@ echo "Leave blank to skip -- you can add it to server/.env later and restart."
 ask GROQ_API_KEY "Groq API key" ""
 
 echo
+echo "The admin panel (/admin) gives you live logs, job control, cookie"
+echo "refresh, and safe .env editing without SSH. It needs a username and a"
+echo "password; the password is stored as a PBKDF2 hash, never plaintext."
+echo "Leave the username blank to skip the panel for now."
+ask ADMIN_USERNAME "Admin panel username (blank = disabled)" ""
+if [[ -n "$ADMIN_USERNAME" ]]; then
+  if [[ -z "${ADMIN_PASSWORD_HASH:-}" ]]; then
+    if $interactive; then
+      printf '%s' "${C_CYAN}Admin panel password${C_RESET}: "
+      read -rs ADMIN_PASSWORD || true
+      echo
+      printf '%s' "${C_CYAN}Repeat the password${C_RESET}: "
+      read -rs ADMIN_PASSWORD_CONFIRM || true
+      echo
+    elif [[ -z "${ADMIN_PASSWORD:-}" ]]; then
+      echo -e "${C_RED}ADMIN_USERNAME was set without ADMIN_PASSWORD -- set both for a non-interactive run.${C_RESET}" >&2
+      exit 1
+    fi
+  fi
+fi
+
+echo
 echo "==> installing system packages"
 apt-get update
 apt-get install -y ffmpeg nginx git curl ca-certificates
@@ -289,6 +311,36 @@ else
 fi
 sudo -u "$SERVICE_USER" sed -i "s#^COOKIE_FILE_PATHS=.*#COOKIE_FILE_PATHS=$COOKIE_FILE_PATH#" "$REPO_DIR/server/.env"
 
+# ---- admin panel credentials ----------------------------------------------
+# User-entered (or env-provided) username/password land in server/.env as a
+# PBKDF2 hash. Skips quietly when the username was left blank; an explicit
+# ADMIN_PASSWORD_HASH env var (e.g. re-runs that want to keep a known hash)
+# wins and needs no password prompt.
+ADMIN_CONFIGURED=false
+if [[ -n "$ADMIN_USERNAME" ]]; then
+  if [[ -z "${ADMIN_PASSWORD_HASH:-}" ]]; then
+    if [[ -z "$ADMIN_PASSWORD" ]]; then
+      echo -e "${C_RED}Admin panel password empty -- bailing out.${C_RESET}" >&2
+      echo "    Re-run install.sh (or set ADMIN_PASSWORD for a non-interactive run)." >&2
+      exit 1
+    fi
+    if $interactive && [[ "$ADMIN_PASSWORD" != "$ADMIN_PASSWORD_CONFIRM" ]]; then
+      echo -e "${C_RED}Admin panel passwords do not match -- bailing out.${C_RESET}" >&2
+      exit 1
+    fi
+    echo "==> hashing the admin panel password (PBKDF2-SHA256)"
+    ADMIN_PASSWORD_HASH="$(hash_admin_password "$ADMIN_PASSWORD")"
+  fi
+  if [[ -z "$ADMIN_PASSWORD_HASH" ]]; then
+    echo -e "${C_RED}Failed to hash the admin password (check the venv/python install).${C_RESET}" >&2
+    exit 1
+  fi
+  env_set_key "$REPO_DIR/server/.env" ADMIN_USERNAME "$ADMIN_USERNAME"
+  env_set_key "$REPO_DIR/server/.env" ADMIN_PASSWORD_HASH "$ADMIN_PASSWORD_HASH"
+  unset ADMIN_PASSWORD ADMIN_PASSWORD_CONFIRM  # never linger in the environment
+  ADMIN_CONFIGURED=true
+fi
+
 # ---- client (optional) -----------------------------------------------------
 CLIENT_DIR_SETTING=""
 if [[ "$CLIENT_MODE" == "same-domain" ]]; then
@@ -305,6 +357,7 @@ fi
 echo "==> installing the systemd unit (port $PORT, MemoryMax=$MEMORY_MAX, CPUQuota=$CPU_QUOTA)"
 sync_systemd_unit "$PORT" "$MEMORY_MAX" "$CPU_QUOTA"
 systemctl enable --now "$SERVICE"
+sync_polkit_rule
 
 if [[ -n "$DOMAIN" ]]; then
   echo "==> configuring nginx for $DOMAIN (backend), public port $PUBLIC_PORT"
@@ -425,6 +478,7 @@ DOMAIN=$DOMAIN
 PUBLIC_PORT=${PUBLIC_PORT:-80}
 CLIENT_MODE=$CLIENT_MODE
 CLIENT_DOMAIN=${CLIENT_DOMAIN:-}
+ADMIN_USERNAME=${ADMIN_USERNAME:-}
 INSTALL_POT_PROVIDER=$INSTALL_POT_PROVIDER
 POT_PORT=$POT_PORT
 UFW_WAS_ACTIVE=$UFW_WAS_ACTIVE
@@ -448,6 +502,22 @@ Done.
   (proxy, YouTube player clients, etc.), then:
     systemctl restart $SERVICE
 EOF
+if [[ "$ADMIN_CONFIGURED" == true ]]; then
+  cat <<EOF
+- Admin panel: https://your-server/admin
+    username: $ADMIN_USERNAME
+    password: $ADMIN_PASSWORD   (shown once; only a PBKDF2 hash is stored)
+  Change it from the panel's Settings files tab, or reset it later:
+    cd $REPO_DIR/server && venv/bin/python -c "from app.admin import hash_password; print(hash_password('new-pass'))"
+    # paste the printed value into ADMIN_PASSWORD_HASH in server/.env, restart
+EOF
+else
+  cat <<EOF
+- Admin panel: NOT configured (username left blank). Enable it later by adding
+  ADMIN_USERNAME + ADMIN_PASSWORD_HASH to $REPO_DIR/server/.env
+  (hash: from app.admin import hash_password) and restarting the service.
+EOF
+fi
 if [[ "$INSTALL_POT_PROVIDER" == "yes" ]]; then
   echo "- PO token provider: enabled (systemd service mediapull-pot, 127.0.0.1:$POT_PORT)"
 else

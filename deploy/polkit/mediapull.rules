@@ -1,0 +1,13 @@
+// MediaPull: let the mediapull service user restart/stop/start its own unit
+// from the admin panel's "Restart service" button. Scope is tight: only
+// mediapull.service, only lifecycle verbs, only that one user.
+polkit.addRule(function (action, subject) {
+	if (
+		action.id == 'org.freedesktop.systemd1.manage-units' &&
+		subject.user == '__SERVICE_USER__' &&
+		action.lookup('unit') == '__SERVICE__.service' &&
+		['restart', 'stop', 'start'].indexOf(action.lookup('verb')) !== -1
+	) {
+		return polkit.Result.YES;
+	}
+});

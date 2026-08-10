@@ -7,7 +7,6 @@ import hashlib
 import importlib.util
 import logging
 import os
-import secrets
 import shutil
 import sys
 import tempfile
@@ -18,14 +17,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import TypeVar
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 import httpx
 
 
-from . import __version__
+from . import __version__, admin
 from .audio import AudioError, close_download_session, pick_audio_format
 from .cache import TTLCache
 from .config import settings
@@ -33,7 +32,7 @@ from .extractor import ExtractionError, Extractor
 from .gallery import GalleryExtractor
 from .split_audio import SplitAudioStore, run_split_audio_job
 from .jobs import JobStore, TranscriptionJob, run_transcription_job
-from .logging_context import LogContextMiddleware, RequestContextFilter
+from .logging_context import LogContextMiddleware, RequestContextFilter, current_client_ip
 from .net_common import normalize_cookies
 from .models import (
     CookieUploadRequest,
@@ -74,6 +73,9 @@ def _configure_logging() -> None:
     # per audio chunk, so a single subtitle job spams several "HTTP Request: ...
     # 200 OK" lines that bury the app's own progress. Lift it to WARNING.
     logging.getLogger("httpx").setLevel(logging.WARNING)
+    # The admin panel's in-memory ring buffer (also catches uvicorn/gunicorn
+    # access lines -- see admin.attach_log_buffer).
+    admin.attach_log_buffer()
 
 
 logger = logging.getLogger("mediapull")
@@ -277,6 +279,10 @@ def create_app() -> FastAPI:
     # swallow client disconnects and leave the media proxy streaming from the
     # origin after the browser cancelled -- burning bandwidth for nobody.
     app.add_middleware(LogContextMiddleware)
+    # Innermost: 403s banned IPs before any endpoint runs.
+    app.add_middleware(admin.AdminGuardMiddleware)
+
+    app.include_router(admin.router)
 
     # Caps concurrent extract work so a burst cannot queue unbounded thread-pool
     # jobs (and hold ASGI connections open) on a public VPS.
@@ -343,8 +349,15 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/extract-videos", response_model=ExtractResponse)
-    async def extract_videos(request: Request, payload: ExtractRequest) -> ExtractResponse:
+    async def extract_videos(
+        request: Request,
+        payload: ExtractRequest,
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> ExtractResponse:
         url = payload.url.strip()
+        blocked = admin.check_url_allowed(url)
+        if blocked:
+            raise HTTPException(status_code=403, detail=blocked)
         cookies = payload.cookies
         cache: TTLCache[VideoInfo] = app.state.cache
 
@@ -387,8 +400,15 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/extract-gallery", response_model=GalleryResponse)
-    async def extract_gallery(request: Request, payload: ExtractRequest) -> GalleryResponse:
+    async def extract_gallery(
+        request: Request,
+        payload: ExtractRequest,
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> GalleryResponse:
         url = payload.url.strip()
+        blocked = admin.check_url_allowed(url)
+        if blocked:
+            raise HTTPException(status_code=403, detail=blocked)
         cookies = payload.cookies
         cache: TTLCache[GalleryInfo] = app.state.gallery_cache
 
@@ -435,7 +455,10 @@ def create_app() -> FastAPI:
         return await app.state.proxy.handle(request)
 
     @app.post("/proxy-token", response_model=ProxyTokenResponse)
-    async def proxy_token(payload: ProxyTokenRequest) -> ProxyTokenResponse:
+    async def proxy_token(
+        payload: ProxyTokenRequest,
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> ProxyTokenResponse:
         # Exchange a source's auth cookies for a short-lived opaque token so the
         # cookies stay out of the (copyable / shareable) proxy URL.
         return ProxyTokenResponse(
@@ -464,16 +487,13 @@ def create_app() -> FastAPI:
         # so the new cookies take effect on the next call. Use it when the saved
         # cookies stop working -- re-export from a logged-in browser and POST them.
         #
-        # Gated by ADMIN_TOKEN. Unset = feature off: 404 (not 401) so an
-        # unconfigured deploy doesn't advertise the endpoint exists.
+        # Gated by an admin session cookie OR the legacy ADMIN_TOKEN bearer
+        # (the pre-panel curl workflow). Unset = feature off: 404 (not 401) so
+        # an unconfigured deploy doesn't advertise the endpoint exists.
         expected = settings.admin_token
-        if not expected:
+        if not expected and not admin.admin_authorized(request):
             raise HTTPException(status_code=404, detail="Not Found")
-
-        # Bearer token, constant-time compare so a wrong guess can't be timed.
-        header = request.headers.get("Authorization", "")
-        scheme, _, token = header.partition(" ")
-        if scheme.lower() != "bearer" or not secrets.compare_digest(token, expected):
+        if not admin.admin_authorized(request):
             raise HTTPException(status_code=401, detail="Invalid or missing admin token")
 
         # A shared default cookie file is multi-domain, so the Netscape export is
@@ -531,7 +551,10 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=503, detail="Split audio is disabled on this server")
 
     @app.post("/split-audio/local", response_model=SplitAudioStartResponse)
-    async def split_audio_local(file: UploadFile = File(...)) -> SplitAudioStartResponse:
+    async def split_audio_local(
+        file: UploadFile = File(...),
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> SplitAudioStartResponse:
         _split_audio_guard()
         original_stem = Path(file.filename or "audio").stem
         src_path, _ = await _save_upload(
@@ -539,6 +562,7 @@ def create_app() -> FastAPI:
         )
 
         job = await app.state.split_audio.create()
+        await app.state.split_audio.update(job.id, client_ip=current_client_ip())
         output_filename = f"{original_stem}.mp3"
         task = asyncio.create_task(
             run_split_audio_job(job.id, src_path, output_filename, app.state.split_audio, settings, delete_source=True)
@@ -547,7 +571,10 @@ def create_app() -> FastAPI:
         return SplitAudioStartResponse(export_id=job.id)
 
     @app.post("/split-audio/url", response_model=SplitAudioStartResponse)
-    async def split_audio_url(payload: SplitAudioUrlRequest) -> SplitAudioStartResponse:
+    async def split_audio_url(
+        payload: SplitAudioUrlRequest,
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> SplitAudioStartResponse:
         _split_audio_guard()
 
         # Same contract as /transcribe: the client sends its whole format list
@@ -587,6 +614,7 @@ def create_app() -> FastAPI:
         job = await app.state.split_audio.create()
         output_filename = f"{original_stem}.mp3"
         # Pass the real URL — ffmpeg fetches HTTP sources natively with headers.
+        await app.state.split_audio.update(job.id, client_ip=current_client_ip())
         task = asyncio.create_task(
             run_split_audio_job(
                 job.id, real_url, output_filename, app.state.split_audio,
@@ -663,7 +691,10 @@ def create_app() -> FastAPI:
         )
 
     @app.post("/transcribe", response_model=TranscribeStartResponse)
-    async def start_transcribe(payload: TranscribeRequest) -> TranscribeStartResponse:
+    async def start_transcribe(
+        payload: TranscribeRequest,
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> TranscribeStartResponse:
         if app.state.transcriber is None:
             raise HTTPException(
                 status_code=503, detail="Auto-subtitles are not configured on this server"
@@ -673,6 +704,7 @@ def create_app() -> FastAPI:
             job = await app.state.jobs.create()
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        await app.state.jobs.update(job.id, client_ip=current_client_ip())
         logger.info(
             "transcription job %s started for %s",
             job.id,
@@ -693,7 +725,10 @@ def create_app() -> FastAPI:
         return TranscribeStartResponse(job_id=job.id)
 
     @app.post("/transcribe/local", response_model=TranscribeStartResponse)
-    async def start_transcribe_local(file: UploadFile = File(...)) -> TranscribeStartResponse:
+    async def start_transcribe_local(
+        file: UploadFile = File(...),
+        _: None = Depends(admin.payload_rate_guard),
+    ) -> TranscribeStartResponse:
         # Gated by the same TRANSCRIBE_ENABLED flag as the URL-based endpoint.
         if app.state.transcriber is None:
             raise HTTPException(
@@ -711,6 +746,7 @@ def create_app() -> FastAPI:
         except RuntimeError as exc:
             tmp_path.unlink(missing_ok=True)
             raise HTTPException(status_code=503, detail=str(exc)) from exc
+        await app.state.jobs.update(job.id, client_ip=current_client_ip())
 
         logger.info(
             "local transcription job %s started: %s bytes, file=%s",

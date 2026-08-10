@@ -1,12 +1,15 @@
 <script lang="ts">
 	import Settings from '@lucide/svelte/icons/settings';
+	import Shield from '@lucide/svelte/icons/shield';
 
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
 	import { ToggleMode } from '$lib/components/dark-mode/index';
 	import LanguageToggle from '$lib/components/LanguageToggle.svelte';
 	import { Button } from '$lib/components/ui/button';
 	import { Toaster } from '$lib/components/ui/sonner/index.js';
 	import { i18n } from '$lib/i18n/index.svelte';
+	import { appStore } from '$lib/stores/app-state.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
 	import '../app.css';
@@ -14,6 +17,8 @@
 	let { children } = $props();
 	const GITHUB_URL = 'https://github.com/meowbey';
 	const GITHUB_USERNAME = 'MEOWBEY';
+
+	let preferences = $derived(appStore.preferences);
 
 	// Sync lang/dir with locale (RTL for Farsi, correct screen-reader language).
 	$effect(() => {
@@ -23,6 +28,41 @@
 
 		document.documentElement.lang = i18n.locale;
 		document.documentElement.dir = i18n.dir;
+
+		// SvelteKit only writes document.title on navigation — the head <title>
+		// updates reactively, but the browser tab does not. Re-sync it here so
+		// switching language changes the tab title immediately, no refresh.
+		const head = document.querySelector('title');
+
+		if (head && head.textContent !== document.title) {
+			document.title = head.textContent;
+		}
+	});
+
+	// Apply the chosen theme (light/dark/system) on every route — the header's
+	// toggle lives here, so the class must update the moment it is clicked
+	// (previously only +page applied it, which broke /admin until a reload).
+	$effect(() => {
+		if (typeof document === 'undefined' || !preferences) {
+			return;
+		}
+
+		const { theme } = preferences;
+		const media = window.matchMedia('(prefers-color-scheme: dark)');
+
+		const applyTheme = () => {
+			const dark = theme === 'dark' || (theme === 'system' && media.matches);
+
+			document.documentElement.classList.toggle('dark', dark);
+		};
+
+		applyTheme();
+
+		if (theme === 'system') {
+			media.addEventListener('change', applyTheme);
+
+			return () => media.removeEventListener('change', applyTheme);
+		}
 	});
 </script>
 
@@ -53,10 +93,7 @@
 					<rect x="0" y="9" width="9" height="3" rx="1.5" fill="currentColor" />
 					<rect x="0" y="15" width="6" height="3" rx="1.5" fill="currentColor" />
 				</svg>
-				<h1
-					class="font-heading shrink-0 text-lg font-bold tracking-tight"
-					id="site-title"
-				>
+				<h1 class="font-heading shrink-0 text-lg font-bold tracking-tight" id="site-title">
 					MediaPull
 				</h1>
 			</a>
@@ -66,9 +103,6 @@
 				role="group"
 				aria-label="Project link, language, theme and settings"
 			>
-				<!-- Order runs peripheral → primary. GitHub is the only control that
-				     leaves the app, so it sits furthest from the edge; Settings is the
-				     most-used, so it takes the privileged last slot. -->
 				<Button
 					variant="ghost"
 					size="icon"
@@ -94,18 +128,31 @@
 						/>
 					</svg>
 				</Button>
-				<LanguageToggle />
-				<ToggleMode />
 				<Button
 					variant="ghost"
 					size="icon"
-					onclick={() => ui.openPreferences()}
+					href={resolve('/admin')}
+					title="Admin"
+					aria-label="Admin panel"
 					class="h-10 w-10 sm:h-9 sm:w-9"
-					title={i18n.t('input.preferences')}
-					aria-label={i18n.t('input.preferences')}
 				>
-					<Settings class="h-5 w-5" aria-hidden="true" />
+					<Shield class="h-5 w-5" aria-hidden="true" />
 				</Button>
+
+				<LanguageToggle />
+				<ToggleMode />
+				{#if page.url.pathname !== resolve('/admin')}
+					<Button
+						variant="ghost"
+						size="icon"
+						onclick={() => ui.openPreferences()}
+						class="h-10 w-10 sm:h-9 sm:w-9"
+						title={i18n.t('input.preferences')}
+						aria-label={i18n.t('input.preferences')}
+					>
+						<Settings class="h-5 w-5" aria-hidden="true" />
+					</Button>
+				{/if}
 			</div>
 		</nav>
 	</header>

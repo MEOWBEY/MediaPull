@@ -51,6 +51,9 @@ coverage.xml
 *.tmp
 *.bak
 
+# Admin panel state (banned IPs / blocked domains — operators' rules, not code)
+admin-state.json
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
