@@ -158,10 +158,20 @@ sync_pot_service() {
 
 # ---- admin panel credentials ----------------------------------------------
 
+# Run a command as the service user with server/ as its working directory.
+# Importing app.admin builds Settings, and pydantic-settings reads .env from
+# cwd -- run from the installer's own cwd (e.g. root's 0700 home) and the
+# service user can't even stat it (EACCES). Any python that touches app code
+# must go through this. Args pass through unquoted-and-unsplit (no $* join).
+server_as_service() {  # CMD...
+  sudo -u "$SERVICE_USER" bash -c 'cd "$1" && shift && exec "$@"' \
+    _ "$REPO_DIR/server" "$@"
+}
+
 # Set or append `KEY=VALUE` in a .env file, value-safe (no sed escaping).
 env_set_key() {  # FILE KEY VALUE
   local file="$1" key="$2" value="$3"
-  sudo -u "$SERVICE_USER" "$REPO_DIR/server/venv/bin/python" - "$file" "$key" "$value" <<'PY'
+  server_as_service "$REPO_DIR/server/venv/bin/python" - "$file" "$key" "$value" <<'PY'
 import pathlib, sys
 path, key, value = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
 lines = path.read_text().splitlines() if path.exists() else []
@@ -180,14 +190,12 @@ PY
 
 # Turning ADMIN_PASSWORD into the PBKDF2-SHA256 hash the panel verifies.
 # Uses the repo's own venv + hash_password() so the stored value always
-# matches; plaintext never ends up in .env or on disk. Runs with the server
-# dir as cwd: importing app.admin builds Settings which reads .env from cwd
-# (pydantic-settings), and the service user can't stat the installer's own
-# cwd (e.g. root's 0700 home) -- that crashed installs with EACCES on '.env'.
+# matches; plaintext never ends up in .env or on disk.
 hash_admin_password() {  # PASSWORD -> hash
   local password="$1"
-  printf '%s' "$password" | sudo -u "$SERVICE_USER" bash -c \
-    "cd '$REPO_DIR/server' && PYTHONPATH='$REPO_DIR/server' '$REPO_DIR/server/venv/bin/python' -c 'import sys; from app.admin import hash_password; print(hash_password(sys.stdin.read()))'"
+  printf '%s' "$password" | server_as_service \
+    env PYTHONPATH="$REPO_DIR/server" "$REPO_DIR/server/venv/bin/python" -c \
+    "import sys; from app.admin import hash_password; print(hash_password(sys.stdin.read()))"
 }
 
 # Let the service user restart its own unit from the admin panel (polkit).
