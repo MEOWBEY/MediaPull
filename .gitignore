@@ -62,3 +62,6 @@ DESIGN-IS-*/
 
 # ── graphify knowledge graph (regenerated on every commit via .git/hooks/post-commit) ──
 graphify-out/
+
+# ── Agent session instructions (local-only; contains machine-specific paths) ──
+AGENTS.md

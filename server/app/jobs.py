@@ -341,7 +341,9 @@ async def run_transcription_job(
         )
         merged = merge_chunks(segments_by_chunk)
         if settings.transcribe_postprocess:
-            merged = postprocess_subtitles(merged)
+            merged = postprocess_subtitles(
+                merged, split_long_cues=settings.transcribe_split_long_cues
+            )
         vtt_text = to_vtt(merged)
         srt_text = to_srt(merged)
         if not dialogue_map_task.done():

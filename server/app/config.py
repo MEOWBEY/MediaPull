@@ -168,14 +168,18 @@ class Settings(BaseSettings):
     transcribe_workers: int = Field(default=2, ge=1, le=8)
     groq_whisper_model: str = Field(default="whisper-large-v3-turbo")
     # Seeded into each Whisper request as prior context — nudges the model to
-    # transcribe spoken words only and skip noise/music hallucinations. Set to
-    # an empty string to send no prompt (raw Whisper output).
+    # transcribe spoken words only and skip noise/music hallucinations and
+    # boundary repetitions. Set to an empty string to send no prompt (raw
+    # Whisper output).
     transcribe_whisper_prompt: str = Field(
         default=(
-            "Transcribe only spoken words exactly as said. "
-            "Do not include music, sound effects, or background noise descriptions. "
-            "Do not use symbols like ♪ or annotations like [Music], [Applause], [Laughter]. "
-            "Do not repeat phrases or sentences."
+            "Transcribe only the words that are actually spoken, exactly as said. "
+            "Ignore music, singing, sound effects, and background noise: never "
+            "describe them and never add symbols like ♪ or tags like [Music], "
+            "[Applause], or [Laughter]. Do not repeat or duplicate any phrase, "
+            "and do not invent words that were not spoken — if the same line is "
+            "truly said twice, transcribe it twice. Always add punctuation: a "
+            "period or question mark when a sentence ends, a comma for a pause."
         ),
         alias="TRANSCRIBE_WHISPER_PROMPT",
     )
@@ -183,6 +187,15 @@ class Settings(BaseSettings):
     # placeholders, consecutive duplicates, and sub-0.5s isolated single-word
     # cues. Applied to every job (online and local). Set false for raw output.
     transcribe_postprocess: bool = Field(default=True, alias="TRANSCRIBE_POSTPROCESS")
+    # Split long cues (fast dialogue / several speakers often arrives as one
+    # long Whisper segment) into shorter readable ones. With word timestamps
+    # (always returned by whisper-large-v3-turbo) the split is exact — each
+    # new cue starts at its first word and ends at its last, so no timing
+    # shifts. Without them, postprocess falls back to an approximate
+    # proportional split. Set false to keep Whisper's cue boundaries as-is.
+    transcribe_split_long_cues: bool = Field(
+        default=True, alias="TRANSCRIBE_SPLIT_LONG_CUES"
+    )
 
     # ----- Extraction speed (transcription pipeline) ----------------------
     # The source is pulled as several cap-sized time windows extracted in

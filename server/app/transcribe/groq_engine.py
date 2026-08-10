@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import re
 import time
 from pathlib import Path
 
@@ -51,6 +52,25 @@ _MAX_TOTAL_CONCURRENCY = 16
 _MIN_CUE_SECONDS = 1.5
 _MAX_CUE_SECONDS = 7.0
 _SLOW_SPEECH_CPS = 8.0
+
+# Long-cue splitting. Fast dialogue / overlapping speakers make Whisper merge
+# several sentences into one segment; such cues are hard to read at video
+# speed. Splits are anchored to the words' REAL timestamps, so nothing shifts:
+# every new cue starts at its first word and ends at its last, and the cues
+# keep the exact speech times Whisper reported.
+_MAX_CUE_WORDS = 24          # word-count cap even for short, wordy cues
+_SPLIT_MIN_SECONDS = 4.5     # only multi-sentence cues above this get split
+_SPLIT_MIN_WORDS = 12        # ...and only when they carry this many words
+_MIN_PIECE_WORDS = 2         # never leave a cue with fewer words
+_MIN_PIECE_SECONDS = 1.2
+_MAX_PIECES = 8              # guard against pathological repeated punctuation
+
+# Sentence-ending punctuation (a split is safe right after these) and weak
+# mid-sentence boundaries (commas/dashes — only used to break up a cue that
+# stays too long after the sentence-level split). Trailing quotes/closers are
+# allowed so `"Hello."` still counts as a boundary.
+_STRONG_END_RE = re.compile(r'[.!?…:;]["\'”’)\]]*$')
+_WEAK_END_RE = re.compile(r'[,;—–…]["\'”’)\]]*$')
 
 
 class GroqError(Exception):
@@ -224,20 +244,26 @@ class GroqTranscriber:
 
 
 def _tighten_to_words(segments: list[Segment], raw_words: list[dict]) -> list[Segment]:
-    """Snap each segment's start/end to the actual spoken words inside it.
+    """Snap each segment's start/end to the actual spoken words inside it, and
+    split long cues at punctuation using those words' real times.
 
     With word timestamps this is exact: a cue appears when its first word is
     spoken and disappears right after its last one, so silence shows no
-    caption at all. Without them (older models / a response that omitted
-    ``words``), fall back to capping the duration by text length -- crude,
-    but still strictly better than trusting the padded segment end.
+    caption at all. Long multi-sentence cues (fast dialogue, several speakers)
+    are split at sentence boundaries using the same true times -- splitting
+    never fabricates or shifts timing. Without word timestamps (older models /
+    a response that omitted ``words``), fall back to capping the duration by
+    text length -- crude, but still strictly better than trusting the padded
+    segment end.
     """
-    words: list[tuple[float, float]] = []
+    words: list[tuple[float, float, str]] = []
     for w in raw_words:
         try:
-            words.append((float(w["start"]), float(w["end"])))
+            start = float(w["start"])
+            end = float(w["end"])
         except (KeyError, TypeError, ValueError):
             continue
+        words.append((start, end, str(w.get("word") or "").strip()))
     words.sort()
 
     out: list[Segment] = []
@@ -248,16 +274,15 @@ def _tighten_to_words(segments: list[Segment], raw_words: list[dict]) -> list[Se
             while wi < len(words) and words[wi][1] <= seg.start:
                 wi += 1
             wj = wi
-            first_start: float | None = None
-            last_end: float | None = None
+            piece_words: list[tuple[float, float, str]] = []
             while wj < len(words) and words[wj][0] < seg.end:
-                if first_start is None:
-                    first_start = words[wj][0]
-                last_end = words[wj][1]
+                piece_words.append(words[wj])
                 wj += 1
             wi = wj
-            if first_start is not None and last_end is not None and last_end > first_start:
-                out.append(Segment(start=first_start, end=last_end, text=seg.text))
+            if piece_words:
+                for start, end, text in _split_long_segment(piece_words, seg.text):
+                    if end > start and text:
+                        out.append(Segment(start=start, end=end, text=text))
                 continue
 
         # Fallback: cap the duration to what the text could plausibly take
@@ -265,3 +290,100 @@ def _tighten_to_words(segments: list[Segment], raw_words: list[dict]) -> list[Se
         budget = min(max(_MIN_CUE_SECONDS, len(seg.text) / _SLOW_SPEECH_CPS), _MAX_CUE_SECONDS)
         out.append(Segment(start=seg.start, end=min(seg.end, seg.start + budget), text=seg.text))
     return out
+
+
+def _split_long_segment(
+    words: list[tuple[float, float, str]], fallback_text: str
+) -> list[tuple[float, float, str]]:
+    """Split one Whisper segment (with its word times) into readable cues.
+
+    Returns ``(start, end, text)`` triples. Timing is never invented: each cue
+    starts at its first word's start and ends at its last word's end. If the
+    words carry no text (or the segment is already short), the whole thing is
+    returned as one cue with the segment's original text.
+
+    Splitting rules (in order of preference):
+      1. A short segment stays one cue.
+      2. Long segments split at sentence endings (``.?!`` …).
+      3. A piece that is still too long after that splits at weaker boundaries
+         (commas / dashes).
+    Tiny pieces get merged back into their neighbour so no 2-word slivers are
+    left behind.
+    """
+    if not words:
+        return [(0.0, 0.0, fallback_text)] if fallback_text else []
+    if not all(w[2] for w in words):
+        # Word text missing — can't attribute text to pieces, keep it whole.
+        start, end = words[0][0], words[-1][1]
+        return [(start, end, fallback_text)] if end > start and fallback_text else []
+
+    duration = words[-1][1] - words[0][0]
+    sentences = 1 + sum(1 for _, _, text in words if _STRONG_END_RE.search(text))
+    if not (
+        duration > _MAX_CUE_SECONDS
+        or len(words) > _MAX_CUE_WORDS
+        or (sentences >= 2 and duration > _SPLIT_MIN_SECONDS and len(words) > _SPLIT_MIN_WORDS)
+    ):
+        return [_join_words(words)]
+
+    pieces = _split_at(words, _STRONG_END_RE)
+    if len(pieces) == 1:
+        # No sentence boundary anywhere (one long run-on) — reach for commas.
+        pieces = _split_at(words, _WEAK_END_RE)
+    else:
+        # A single sentence can still be huge after the sentence split —
+        # break only the oversized pieces at commas/dashes.
+        broken: list[list[tuple[float, float, str]]] = []
+        for piece in pieces:
+            if piece[-1][1] - piece[0][0] > _MAX_CUE_SECONDS or len(piece) > _MAX_CUE_WORDS:
+                sub = _split_at(piece, _WEAK_END_RE)
+                broken.extend(sub if len(sub) > 1 else [piece])
+            else:
+                broken.append(piece)
+        pieces = broken
+    if len(pieces) == 1 or len(pieces) > _MAX_PIECES:
+        return [_join_words(words)]
+    return [_join_words(p) for p in pieces]
+
+
+def _split_at(
+    words: list[tuple[float, float, str]], boundary: re.Pattern
+) -> list[list[tuple[float, float, str]]]:
+    """Split ``words`` into pieces after any word ending in ``boundary``
+    punctuation, then merge slivers back into their neighbour."""
+    pieces: list[list[tuple[float, float, str]]] = []
+    cur: list[tuple[float, float, str]] = []
+    for word in words:
+        cur.append(word)
+        if boundary.search(word[2]):
+            pieces.append(cur)
+            cur = []
+    if cur:
+        pieces.append(cur)
+
+    merged: list[list[tuple[float, float, str]]] = []
+    for piece in pieces:
+        if not merged:
+            merged.append(piece)
+            continue
+        dur = piece[-1][1] - piece[0][0]
+        if len(piece) < _MIN_PIECE_WORDS or dur < _MIN_PIECE_SECONDS:
+            merged[-1].extend(piece)
+        else:
+            merged.append(piece)
+    return merged
+
+
+def _join_words(words: list[tuple[float, float, str]]) -> tuple[float, float, str]:
+    """Rebuild the cue text from its words, keeping Whisper's punctuation
+    attached to the word that precedes it (no space before , . ! ? etc.)."""
+    parts: list[str] = []
+    for _, _, word in words:
+        if parts and not _NO_LEAD_SPACE_RE.match(word):
+            parts.append(" " + word)
+        else:
+            parts.append(word)
+    return words[0][0], words[-1][1], "".join(parts).strip()
+
+
+_NO_LEAD_SPACE_RE = re.compile(r"""^["'“”‘’([{<`*•]|^[.,!?…:;)—–\]}-]""")
