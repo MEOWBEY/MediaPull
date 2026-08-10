@@ -180,12 +180,14 @@ PY
 
 # Turning ADMIN_PASSWORD into the PBKDF2-SHA256 hash the panel verifies.
 # Uses the repo's own venv + hash_password() so the stored value always
-# matches; plaintext never ends up in .env or on disk.
+# matches; plaintext never ends up in .env or on disk. Runs with the server
+# dir as cwd: importing app.admin builds Settings which reads .env from cwd
+# (pydantic-settings), and the service user can't stat the installer's own
+# cwd (e.g. root's 0700 home) -- that crashed installs with EACCES on '.env'.
 hash_admin_password() {  # PASSWORD -> hash
   local password="$1"
-  printf '%s' "$password" | sudo -u "$SERVICE_USER" \
-    PYTHONPATH="$REPO_DIR/server" "$REPO_DIR/server/venv/bin/python" -c \
-    "import sys; from app.admin import hash_password; print(hash_password(sys.stdin.read()))"
+  printf '%s' "$password" | sudo -u "$SERVICE_USER" bash -c \
+    "cd '$REPO_DIR/server' && PYTHONPATH='$REPO_DIR/server' '$REPO_DIR/server/venv/bin/python' -c 'import sys; from app.admin import hash_password; print(hash_password(sys.stdin.read()))'"
 }
 
 # Let the service user restart its own unit from the admin panel (polkit).
