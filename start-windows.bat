@@ -92,8 +92,14 @@ rem pip finishes (an interrupted install is retried next run), and it's
 rem re-compared against the current requirements.txt on every start - when the
 rem pinned deps change on a pull, the venv is refreshed automatically instead
 rem of silently running stale versions.
+if not exist "server\requirements.txt" (
+    echo   [ERROR] server\requirements.txt was not found.
+    goto :fail
+)
 set "DEPS_HASH="
 if exist "server\.venv\.deps-installed" for /f "usebackq delims=" %%h in ("server\.venv\.deps-installed") do set "DEPS_HASH=%%h"
+if not exist "server\.venv\Scripts\python.exe" set "DEPS_HASH="
+if not exist "server\.venv\Scripts\uvicorn.exe" set "DEPS_HASH="
 set "REQ_HASH="
 for /f "delims=" %%h in ('certutil -hashfile "server\requirements.txt" SHA256 ^| findstr /r "^[0-9a-f][0-9a-f]*$"') do set "REQ_HASH=%%h"
 if not defined REQ_HASH (
@@ -102,7 +108,7 @@ if not defined REQ_HASH (
 )
 if defined DEPS_HASH if "%DEPS_HASH%"=="%REQ_HASH%" goto :server_deps_done
 echo   [SETUP] Installing server dependencies ^(can take a few minutes; re-runs only when requirements.txt changed^) ...
-if not exist "server\.venv\Scripts\python.exe" %PY_CMD% -m venv "server\.venv"
+if not exist "server\.venv\Scripts\python.exe" %PY_CMD% -m venv --clear "server\.venv"
 if not exist "server\.venv\Scripts\python.exe" (
     echo   [ERROR] Could not create server\.venv - see messages above.
     goto :fail
@@ -120,8 +126,13 @@ rem ---------------------------------------------- first-run install (client)
 
 rem Same hash-marker trick with package-lock.json: node_modules gets rebuilt
 rem only when the locked deps actually change, not on every start.
+if not exist "client\package-lock.json" (
+    echo   [ERROR] client\package-lock.json was not found.
+    goto :fail
+)
 set "LOCK_HASH="
 for /f "delims=" %%h in ('certutil -hashfile "client\package-lock.json" SHA256 ^| findstr /r "^[0-9a-f][0-9a-f]*$"') do set "LOCK_HASH=%%h"
+if not exist "client\node_modules\.bin\vite.cmd" set "LOCK_HASH="
 if defined LOCK_HASH if exist "client\node_modules\.deps-installed" for /f "usebackq delims=" %%h in ("client\node_modules\.deps-installed") do if "%%h"=="%LOCK_HASH%" goto :client_deps_done
 echo   [SETUP] Installing client dependencies ^(can take a few minutes; re-runs only when package-lock.json changed^) ...
 pushd client
@@ -166,7 +177,13 @@ start "MediaPull client" /D "%~dp0client" cmd /k "npm run dev"
 rem Give both dev servers a moment to bind before the browser asks for the page.
 timeout /t 5 /nobreak >nul 2>nul
 
-start "" "http://localhost:5173"
+rem Open in Google Chrome if installed, otherwise open in default browser
+set "BROWSER_CMD=start """
+if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" set "BROWSER_CMD=start chrome"
+if exist "%ProgramFiles(x86)%\Google\Chrome\Application\chrome.exe" set "BROWSER_CMD=start chrome"
+if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" set "BROWSER_CMD=start chrome"
+
+%BROWSER_CMD% "http://localhost:5173"
 
 echo   Done. If the page shows an error, wait a few seconds and reload -
 echo   the servers may still be starting.
